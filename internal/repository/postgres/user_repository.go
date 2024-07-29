@@ -3,8 +3,11 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"time"
 
+	"github.com/lib/pq"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
+	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -34,5 +37,60 @@ func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 	err = r.db.QueryRowContext(ctx, query,
 		user.Name, user.Email, string(hashedPassword), user.DOB, user.PhoneNumber, user.IsBlocked).
 		Scan(&user.ID, &user.CreatedAt)
+	if err != nil {
+		pqErr, ok := err.(*pq.Error)
+		if ok && pqErr.Code == "23505" { // Unique violation error code
+			return usecase.ErrDuplicateEmail
+		}
+		return err
+	}
+	return nil
+}
+
+func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
+	query := `SELECT id, name, email, password_hash, date_of_birth, phone_number, is_blocked, created_at, updated_at, last_login 
+              FROM users WHERE email = $1`
+
+	var user domain.User
+	var lastLogin sql.NullTime
+	err := r.db.QueryRowContext(ctx, query, email).Scan(
+		&user.ID, &user.Name, &user.Email, &user.PasswordHash, &user.DOB,
+		&user.PhoneNumber, &user.IsBlocked, &user.CreatedAt, &user.UpdatedAt, &lastLogin,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, usecase.ErrUserNotFound
+		}
+		return nil, err
+	}
+
+	if lastLogin.Valid {
+		user.LastLogin = lastLogin.Time
+	}
+
+	return &user, nil
+}
+
+func (r *userRepository) UpdateLastLogin(ctx context.Context, userID int64) error {
+	query := `UPDATE users SET last_login = NOW() WHERE id = $1`
+
+	_, err := r.db.ExecContext(ctx, query, userID)
 	return err
+}
+
+func (r *userRepository) BlacklistToken(ctx context.Context, token string, expiresAt time.Time) error {
+	query := `INSERT INTO blacklisted_tokens (token, expires_at) VALUES ($1, $2)`
+	_, err := r.db.ExecContext(ctx, query, token, expiresAt)
+	return err
+}
+
+func (r *userRepository) IsTokenBlacklisted(ctx context.Context, token string) (bool, error) {
+	query := `SELECT EXISTS(SELECT 1 FROM blacklisted_tokens WHERE token = $1 AND expires_at > NOW())`
+	var exists bool
+	err := r.db.QueryRowContext(ctx, query, token).Scan(&exists)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
 }
