@@ -41,8 +41,8 @@ func (u *adminUseCase) Login(ctx context.Context, username, password string) (st
 		return "", ErrInvalidAdminCredentials
 	}
 
-	// Generate JWT token
-	token, err := auth.GenerateToken(admin.ID)
+	// Generate JWT token with admin role
+	token, err := auth.GenerateTokenWithRole(admin.ID, "admin")
 	if err != nil {
 		return "", err
 	}

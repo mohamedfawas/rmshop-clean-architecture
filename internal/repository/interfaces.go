@@ -19,3 +19,8 @@ type AdminRepository interface {
 	GetByUsername(ctx context.Context, username string) (*domain.Admin, error)
 	BlacklistToken(ctx context.Context, token string, expiresAt time.Time) error
 }
+
+type CategoryRepository interface {
+	Create(ctx context.Context, category *domain.Category) error
+	// Add other methods as needed (GetByID, Update, Delete, etc.)
+}

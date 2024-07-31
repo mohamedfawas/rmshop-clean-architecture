@@ -22,13 +22,14 @@ func JWTAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		userID, err := auth.ValidateToken(bearerToken[1])
+		userID, role, err := auth.ValidateTokenWithRole(bearerToken[1])
 		if err != nil {
 			http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
 			return
 		}
 
 		ctx := context.WithValue(r.Context(), "user_id", userID)
+		ctx = context.WithValue(ctx, "user_role", role)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	}
 }
