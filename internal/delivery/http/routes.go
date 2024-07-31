@@ -17,6 +17,7 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 
 	// Admin routes
 	mux.HandleFunc("/admin/login", adminHandler.Login)
+	mux.HandleFunc("/admin/logout", middleware.JWTAuthMiddleware(adminHandler.Logout))
 
 	// Wrap the entire mux with the logging middleware
 	return middleware.LoggingMiddleware(mux)

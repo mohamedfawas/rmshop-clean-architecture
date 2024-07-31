@@ -1,2 +1,2 @@
 config.yaml
-./internal/config/config.go
+/internal/config/config.go

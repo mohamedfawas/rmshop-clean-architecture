@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
@@ -32,4 +33,10 @@ func (r *adminRepository) GetByUsername(ctx context.Context, username string) (*
 	}
 
 	return &admin, nil
+}
+
+func (r *adminRepository) BlacklistToken(ctx context.Context, token string, expiresAt time.Time) error {
+	query := `INSERT INTO blacklisted_tokens (token, expires_at) VALUES ($1, $2)`
+	_, err := r.db.ExecContext(ctx, query, token, expiresAt)
+	return err
 }
