@@ -3,3 +3,4 @@
 go get -u github.com/golang-migrate/migrate/v4
 go get -u github.com/golang-migrate/migrate/v4/database/postgres
 go get -u github.com/golang-migrate/migrate/v4/source/file
+- 
