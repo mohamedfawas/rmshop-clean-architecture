@@ -5,6 +5,7 @@ import "github.com/spf13/viper"
 type Config struct {
 	Server ServerConfig
 	DB     DBConfig
+	Admin  AdminConfig
 }
 
 type ServerConfig struct {
@@ -19,11 +20,19 @@ type DBConfig struct {
 	Name     string
 }
 
+type AdminConfig struct {
+	Username string
+	Password string
+}
+
 func Load() (*Config, error) {
 	viper.SetConfigName("config") //specify the name of the configuration file (without the extension)
 	viper.SetConfigType("yaml")   // specify the format of the configuration file
 	viper.AddConfigPath(".")      //add a path where Viper will search for the configuration file
 	viper.AddConfigPath("./internal/config")
+
+	viper.SetDefault("Admin.Username", "admin")
+	viper.SetDefault("Admin.Password", "changeme")
 
 	err := viper.ReadInConfig() //Reads configuration files
 	if err != nil {

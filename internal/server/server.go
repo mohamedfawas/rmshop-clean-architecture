@@ -15,12 +15,18 @@ type Server struct {
 }
 
 func NewServer(db *sql.DB) *Server {
+	// User components
 	// Handler -> UseCase -> Repository.
 	userRepo := postgres.NewUserRepository(db)          // repository is responsible for handling data persistence and retrieval for user-related operations.
 	userUseCase := usecase.NewUserUseCase(userRepo)     // Use cases contain the business logic of the application, user use case is initialized with the user repository, allowing it to perform data operations as needed.
 	userHandler := handlers.NewUserHandler(userUseCase) // Handlers are responsible for processing HTTP requests and responses.
 
-	router := httpDelivery.NewRouter(userHandler)
+	// Admin components
+	adminRepo := postgres.NewAdminRepository(db)
+	adminUseCase := usecase.NewAdminUseCase(adminRepo)
+	adminHandler := handlers.NewAdminHandler(adminUseCase)
+
+	router := httpDelivery.NewRouter(userHandler, adminHandler)
 
 	return &Server{
 		router: router,
