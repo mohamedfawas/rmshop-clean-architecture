@@ -29,15 +29,20 @@ func NewAdminUseCase(adminRepo repository.AdminRepository) AdminUseCase {
 }
 
 func (u *adminUseCase) Login(ctx context.Context, username, password string) (string, error) {
+	// Attempt to retrieve the admin by username from the repository
 	admin, err := u.adminRepo.GetByUsername(ctx, username)
 	if err != nil {
 		if err == ErrAdminNotFound {
+			// If the admin is not found, return an invalid credentials error
 			return "", ErrInvalidAdminCredentials
 		}
+		// For any other error, return it as is
 		return "", err
 	}
 
+	// Check if the provided password matches the stored password
 	if !admin.CheckPassword(password) {
+		// If passwords don't match, return an invalid credentials error
 		return "", ErrInvalidAdminCredentials
 	}
 

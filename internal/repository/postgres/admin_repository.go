@@ -18,9 +18,11 @@ func NewAdminRepository(db *sql.DB) *adminRepository {
 }
 
 func (r *adminRepository) GetByUsername(ctx context.Context, username string) (*domain.Admin, error) {
+	// SQL query to select admin details by username
 	query := `SELECT id, username, password_hash, created_at, updated_at FROM admins WHERE username = $1`
 
 	var admin domain.Admin
+	// Execute the query and scan the result into the admin struct
 	err := r.db.QueryRowContext(ctx, query, username).Scan(
 		&admin.ID, &admin.Username, &admin.PasswordHash, &admin.CreatedAt, &admin.UpdatedAt,
 	)
@@ -32,6 +34,7 @@ func (r *adminRepository) GetByUsername(ctx context.Context, username string) (*
 		return nil, err
 	}
 
+	// Return the admin struct and nil error
 	return &admin, nil
 }
 
