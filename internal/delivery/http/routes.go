@@ -3,25 +3,29 @@ package http
 import (
 	"net/http"
 
+	"github.com/gorilla/mux"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/delivery/http/handlers"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/delivery/http/middleware"
 )
 
-func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHandler, categoryHandler *handlers.CategoryHandler) http.Handler {
-	mux := http.NewServeMux()
+func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHandler, categoryHandler *handlers.CategoryHandler, subCategoryHandler *handlers.SubCategoryHandler) http.Handler {
+	r := mux.NewRouter()
 
 	// User routes
-	mux.HandleFunc("/user/register", userHandler.Register)
-	mux.HandleFunc("/user/login", userHandler.Login)
-	mux.HandleFunc("/user/logout", middleware.JWTAuthMiddleware(userHandler.Logout))
+	r.HandleFunc("/user/register", userHandler.Register)
+	r.HandleFunc("/user/login", userHandler.Login)
+	r.HandleFunc("/user/logout", middleware.JWTAuthMiddleware(userHandler.Logout))
 
 	// Admin routes
-	mux.HandleFunc("/admin/login", adminHandler.Login)
-	mux.HandleFunc("/admin/logout", middleware.JWTAuthMiddleware(adminHandler.Logout))
+	r.HandleFunc("/admin/login", adminHandler.Login)
+	r.HandleFunc("/admin/logout", middleware.JWTAuthMiddleware(adminHandler.Logout))
 
 	// Category routes
-	mux.HandleFunc("/admin/categories", middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(categoryHandler.CreateCategory)))
+	r.HandleFunc("/admin/categories", middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(categoryHandler.CreateCategory)))
+
+	// Subcategory routes
+	r.HandleFunc("/admin/categories/{categoryId}/subcategories", middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(subCategoryHandler.CreateSubCategory))).Methods("POST")
 
 	// Wrap the entire mux with the logging middleware
-	return middleware.LoggingMiddleware(mux)
+	return middleware.LoggingMiddleware(r)
 }

@@ -7,9 +7,13 @@ import (
 )
 
 var (
-	ErrInvalidCategoryName = errors.New("invalid category name")
-	ErrCategoryNameTooLong = errors.New("category name too long")
-	ErrDuplicateCategory   = errors.New("category already exists")
+	ErrInvalidCategoryName    = errors.New("invalid category name")
+	ErrCategoryNameTooLong    = errors.New("category name too long")
+	ErrDuplicateCategory      = errors.New("category already exists")
+	ErrCategoryNotFound       = errors.New("category not found")
+	ErrInvalidSubCategoryName = errors.New("invalid subcategory name")
+	ErrSubCategoryNameTooLong = errors.New("subcategory name too long")
+	ErrDuplicateSubCategory   = errors.New("subcategory already exists")
 )
 
 func GenerateSlug(name string) string {

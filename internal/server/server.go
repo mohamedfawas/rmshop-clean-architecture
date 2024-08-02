@@ -26,12 +26,17 @@ func NewServer(db *sql.DB) *Server {
 	adminUseCase := usecase.NewAdminUseCase(adminRepo)
 	adminHandler := handlers.NewAdminHandler(adminUseCase)
 
-	// category  components
+	// Category components
 	categoryRepo := postgres.NewCategoryRepository(db)
 	categoryUseCase := usecase.NewCategoryUseCase(categoryRepo)
 	categoryHandler := handlers.NewCategoryHandler(categoryUseCase)
 
-	router := httpDelivery.NewRouter(userHandler, adminHandler, categoryHandler)
+	// Subcategory components
+	subCategoryRepo := postgres.NewSubCategoryRepository(db)
+	subCategoryUseCase := usecase.NewSubCategoryUseCase(subCategoryRepo, categoryRepo)
+	subCategoryHandler := handlers.NewSubCategoryHandler(subCategoryUseCase)
+
+	router := httpDelivery.NewRouter(userHandler, adminHandler, categoryHandler, subCategoryHandler)
 
 	return &Server{
 		router: router,
