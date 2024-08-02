@@ -48,11 +48,13 @@ func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 }
 
 func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
+	// SQL query to select user details by email
 	query := `SELECT id, name, email, password_hash, date_of_birth, phone_number, is_blocked, created_at, updated_at, last_login 
               FROM users WHERE email = $1`
 
 	var user domain.User
 	var lastLogin sql.NullTime
+	// Execute the query and scan the result into the user struct
 	err := r.db.QueryRowContext(ctx, query, email).Scan(
 		&user.ID, &user.Name, &user.Email, &user.PasswordHash, &user.DOB,
 		&user.PhoneNumber, &user.IsBlocked, &user.CreatedAt, &user.UpdatedAt, &lastLogin,
@@ -60,34 +62,44 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.
 
 	if err != nil {
 		if err == sql.ErrNoRows {
+			// If no user is found, return a specific error
 			return nil, usecase.ErrUserNotFound
 		}
+		// For any other error, return it as is
 		return nil, err
 	}
 
+	// If lastLogin is not null, set it in the user struct
 	if lastLogin.Valid {
 		user.LastLogin = lastLogin.Time
 	}
 
+	// Return the user struct and nil error
 	return &user, nil
 }
 
 func (r *userRepository) UpdateLastLogin(ctx context.Context, userID int64) error {
+	// SQL query to update the last_login field for a user
 	query := `UPDATE users SET last_login = NOW() WHERE id = $1`
 
+	// Execute the update query
 	_, err := r.db.ExecContext(ctx, query, userID)
 	return err
 }
 
 func (r *userRepository) BlacklistToken(ctx context.Context, token string, expiresAt time.Time) error {
+	// SQL query to insert the blacklisted token
 	query := `INSERT INTO blacklisted_tokens (token, expires_at) VALUES ($1, $2)`
+	// Execute the insert query
 	_, err := r.db.ExecContext(ctx, query, token, expiresAt)
 	return err
 }
 
 func (r *userRepository) IsTokenBlacklisted(ctx context.Context, token string) (bool, error) {
+	// SQL query to check if a token is blacklisted and not expired
 	query := `SELECT EXISTS(SELECT 1 FROM blacklisted_tokens WHERE token = $1 AND expires_at > NOW())`
 	var exists bool
+	// Execute the query and scan the result
 	err := r.db.QueryRowContext(ctx, query, token).Scan(&exists)
 	if err != nil {
 		return false, err

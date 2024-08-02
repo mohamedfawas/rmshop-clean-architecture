@@ -21,8 +21,9 @@ type User struct {
 }
 
 func (u *User) CheckPassword(password string) bool {
+	// Compare the provided password with the stored password hash
 	err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password))
-	return err == nil //if passwords match true is returned
+	return err == nil // Returns true if passwords match, false otherwise
 }
 
 type BlacklistedToken struct {

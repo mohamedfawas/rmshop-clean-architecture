@@ -32,7 +32,7 @@ func Load() (*Config, error) {
 	viper.AddConfigPath("./internal/config")
 
 	viper.SetDefault("Admin.Username", "admin")
-	viper.SetDefault("Admin.Password", "changeme")
+	viper.SetDefault("Admin.Password", "admin@123")
 
 	err := viper.ReadInConfig() //Reads configuration files
 	if err != nil {

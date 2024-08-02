@@ -52,27 +52,36 @@ func (u *userUseCase) Register(ctx context.Context, user *domain.User) error {
 }
 
 func (u *userUseCase) Login(ctx context.Context, email, password string) (string, error) {
+	// Attempt to retrieve the user by email from the repository
 	user, err := u.userRepo.GetByEmail(ctx, email)
 	if err != nil {
 		if err == ErrUserNotFound {
+			// If the user is not found, return an invalid credentials error
 			return "", ErrInvalidCredentials
 		}
+		// For any other error, return it as is
 		return "", err
 	}
 
+	// Check if the provided password matches the stored password
 	if !user.CheckPassword(password) {
+		// If passwords don't match, return an invalid credentials error
 		return "", ErrInvalidCredentials
 	}
+	// Update the user's last login time
 	err = u.userRepo.UpdateLastLogin(ctx, user.ID)
 	if err != nil {
+		// If updating last login fails, return the error
 		return "", err
 	}
 
-	// Generate JWT token
+	// Generate a JWT token for the authenticated user
 	token, err := auth.GenerateToken(user.ID)
 	if err != nil {
+		// If token generation fails, return the error
 		return "", err
 	}
+	// Return the generated token
 	return token, nil
 }
 
@@ -80,18 +89,21 @@ func (u *userUseCase) Logout(ctx context.Context, token string) error {
 	// Validate the token
 	_, err := auth.ValidateToken(token)
 	if err != nil {
+		// If the token is invalid, return an error
 		return ErrInvalidToken
 	}
 
 	// Get token expiration time
 	claims, err := auth.GetTokenClaims(token)
 	if err != nil {
+		// If unable to get token claims, return an error
 		return ErrInvalidToken
 	}
 
 	// Convert the expiration time to int64
 	expFloat, ok := claims["exp"].(float64)
 	if !ok {
+		// If the expiration claim is not a float64, return an error
 		return errors.New("invalid expiration claim")
 	}
 	expiresAt := time.Unix(int64(expFloat), 0)

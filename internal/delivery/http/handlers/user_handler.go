@@ -84,34 +84,48 @@ type LoginResponse struct {
 	Token string `json:"token"`
 }
 
+// Login handles the HTTP request for user login
 func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
+	// Define a struct to parse the login input from JSON
 	var input LoginInput
+	// Decode the JSON request body into the input struct
 	err := json.NewDecoder(r.Body).Decode(&input)
 	if err != nil {
+		// If there's an error in parsing, return a 400 Bad Request error
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
+	// Call the Login method of the userUseCase, passing the email and password
 	token, err := h.userUseCase.Login(r.Context(), input.Email, input.Password)
 	if err != nil {
+		// Handle different types of errors
 		switch err {
 		case usecase.ErrInvalidCredentials:
+			// If credentials are invalid, return a 401 Unauthorized error
 			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 		default:
-			log.Printf("Login error: %v", err) // Log the actual error
+			// Log the actual error for debugging purposes
+			log.Printf("Login error: %v", err)
+			// For any other error, return a 500 Internal Server Error
 			http.Error(w, fmt.Sprintf("Internal server error: %v", err), http.StatusInternalServerError)
 		}
 		return
 	}
 
+	// If login is successful, set the Content-Type header to JSON
 	w.Header().Set("Content-Type", "application/json")
+	// Set the status code to 200 OK
 	w.WriteHeader(http.StatusOK)
+	// Encode and send the token in the response body
 	json.NewEncoder(w).Encode(LoginResponse{Token: token})
 }
 
 func (h *UserHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	// Extract the token from the Authorization header
 	token := r.Header.Get("Authorization")
 	if token == "" {
+		// If the token is missing, return a 401 Unauthorized error
 		http.Error(w, "Missing authorization token", http.StatusUnauthorized)
 		return
 	}
@@ -121,16 +135,21 @@ func (h *UserHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		token = token[7:]
 	}
 
+	// Call the Logout method of the userUseCase, passing the token
 	err := h.userUseCase.Logout(r.Context(), token)
 	if err != nil {
 		if err == usecase.ErrInvalidToken {
+			// If the token is invalid, return a 401 Unauthorized error
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
 		} else {
+			// For any other error, return a 500 Internal Server Error
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 		}
 		return
 	}
 
+	// If logout is successful, set the status code to 200 OK
 	w.WriteHeader(http.StatusOK)
+	// Send a success message in the response body
 	json.NewEncoder(w).Encode(map[string]string{"message": "Logged out successfully"})
 }

@@ -24,27 +24,38 @@ type AdminLoginResponse struct {
 	Token string `json:"token"`
 }
 
+// Login handles the HTTP request for admin login
 func (h *AdminHandler) Login(w http.ResponseWriter, r *http.Request) {
+	// Define a struct to parse the login input from JSON
 	var input AdminLoginInput
+	// Decode the JSON request body into the input struct
 	err := json.NewDecoder(r.Body).Decode(&input)
 	if err != nil {
+		// If there's an error in parsing, return a 400 Bad Request error
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
+	// Call the Login method of the adminUseCase, passing the username and password
 	token, err := h.adminUseCase.Login(r.Context(), input.Username, input.Password)
 	if err != nil {
+		// Handle different types of errors
 		switch err {
 		case usecase.ErrInvalidAdminCredentials:
+			// If credentials are invalid, return a 401 Unauthorized error
 			http.Error(w, "Invalid username or password", http.StatusUnauthorized)
 		default:
+			// For any other error, return a 500 Internal Server Error
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 		}
 		return
 	}
 
+	// If login is successful, set the Content-Type header to JSON
 	w.Header().Set("Content-Type", "application/json")
+	// Set the status code to 200 OK
 	w.WriteHeader(http.StatusOK)
+	// Encode and send the token in the response body
 	json.NewEncoder(w).Encode(AdminLoginResponse{Token: token})
 }
 
