@@ -3,12 +3,12 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"log"
 	"time"
 
 	"github.com/lib/pq"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
-	"golang.org/x/crypto/bcrypt"
 )
 
 // this code sets up a structure that will handle database operations related to users.
@@ -24,18 +24,25 @@ func NewUserRepository(db *sql.DB) *userRepository {
 //This approach follows the dependency injection principle, where the database connection is provided from outside rather than created within the repository. This makes the code more flexible and easier to test.
 
 func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
-	//Hash the password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
+	defer tx.Rollback()
 
-	query := `INSERT INTO users (name, email,password_hash, date_of_birth,phone_number,is_blocked, created_at)
-				VALUES ($1, $2, $3, $4, $5, $6, NOW())
-				RETURNING id, created_at`
+	// Reset the sequence
+	_, err = tx.ExecContext(ctx, "SELECT reset_users_id_seq()")
+	if err != nil {
+		log.Printf("Error resetting sequence: %v", err)
+		return err
+	}
 
-	err = r.db.QueryRowContext(ctx, query,
-		user.Name, user.Email, string(hashedPassword), user.DOB, user.PhoneNumber, user.IsBlocked).
+	query := `INSERT INTO users (name, email, password_hash, date_of_birth, phone_number, is_blocked, created_at)
+              VALUES ($1, $2, $3, $4, $5, $6, $7)
+              RETURNING id, created_at`
+
+	err = tx.QueryRowContext(ctx, query,
+		user.Name, user.Email, user.PasswordHash, user.DOB, user.PhoneNumber, user.IsBlocked, user.CreatedAt).
 		Scan(&user.ID, &user.CreatedAt)
 	if err != nil {
 		pqErr, ok := err.(*pq.Error)
@@ -44,6 +51,12 @@ func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 		}
 		return err
 	}
+
+	if err = tx.Commit(); err != nil {
+		log.Printf("Error committing transaction: %v", err)
+		return err
+	}
+
 	return nil
 }
 

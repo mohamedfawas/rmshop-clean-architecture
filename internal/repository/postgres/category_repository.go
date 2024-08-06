@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"log"
 
 	"github.com/lib/pq"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
@@ -18,15 +19,35 @@ func NewCategoryRepository(db *sql.DB) *categoryRepository {
 }
 
 func (r *categoryRepository) Create(ctx context.Context, category *domain.Category) error {
-	query := `INSERT INTO categories (name, slug, created_at) VALUES ($1, $2, $3) RETURNING id`
-
-	err := r.db.QueryRowContext(ctx, query, category.Name, category.Slug, category.CreatedAt).Scan(&category.ID)
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		// Check if it's a unique constraint violation
+		return err
+	}
+	defer tx.Rollback()
+
+	// Reset the sequence
+	_, err = tx.ExecContext(ctx, "SELECT reset_categories_id_seq()")
+	if err != nil {
+		log.Printf("Error resetting sequence: %v", err)
+		return err
+	}
+
+	query := `INSERT INTO categories (name, slug, created_at) 
+              VALUES ($1, $2, $3) 
+              RETURNING id`
+
+	err = tx.QueryRowContext(ctx, query,
+		category.Name, category.Slug, category.CreatedAt).Scan(&category.ID)
+	if err != nil {
 		pqErr, ok := err.(*pq.Error)
 		if ok && pqErr.Code == "23505" { // Unique violation error code
 			return utils.ErrDuplicateCategory
 		}
+		return err
+	}
+
+	if err = tx.Commit(); err != nil {
+		log.Printf("Error committing transaction: %v", err)
 		return err
 	}
 

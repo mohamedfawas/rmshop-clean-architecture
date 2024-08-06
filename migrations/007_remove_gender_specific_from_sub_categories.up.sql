@@ -1,0 +1,1 @@
+ALTER TABLE sub_categories DROP COLUMN IF EXISTS gender_specific;

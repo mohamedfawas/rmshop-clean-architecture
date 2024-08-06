@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -36,6 +37,7 @@ func (h *SubCategoryHandler) CreateSubCategory(w http.ResponseWriter, r *http.Re
 
 	err = h.subCategoryUseCase.CreateSubCategory(r.Context(), categoryID, &subCategory)
 	if err != nil {
+		log.Printf("Error creating subcategory: %v", err) // Add this line for logging
 		switch err {
 		case utils.ErrInvalidSubCategoryName:
 			http.Error(w, "Invalid subcategory name", http.StatusBadRequest)

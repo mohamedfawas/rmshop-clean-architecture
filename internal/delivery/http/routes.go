@@ -24,7 +24,8 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 	r.HandleFunc("/admin/categories", middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(categoryHandler.CreateCategory)))
 
 	// Subcategory routes
-	r.HandleFunc("/admin/categories/{categoryId}/subcategories", middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(subCategoryHandler.CreateSubCategory))).Methods("POST")
+	r.HandleFunc("/admin/categories/{categoryId}/subcategories",
+		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(subCategoryHandler.CreateSubCategory))).Methods("POST")
 
 	// Wrap the entire mux with the logging middleware
 	return middleware.LoggingMiddleware(r)
