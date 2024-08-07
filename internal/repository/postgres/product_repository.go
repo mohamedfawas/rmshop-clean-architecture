@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
@@ -80,4 +81,28 @@ func (r *productRepository) GetAll(ctx context.Context) ([]*domain.Product, erro
 	}
 
 	return products, nil
+}
+
+func (r *productRepository) GetByID(ctx context.Context, id int64) (*domain.Product, error) {
+	query := `
+		SELECT id, name, description, price, stock_quantity, category_id, sub_category_id, image_url, created_at, updated_at, deleted_at
+		FROM products
+		WHERE id = $1 AND deleted_at IS NULL
+	`
+
+	var p domain.Product
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&p.ID, &p.Name, &p.Description, &p.Price, &p.StockQuantity,
+		&p.CategoryID, &p.SubCategoryID, &p.ImageURL, &p.CreatedAt, &p.UpdatedAt,
+		&p.DeletedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, errors.New("product not found")
+		}
+		log.Printf("Error querying product: %v", err)
+		return nil, err
+	}
+
+	return &p, nil
 }

@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
 
+	"github.com/gorilla/mux"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
 )
@@ -57,4 +59,26 @@ func (h *ProductHandler) GetAllProducts(w http.ResponseWriter, r *http.Request) 
 	}
 
 	log.Println("Successfully sent products response")
+}
+
+func (h *ProductHandler) GetProductByID(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	productID, err := strconv.ParseInt(vars["productId"], 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid product ID", http.StatusBadRequest)
+		return
+	}
+
+	product, err := h.productUseCase.GetProductByID(r.Context(), productID)
+	if err != nil {
+		if err.Error() == "product not found" {
+			http.Error(w, "Product not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Failed to retrieve product", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(product)
 }

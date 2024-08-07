@@ -11,6 +11,7 @@ import (
 type ProductUseCase interface {
 	CreateProduct(ctx context.Context, product *domain.Product) error
 	GetAllProducts(ctx context.Context) ([]*domain.Product, error)
+	GetProductByID(ctx context.Context, id int64) (*domain.Product, error)
 }
 
 type productUseCase struct {
@@ -36,4 +37,8 @@ func (u *productUseCase) CreateProduct(ctx context.Context, product *domain.Prod
 
 func (u *productUseCase) GetAllProducts(ctx context.Context) ([]*domain.Product, error) {
 	return u.productRepo.GetAll(ctx)
+}
+
+func (u *productUseCase) GetProductByID(ctx context.Context, id int64) (*domain.Product, error) {
+	return u.productRepo.GetByID(ctx, id)
 }

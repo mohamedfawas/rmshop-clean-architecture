@@ -57,6 +57,7 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 	// Product routes
 	r.HandleFunc("/admin/products", middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(productHandler.CreateProduct))).Methods("POST")
 	r.HandleFunc("/admin/products", middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(productHandler.GetAllProducts))).Methods("GET")
+	r.HandleFunc("/admin/products/{productId}", middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(productHandler.GetProductByID))).Methods("GET")
 
 	log.Println("Router setup complete")
 	// Wrap the entire mux with the logging middleware
