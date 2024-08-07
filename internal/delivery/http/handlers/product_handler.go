@@ -114,3 +114,24 @@ func (h *ProductHandler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(product)
 }
+
+func (h *ProductHandler) SoftDeleteProduct(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	productID, err := strconv.ParseInt(vars["productId"], 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid product ID", http.StatusBadRequest)
+		return
+	}
+
+	err = h.productUseCase.SoftDeleteProduct(r.Context(), productID)
+	if err != nil {
+		if err.Error() == "product not found or already deleted" {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else {
+			http.Error(w, "Failed to delete product", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}

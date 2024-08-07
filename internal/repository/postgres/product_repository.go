@@ -136,3 +136,28 @@ func (r *productRepository) Update(ctx context.Context, product *domain.Product)
 
 	return nil
 }
+
+func (r *productRepository) SoftDelete(ctx context.Context, id int64) error {
+	query := `
+		UPDATE products
+		SET deleted_at = $1
+		WHERE id = $2 AND deleted_at IS NULL
+	`
+
+	result, err := r.db.ExecContext(ctx, query, time.Now(), id)
+	if err != nil {
+		log.Printf("Error soft deleting product: %v", err)
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return errors.New("product not found or already deleted")
+	}
+
+	return nil
+}

@@ -13,6 +13,7 @@ type ProductUseCase interface {
 	GetAllProducts(ctx context.Context) ([]*domain.Product, error)
 	GetProductByID(ctx context.Context, id int64) (*domain.Product, error)
 	UpdateProduct(ctx context.Context, product *domain.Product) error
+	SoftDeleteProduct(ctx context.Context, id int64) error
 }
 
 type productUseCase struct {
@@ -51,4 +52,8 @@ func (u *productUseCase) UpdateProduct(ctx context.Context, product *domain.Prod
 	// Update the product
 	product.UpdatedAt = time.Now()
 	return u.productRepo.Update(ctx, product)
+}
+
+func (u *productUseCase) SoftDeleteProduct(ctx context.Context, id int64) error {
+	return u.productRepo.SoftDelete(ctx, id)
 }
