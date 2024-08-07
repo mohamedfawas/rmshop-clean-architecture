@@ -15,6 +15,7 @@ import (
 type CategoryUseCase interface {
 	CreateCategory(ctx context.Context, category *domain.Category) error
 	GetAllCategories(ctx context.Context) ([]*domain.Category, error)
+	GetActiveCategoryByID(ctx context.Context, id int) (*domain.Category, error)
 }
 
 type categoryUseCase struct {
@@ -66,4 +67,15 @@ func (u *categoryUseCase) GetAllCategories(ctx context.Context) ([]*domain.Categ
 	}
 	log.Printf("Retrieved %d categories from repository", len(categories))
 	return categories, nil
+}
+
+func (u *categoryUseCase) GetActiveCategoryByID(ctx context.Context, id int) (*domain.Category, error) {
+	category, err := u.categoryRepo.GetActiveByID(ctx, id)
+	if err != nil {
+		if err == utils.ErrCategoryNotFound {
+			return nil, utils.ErrCategoryNotFound
+		}
+		return nil, errors.New("failed to retrieve category")
+	}
+	return category, nil
 }

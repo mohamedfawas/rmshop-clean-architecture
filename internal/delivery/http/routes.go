@@ -36,6 +36,10 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 	// Category routes
 	r.HandleFunc("/admin/categories", middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(categoryHandler.CreateCategory)))
 	//r.HandleFunc("/admin/categories", middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(categoryHandler.GetAllCategories))).Methods("GET")
+	r.HandleFunc("/admin/categories/{categoryId}",
+		middleware.JWTAuthMiddleware(
+			middleware.AdminAuthMiddleware(
+				categoryHandler.GetActiveCategoryByID))).Methods("GET")
 
 	// Subcategory routes
 	r.HandleFunc("/admin/categories/{categoryId}/subcategories",
@@ -43,12 +47,6 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 
 	// Product routes
 	r.HandleFunc("/admin/products", middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(productHandler.CreateProduct))).Methods("POST")
-
-	r.HandleFunc("/debug", func(w http.ResponseWriter, r *http.Request) {
-		log.Println("Debug endpoint hit")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Debug endpoint working"))
-	}).Methods("GET")
 
 	log.Println("Router setup complete")
 	// Wrap the entire mux with the logging middleware

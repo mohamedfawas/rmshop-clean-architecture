@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
 
+	"github.com/gorilla/mux"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/utils"
@@ -82,4 +84,26 @@ func (h *CategoryHandler) GetAllCategories(w http.ResponseWriter, r *http.Reques
 	}
 
 	log.Println("Successfully sent categories response")
+}
+
+func (h *CategoryHandler) GetActiveCategoryByID(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	categoryID, err := strconv.Atoi(vars["categoryId"])
+	if err != nil {
+		http.Error(w, "Invalid category ID", http.StatusBadRequest)
+		return
+	}
+
+	category, err := h.categoryUseCase.GetActiveCategoryByID(r.Context(), categoryID)
+	if err != nil {
+		if err == utils.ErrCategoryNotFound {
+			http.Error(w, "Category not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Failed to retrieve category", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(category)
 }
