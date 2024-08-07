@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 
 	"github.com/lib/pq"
@@ -134,4 +135,39 @@ func (r *categoryRepository) GetActiveByID(ctx context.Context, id int) (*domain
 	}
 
 	return &category, nil
+}
+
+func (r *categoryRepository) Update(ctx context.Context, category *domain.Category) error {
+	query := `UPDATE categories SET name = $1, slug = $2, updated_at = NOW() WHERE id = $3 AND deleted_at IS NULL`
+
+	log.Printf("Executing update query: %s", query)
+	log.Printf("Query parameters: name=%s, slug=%s, id=%d", category.Name, category.Slug, category.ID)
+
+	result, err := r.db.ExecContext(ctx, query, category.Name, category.Slug, category.ID)
+	if err != nil {
+		log.Printf("Error executing update query: %v", err)
+		pqErr, ok := err.(*pq.Error)
+		if ok {
+			log.Printf("PostgreSQL error code: %s", pqErr.Code)
+			if pqErr.Code == "23505" { // Unique violation error code
+				return utils.ErrDuplicateCategory
+			}
+		}
+		return fmt.Errorf("database error: %v", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		log.Printf("Error getting rows affected: %v", err)
+		return fmt.Errorf("error checking rows affected: %v", err)
+	}
+
+	log.Printf("Rows affected: %d", rowsAffected)
+
+	if rowsAffected == 0 {
+		log.Printf("No rows affected, category not found")
+		return utils.ErrCategoryNotFound
+	}
+
+	return nil
 }

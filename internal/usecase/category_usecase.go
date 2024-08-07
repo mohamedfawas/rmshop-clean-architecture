@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ type CategoryUseCase interface {
 	CreateCategory(ctx context.Context, category *domain.Category) error
 	GetAllCategories(ctx context.Context) ([]*domain.Category, error)
 	GetActiveCategoryByID(ctx context.Context, id int) (*domain.Category, error)
+	UpdateCategory(ctx context.Context, category *domain.Category) error
 }
 
 type categoryUseCase struct {
@@ -43,6 +45,8 @@ func (u *categoryUseCase) CreateCategory(ctx context.Context, category *domain.C
 
 	// Set creation time
 	category.CreatedAt = time.Now()
+
+	category.UpdatedAt = time.Now()
 
 	// Attempt to create the category
 	err := u.categoryRepo.Create(ctx, category)
@@ -78,4 +82,38 @@ func (u *categoryUseCase) GetActiveCategoryByID(ctx context.Context, id int) (*d
 		return nil, errors.New("failed to retrieve category")
 	}
 	return category, nil
+}
+
+func (u *categoryUseCase) UpdateCategory(ctx context.Context, category *domain.Category) error {
+	// Trim whitespace from category name
+	category.Name = strings.TrimSpace(category.Name)
+	category.UpdatedAt = time.Now()
+
+	// Validate category name
+	if category.Name == "" {
+		log.Printf("Invalid category name: empty name")
+		return utils.ErrInvalidCategoryName
+	}
+	if len(category.Name) > 50 {
+		log.Printf("Category name too long: %d characters", len(category.Name))
+		return utils.ErrCategoryNameTooLong
+	}
+
+	// Generate slug
+	category.Slug = utils.GenerateSlug(category.Name)
+
+	// Attempt to update the category
+	err := u.categoryRepo.Update(ctx, category)
+	if err != nil {
+		log.Printf("Error in repository.Update: %v", err)
+		if err == utils.ErrDuplicateCategory {
+			return utils.ErrDuplicateCategory
+		}
+		if err == utils.ErrCategoryNotFound {
+			return utils.ErrCategoryNotFound
+		}
+		return fmt.Errorf("failed to update category: %v", err)
+	}
+
+	return nil
 }

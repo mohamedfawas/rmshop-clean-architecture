@@ -107,3 +107,45 @@ func (h *CategoryHandler) GetActiveCategoryByID(w http.ResponseWriter, r *http.R
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(category)
 }
+
+func (h *CategoryHandler) UpdateCategory(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	categoryID, err := strconv.Atoi(vars["categoryId"])
+	if err != nil {
+		log.Printf("Invalid category ID: %v", err)
+		http.Error(w, "Invalid category ID", http.StatusBadRequest)
+		return
+	}
+
+	var category domain.Category
+	err = json.NewDecoder(r.Body).Decode(&category)
+	if err != nil {
+		log.Printf("Invalid request body: %v", err)
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	category.ID = categoryID
+
+	err = h.categoryUseCase.UpdateCategory(r.Context(), &category)
+	if err != nil {
+		log.Printf("Error updating category: %v", err)
+		switch err {
+		case utils.ErrInvalidCategoryName:
+			http.Error(w, "Invalid category name", http.StatusBadRequest)
+		case utils.ErrCategoryNameTooLong:
+			http.Error(w, "Category name too long", http.StatusBadRequest)
+		case utils.ErrDuplicateCategory:
+			http.Error(w, "Category name already exists", http.StatusConflict)
+		case utils.ErrCategoryNotFound:
+			http.Error(w, "Category not found", http.StatusNotFound)
+		default:
+			http.Error(w, "Failed to update category", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(category)
+}

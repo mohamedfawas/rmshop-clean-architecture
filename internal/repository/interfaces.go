@@ -25,6 +25,7 @@ type CategoryRepository interface {
 	GetByID(ctx context.Context, id int) (*domain.Category, error) // retrieving any category by ID
 	GetAll(ctx context.Context) ([]*domain.Category, error)
 	GetActiveByID(ctx context.Context, id int) (*domain.Category, error) // New method for retrieving active categories
+	Update(ctx context.Context, category *domain.Category) error
 	// Add other methods as needed (GetByID, Update, Delete, etc.)
 }
 

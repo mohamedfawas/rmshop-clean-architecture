@@ -40,6 +40,10 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 		middleware.JWTAuthMiddleware(
 			middleware.AdminAuthMiddleware(
 				categoryHandler.GetActiveCategoryByID))).Methods("GET")
+	r.HandleFunc("/admin/categories/{categoryId}",
+		middleware.JWTAuthMiddleware(
+			middleware.AdminAuthMiddleware(
+				categoryHandler.UpdateCategory))).Methods("PUT")
 
 	// Subcategory routes
 	r.HandleFunc("/admin/categories/{categoryId}/subcategories",
