@@ -8,7 +8,7 @@ import (
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/delivery/http/middleware"
 )
 
-func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHandler, categoryHandler *handlers.CategoryHandler, subCategoryHandler *handlers.SubCategoryHandler) http.Handler {
+func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHandler, categoryHandler *handlers.CategoryHandler, subCategoryHandler *handlers.SubCategoryHandler, productHandler *handlers.ProductHandler) http.Handler {
 	r := mux.NewRouter()
 
 	// User routes
@@ -26,6 +26,9 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 	// Subcategory routes
 	r.HandleFunc("/admin/categories/{categoryId}/subcategories",
 		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(subCategoryHandler.CreateSubCategory))).Methods("POST")
+
+	// Product routes
+	r.HandleFunc("/admin/products", middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(productHandler.CreateProduct))).Methods("POST")
 
 	// Wrap the entire mux with the logging middleware
 	return middleware.LoggingMiddleware(r)

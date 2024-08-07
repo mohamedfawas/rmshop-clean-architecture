@@ -29,3 +29,7 @@ type CategoryRepository interface {
 type SubCategoryRepository interface {
 	Create(ctx context.Context, subCategory *domain.SubCategory) error
 }
+
+type ProductRepository interface {
+	Create(ctx context.Context, product *domain.Product) error
+}
