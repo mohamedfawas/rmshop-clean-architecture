@@ -10,6 +10,7 @@ import (
 
 type ProductUseCase interface {
 	CreateProduct(ctx context.Context, product *domain.Product) error
+	GetAllProducts(ctx context.Context) ([]*domain.Product, error)
 }
 
 type productUseCase struct {
@@ -31,4 +32,8 @@ func (u *productUseCase) CreateProduct(ctx context.Context, product *domain.Prod
 
 	// Create the product
 	return u.productRepo.Create(ctx, product)
+}
+
+func (u *productUseCase) GetAllProducts(ctx context.Context) ([]*domain.Product, error) {
+	return u.productRepo.GetAll(ctx)
 }

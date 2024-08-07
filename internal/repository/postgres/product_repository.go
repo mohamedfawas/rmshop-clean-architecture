@@ -43,3 +43,41 @@ func (r *productRepository) Create(ctx context.Context, product *domain.Product)
 
 	return nil
 }
+
+func (r *productRepository) GetAll(ctx context.Context) ([]*domain.Product, error) {
+	query := `
+		SELECT id, name, description, price, stock_quantity, category_id, sub_category_id, image_url, created_at, updated_at, deleted_at
+		FROM products
+		WHERE deleted_at IS NULL
+		ORDER BY id
+	`
+
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		log.Printf("Error querying products: %v", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var products []*domain.Product
+	for rows.Next() {
+		var p domain.Product
+		err := rows.Scan(
+			&p.ID, &p.Name, &p.Description, &p.Price, &p.StockQuantity,
+			&p.CategoryID, &p.SubCategoryID, &p.ImageURL, &p.CreatedAt, &p.UpdatedAt,
+			&p.DeletedAt,
+		)
+		if err != nil {
+			log.Printf("Error scanning product row: %v", err)
+			return nil, err
+		}
+		products = append(products, &p)
+	}
+
+	if err = rows.Err(); err != nil {
+		log.Printf("Error after scanning all rows: %v", err)
+		return nil, err
+	}
+
+	return products, nil
+}

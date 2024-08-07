@@ -36,4 +36,5 @@ type SubCategoryRepository interface {
 
 type ProductRepository interface {
 	Create(ctx context.Context, product *domain.Product) error
+	GetAll(ctx context.Context) ([]*domain.Product, error)
 }
