@@ -149,3 +149,26 @@ func (h *CategoryHandler) UpdateCategory(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(category)
 }
+
+func (h *CategoryHandler) SoftDeleteCategory(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	categoryID, err := strconv.Atoi(vars["categoryId"])
+	if err != nil {
+		log.Printf("Invalid category ID: %v", err)
+		http.Error(w, "Invalid category ID", http.StatusBadRequest)
+		return
+	}
+
+	err = h.categoryUseCase.SoftDeleteCategory(r.Context(), categoryID)
+	if err != nil {
+		log.Printf("Error soft deleting category: %v", err)
+		if err == utils.ErrCategoryNotFound {
+			http.Error(w, "Category not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Failed to delete category", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}

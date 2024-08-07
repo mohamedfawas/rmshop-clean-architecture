@@ -18,6 +18,7 @@ type CategoryUseCase interface {
 	GetAllCategories(ctx context.Context) ([]*domain.Category, error)
 	GetActiveCategoryByID(ctx context.Context, id int) (*domain.Category, error)
 	UpdateCategory(ctx context.Context, category *domain.Category) error
+	SoftDeleteCategory(ctx context.Context, id int) error
 }
 
 type categoryUseCase struct {
@@ -115,5 +116,17 @@ func (u *categoryUseCase) UpdateCategory(ctx context.Context, category *domain.C
 		return fmt.Errorf("failed to update category: %v", err)
 	}
 
+	return nil
+}
+
+func (u *categoryUseCase) SoftDeleteCategory(ctx context.Context, id int) error {
+	err := u.categoryRepo.SoftDelete(ctx, id)
+	if err != nil {
+		if err == utils.ErrCategoryNotFound {
+			return utils.ErrCategoryNotFound
+		}
+		log.Printf("Failed to soft delete category: %v", err)
+		return errors.New("failed to delete category")
+	}
 	return nil
 }

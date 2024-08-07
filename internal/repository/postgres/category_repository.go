@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/lib/pq"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
@@ -166,6 +167,29 @@ func (r *categoryRepository) Update(ctx context.Context, category *domain.Catego
 
 	if rowsAffected == 0 {
 		log.Printf("No rows affected, category not found")
+		return utils.ErrCategoryNotFound
+	}
+
+	return nil
+}
+
+func (r *categoryRepository) SoftDelete(ctx context.Context, id int) error {
+	query := `UPDATE categories SET deleted_at = $1 WHERE id = $2 AND deleted_at IS NULL`
+
+	result, err := r.db.ExecContext(ctx, query, time.Now(), id)
+	if err != nil {
+		log.Printf("Error executing soft delete query: %v", err)
+		return fmt.Errorf("database error: %v", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		log.Printf("Error getting rows affected: %v", err)
+		return fmt.Errorf("error checking rows affected: %v", err)
+	}
+
+	if rowsAffected == 0 {
+		log.Printf("No rows affected, category not found or already deleted")
 		return utils.ErrCategoryNotFound
 	}
 
