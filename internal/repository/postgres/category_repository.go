@@ -76,3 +76,40 @@ func (r *categoryRepository) GetByID(ctx context.Context, id int) (*domain.Categ
 
 	return &category, nil
 }
+
+func (r *categoryRepository) GetAll(ctx context.Context) ([]*domain.Category, error) {
+	log.Println("Entering GetAll repository method")
+	query := `SELECT id, name, slug, created_at, deleted_at FROM categories WHERE deleted_at IS NULL ORDER BY id`
+
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		log.Printf("Error querying categories: %v", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var categories []*domain.Category
+	for rows.Next() {
+		var category domain.Category
+		err := rows.Scan(
+			&category.ID,
+			&category.Name,
+			&category.Slug,
+			&category.CreatedAt,
+			&category.DeletedAt,
+		)
+		if err != nil {
+			log.Printf("Error scanning category row: %v", err)
+			return nil, err
+		}
+		categories = append(categories, &category)
+	}
+
+	if err = rows.Err(); err != nil {
+		log.Printf("Error after scanning all rows: %v", err)
+		return nil, err
+	}
+
+	log.Printf("Retrieved %d categories from database", len(categories))
+	return categories, nil
+}

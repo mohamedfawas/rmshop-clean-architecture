@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-
+	log.Println("Starting application...")
 	//configuration is loaded from config.yaml
 	cfg, err := config.Load()
 	if err != nil {

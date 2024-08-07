@@ -23,6 +23,7 @@ type AdminRepository interface {
 type CategoryRepository interface {
 	Create(ctx context.Context, category *domain.Category) error
 	GetByID(ctx context.Context, id int) (*domain.Category, error)
+	GetAll(ctx context.Context) ([]*domain.Category, error)
 	// Add other methods as needed (GetByID, Update, Delete, etc.)
 }
 

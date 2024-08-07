@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
@@ -43,4 +44,42 @@ func (h *CategoryHandler) CreateCategory(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(category)
+}
+
+func (h *CategoryHandler) GetAllCategories(w http.ResponseWriter, r *http.Request) {
+	log.Println("Entering GetAllCategories handler")
+
+	// Log request details
+	log.Printf("Request Method: %s", r.Method)
+	log.Printf("Request URL: %s", r.URL)
+	log.Printf("Request Headers: %+v", r.Header)
+
+	categories, err := h.categoryUseCase.GetAllCategories(r.Context())
+	if err != nil {
+		log.Printf("Error retrieving categories: %v", err)
+		http.Error(w, "Failed to retrieve categories", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("Retrieved %d categories", len(categories))
+
+	w.Header().Set("Content-Type", "application/json")
+
+	encodedData, err := json.Marshal(categories)
+	if err != nil {
+		log.Printf("Error marshaling categories: %v", err)
+		http.Error(w, "Failed to encode categories", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("Marshaled data: %s", string(encodedData))
+
+	_, err = w.Write(encodedData)
+	if err != nil {
+		log.Printf("Error writing response: %v", err)
+		http.Error(w, "Failed to send response", http.StatusInternalServerError)
+		return
+	}
+
+	log.Println("Successfully sent categories response")
 }

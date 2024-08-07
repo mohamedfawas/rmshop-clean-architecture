@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"log"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 
 type CategoryUseCase interface {
 	CreateCategory(ctx context.Context, category *domain.Category) error
+	GetAllCategories(ctx context.Context) ([]*domain.Category, error)
 }
 
 type categoryUseCase struct {
@@ -53,4 +55,15 @@ func (u *categoryUseCase) CreateCategory(ctx context.Context, category *domain.C
 	}
 
 	return nil
+}
+
+func (u *categoryUseCase) GetAllCategories(ctx context.Context) ([]*domain.Category, error) {
+	log.Println("Entering GetAllCategories use case")
+	categories, err := u.categoryRepo.GetAll(ctx)
+	if err != nil {
+		log.Printf("Failed to retrieve categories: %v", err)
+		return nil, err
+	}
+	log.Printf("Retrieved %d categories from repository", len(categories))
+	return categories, nil
 }
