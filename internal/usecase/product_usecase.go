@@ -12,6 +12,7 @@ type ProductUseCase interface {
 	CreateProduct(ctx context.Context, product *domain.Product) error
 	GetAllProducts(ctx context.Context) ([]*domain.Product, error)
 	GetProductByID(ctx context.Context, id int64) (*domain.Product, error)
+	UpdateProduct(ctx context.Context, product *domain.Product) error
 }
 
 type productUseCase struct {
@@ -41,4 +42,13 @@ func (u *productUseCase) GetAllProducts(ctx context.Context) ([]*domain.Product,
 
 func (u *productUseCase) GetProductByID(ctx context.Context, id int64) (*domain.Product, error) {
 	return u.productRepo.GetByID(ctx, id)
+}
+
+func (u *productUseCase) UpdateProduct(ctx context.Context, product *domain.Product) error {
+	// Perform any necessary validations here
+	// For example, check if the category and subcategory exist, validate price, etc.
+
+	// Update the product
+	product.UpdatedAt = time.Now()
+	return u.productRepo.Update(ctx, product)
 }

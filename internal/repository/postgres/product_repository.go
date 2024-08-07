@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"log"
+	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 )
@@ -105,4 +106,33 @@ func (r *productRepository) GetByID(ctx context.Context, id int64) (*domain.Prod
 	}
 
 	return &p, nil
+}
+
+func (r *productRepository) Update(ctx context.Context, product *domain.Product) error {
+	query := `
+		UPDATE products
+		SET name = $1, description = $2, price = $3, stock_quantity = $4,
+			category_id = $5, sub_category_id = $6, image_url = $7, updated_at = $8
+		WHERE id = $9 AND deleted_at IS NULL
+	`
+
+	result, err := r.db.ExecContext(ctx, query,
+		product.Name, product.Description, product.Price, product.StockQuantity,
+		product.CategoryID, product.SubCategoryID, product.ImageURL,
+		time.Now(), product.ID)
+	if err != nil {
+		log.Printf("Error updating product: %v", err)
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return errors.New("product not found or already deleted")
+	}
+
+	return nil
 }
