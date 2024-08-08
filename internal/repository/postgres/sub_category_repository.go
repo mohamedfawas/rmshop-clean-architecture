@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"log"
+	"time"
 
 	"github.com/lib/pq"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
@@ -104,4 +105,57 @@ func (r *subCategoryRepository) GetByCategoryID(ctx context.Context, categoryID 
 	}
 
 	return subCategories, nil
+}
+
+func (r *subCategoryRepository) GetByID(ctx context.Context, id int) (*domain.SubCategory, error) {
+	query := `
+		SELECT id, parent_category_id, name, slug, created_at, deleted_at
+		FROM sub_categories
+		WHERE id = $1 AND deleted_at IS NULL
+	`
+
+	var sc domain.SubCategory
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&sc.ID,
+		&sc.ParentCategoryID,
+		&sc.Name,
+		&sc.Slug,
+		&sc.CreatedAt,
+		&sc.DeletedAt,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, utils.ErrSubCategoryNotFound
+		}
+		return nil, err
+	}
+
+	return &sc, nil
+}
+
+func (r *subCategoryRepository) Update(ctx context.Context, subCategory *domain.SubCategory) error {
+	query := `
+		UPDATE sub_categories
+		SET name = $1, slug = $2, updated_at = $3
+		WHERE id = $4 AND parent_category_id = $5 AND deleted_at IS NULL
+		RETURNING updated_at
+	`
+
+	err := r.db.QueryRowContext(ctx, query,
+		subCategory.Name,
+		subCategory.Slug,
+		time.Now(),
+		subCategory.ID,
+		subCategory.ParentCategoryID).Scan(&subCategory.UpdatedAt)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return utils.ErrSubCategoryNotFound
+		}
+		log.Printf("Error updating sub-category: %v", err)
+		return err
+	}
+
+	return nil
 }

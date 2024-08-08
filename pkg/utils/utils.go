@@ -14,6 +14,7 @@ var (
 	ErrInvalidSubCategoryName = errors.New("invalid subcategory name")
 	ErrSubCategoryNameTooLong = errors.New("subcategory name too long")
 	ErrDuplicateSubCategory   = errors.New("subcategory already exists")
+	ErrSubCategoryNotFound    = errors.New("subcategory not found")
 )
 
 func GenerateSlug(name string) string {

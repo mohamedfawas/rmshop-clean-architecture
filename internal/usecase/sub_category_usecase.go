@@ -15,6 +15,8 @@ import (
 type SubCategoryUseCase interface {
 	CreateSubCategory(ctx context.Context, categoryID int, subCategory *domain.SubCategory) error
 	GetSubCategoriesByCategory(ctx context.Context, categoryID int) ([]*domain.SubCategory, error)
+	GetSubCategoryByID(ctx context.Context, categoryID, subCategoryID int) (*domain.SubCategory, error)
+	UpdateSubCategory(ctx context.Context, categoryID int, subCategory *domain.SubCategory) error
 }
 
 type subCategoryUseCase struct {
@@ -86,4 +88,70 @@ func (u *subCategoryUseCase) GetSubCategoriesByCategory(ctx context.Context, cat
 	}
 
 	return subCategories, nil
+}
+
+func (u *subCategoryUseCase) GetSubCategoryByID(ctx context.Context, categoryID, subCategoryID int) (*domain.SubCategory, error) {
+	// Check if the parent category exists
+	_, err := u.categoryRepo.GetByID(ctx, categoryID)
+	if err != nil {
+		if err == utils.ErrCategoryNotFound {
+			return nil, utils.ErrCategoryNotFound
+		}
+		return nil, errors.New("failed to retrieve parent category")
+	}
+
+	// Retrieve the sub-category
+	subCategory, err := u.subCategoryRepo.GetByID(ctx, subCategoryID)
+	if err != nil {
+		if err == utils.ErrSubCategoryNotFound {
+			return nil, utils.ErrSubCategoryNotFound
+		}
+		return nil, errors.New("failed to retrieve sub-category")
+	}
+
+	// Ensure the sub-category belongs to the specified category
+	if subCategory.ParentCategoryID != categoryID {
+		return nil, utils.ErrSubCategoryNotFound
+	}
+
+	return subCategory, nil
+}
+
+func (u *subCategoryUseCase) UpdateSubCategory(ctx context.Context, categoryID int, subCategory *domain.SubCategory) error {
+	// Check if the parent category exists
+	_, err := u.categoryRepo.GetByID(ctx, categoryID)
+	if err != nil {
+		if err == utils.ErrCategoryNotFound {
+			return utils.ErrCategoryNotFound
+		}
+		return errors.New("failed to retrieve parent category")
+	}
+
+	// Trim whitespace from subcategory name
+	subCategory.Name = strings.TrimSpace(subCategory.Name)
+
+	// Validate subcategory name
+	if subCategory.Name == "" {
+		return utils.ErrInvalidSubCategoryName
+	}
+	if len(subCategory.Name) > 50 {
+		return utils.ErrSubCategoryNameTooLong
+	}
+
+	// Generate slug
+	subCategory.Slug = utils.GenerateSlug(subCategory.Name)
+
+	// Set parent category ID
+	subCategory.ParentCategoryID = categoryID
+
+	// Attempt to update the subcategory
+	err = u.subCategoryRepo.Update(ctx, subCategory)
+	if err != nil {
+		if err == utils.ErrSubCategoryNotFound {
+			return utils.ErrSubCategoryNotFound
+		}
+		return errors.New("failed to update subcategory")
+	}
+
+	return nil
 }

@@ -80,3 +80,79 @@ func (h *SubCategoryHandler) GetSubCategoriesByCategory(w http.ResponseWriter, r
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(subCategories)
 }
+
+func (h *SubCategoryHandler) GetSubCategoryByID(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	categoryID, err := strconv.Atoi(vars["categoryId"])
+	if err != nil {
+		http.Error(w, "Invalid category ID", http.StatusBadRequest)
+		return
+	}
+
+	subCategoryID, err := strconv.Atoi(vars["subcategoryId"])
+	if err != nil {
+		http.Error(w, "Invalid sub-category ID", http.StatusBadRequest)
+		return
+	}
+
+	subCategory, err := h.subCategoryUseCase.GetSubCategoryByID(r.Context(), categoryID, subCategoryID)
+	if err != nil {
+		switch err {
+		case utils.ErrCategoryNotFound:
+			http.Error(w, "Category not found", http.StatusNotFound)
+		case utils.ErrSubCategoryNotFound:
+			http.Error(w, "Sub-category not found", http.StatusNotFound)
+		default:
+			http.Error(w, "Failed to retrieve sub-category", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(subCategory)
+}
+
+func (h *SubCategoryHandler) UpdateSubCategory(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	categoryID, err := strconv.Atoi(vars["categoryId"])
+	if err != nil {
+		http.Error(w, "Invalid category ID", http.StatusBadRequest)
+		return
+	}
+
+	subCategoryID, err := strconv.Atoi(vars["subcategoryId"])
+	if err != nil {
+		http.Error(w, "Invalid sub-category ID", http.StatusBadRequest)
+		return
+	}
+
+	var subCategory domain.SubCategory
+	err = json.NewDecoder(r.Body).Decode(&subCategory)
+	if err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	subCategory.ID = subCategoryID
+
+	err = h.subCategoryUseCase.UpdateSubCategory(r.Context(), categoryID, &subCategory)
+	if err != nil {
+		switch err {
+		case utils.ErrCategoryNotFound:
+			http.Error(w, "Category not found", http.StatusNotFound)
+		case utils.ErrSubCategoryNotFound:
+			http.Error(w, "Sub-category not found", http.StatusNotFound)
+		case utils.ErrInvalidSubCategoryName:
+			http.Error(w, "Invalid sub-category name", http.StatusBadRequest)
+		case utils.ErrSubCategoryNameTooLong:
+			http.Error(w, "Sub-category name too long", http.StatusBadRequest)
+		default:
+			http.Error(w, "Failed to update sub-category", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(subCategory)
+}
