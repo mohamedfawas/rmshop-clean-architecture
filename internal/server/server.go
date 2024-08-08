@@ -9,19 +9,20 @@ import (
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/delivery/http/handlers"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/repository/postgres"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
+	email "github.com/mohamedfawas/rmshop-clean-architecture/pkg/emailVerify"
 )
 
 type Server struct {
 	router http.Handler
 }
 
-func NewServer(db *sql.DB) *Server {
+func NewServer(db *sql.DB, emailSender *email.Sender) *Server {
 	log.Println("Initializing server components...")
 	// User components
 	// Handler -> UseCase -> Repository.
-	userRepo := postgres.NewUserRepository(db)          // repository is responsible for handling data persistence and retrieval for user-related operations.
-	userUseCase := usecase.NewUserUseCase(userRepo)     // Use cases contain the business logic of the application, user use case is initialized with the user repository, allowing it to perform data operations as needed.
-	userHandler := handlers.NewUserHandler(userUseCase) // Handlers are responsible for processing HTTP requests and responses.
+	userRepo := postgres.NewUserRepository(db)                   // repository is responsible for handling data persistence and retrieval for user-related operations.
+	userUseCase := usecase.NewUserUseCase(userRepo, emailSender) // Use cases contain the business logic of the application, user use case is initialized with the user repository, allowing it to perform data operations as needed.
+	userHandler := handlers.NewUserHandler(userUseCase)          // Handlers are responsible for processing HTTP requests and responses.
 	log.Println("User components initialized")
 
 	// Admin components

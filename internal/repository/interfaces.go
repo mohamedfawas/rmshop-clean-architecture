@@ -13,6 +13,10 @@ type UserRepository interface {
 	UpdateLastLogin(ctx context.Context, userID int64) error            //ecord the most recent time a user successfully authenticated (logged in) to the system
 	BlacklistToken(ctx context.Context, token string, expiresAt time.Time) error
 	IsTokenBlacklisted(ctx context.Context, token string) (bool, error)
+	CreateOTP(ctx context.Context, otp *domain.OTP) error
+	GetOTPByEmail(ctx context.Context, email string) (*domain.OTP, error)
+	DeleteOTP(ctx context.Context, email string) error
+	UpdateEmailVerificationStatus(ctx context.Context, userID int64, status bool) error
 }
 
 type AdminRepository interface {

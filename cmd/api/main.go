@@ -7,6 +7,7 @@ import (
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/config"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/server"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/database"
+	email "github.com/mohamedfawas/rmshop-clean-architecture/pkg/emailVerify"
 )
 
 func main() {
@@ -30,7 +31,9 @@ func main() {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
-	srv := server.NewServer(db)
+	emailSender := email.NewSender(cfg.SMTP.Host, cfg.SMTP.Port, cfg.SMTP.Username, cfg.SMTP.Password)
+
+	srv := server.NewServer(db, emailSender)
 
 	log.Printf("Starting server on : %s", cfg.Server.Port)
 	if err := http.ListenAndServe(":"+cfg.Server.Port, srv); err != nil {

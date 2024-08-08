@@ -153,3 +153,108 @@ func (h *UserHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	// Send a success message in the response body
 	json.NewEncoder(w).Encode(map[string]string{"message": "Logged out successfully"})
 }
+
+type InitiateSignUpInput struct {
+	Name        string `json:"name"`
+	Email       string `json:"email"`
+	Password    string `json:"password"`
+	DateOfBirth string `json:"date_of_birth"`
+	PhoneNumber string `json:"phone_number"`
+}
+
+func (h *UserHandler) InitiateSignUp(w http.ResponseWriter, r *http.Request) {
+	var input InitiateSignUpInput
+	err := json.NewDecoder(r.Body).Decode(&input)
+	if err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Parse the date of birth
+	dob, err := time.Parse("2006-01-02", input.DateOfBirth)
+	if err != nil {
+		http.Error(w, "Invalid date format for date_of_birth", http.StatusBadRequest)
+		return
+	}
+
+	user := &domain.User{
+		Name:        input.Name,
+		Email:       input.Email,
+		Password:    input.Password,
+		DOB:         dob,
+		PhoneNumber: input.PhoneNumber,
+	}
+
+	err = h.userUseCase.InitiateSignUp(r.Context(), user)
+	if err != nil {
+		switch err {
+		case usecase.ErrDuplicateEmail:
+			http.Error(w, "Email already exists", http.StatusConflict)
+		default:
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "OTP sent to your email"})
+}
+
+type VerifyOTPInput struct {
+	Email string `json:"email"`
+	OTP   string `json:"otp"`
+}
+
+func (h *UserHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
+	var input VerifyOTPInput
+	err := json.NewDecoder(r.Body).Decode(&input)
+	if err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	err = h.userUseCase.VerifyOTP(r.Context(), input.Email, input.OTP)
+	if err != nil {
+		switch err {
+		case usecase.ErrInvalidOTP:
+			http.Error(w, "Invalid OTP", http.StatusBadRequest)
+		case usecase.ErrExpiredOTP:
+			http.Error(w, "OTP has expired", http.StatusBadRequest)
+		default:
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "Email verified successfully"})
+}
+
+type ResendOTPInput struct {
+	Email string `json:"email"`
+}
+
+func (h *UserHandler) ResendOTP(w http.ResponseWriter, r *http.Request) {
+	var input ResendOTPInput
+	err := json.NewDecoder(r.Body).Decode(&input)
+	if err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	err = h.userUseCase.ResendOTP(r.Context(), input.Email)
+	if err != nil {
+		switch err {
+		case usecase.ErrUserNotFound:
+			http.Error(w, "User not found", http.StatusNotFound)
+		case usecase.ErrEmailAlreadyVerified:
+			http.Error(w, "Email already verified", http.StatusBadRequest)
+		default:
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "New OTP sent to your email"})
+}

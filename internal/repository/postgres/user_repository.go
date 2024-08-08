@@ -119,3 +119,36 @@ func (r *userRepository) IsTokenBlacklisted(ctx context.Context, token string) (
 	}
 	return exists, nil
 }
+
+func (r *userRepository) CreateOTP(ctx context.Context, otp *domain.OTP) error {
+	query := `INSERT INTO user_otps (user_id, email, otp, expires_at) VALUES ($1, $2, $3, $4) RETURNING id, created_at`
+	err := r.db.QueryRowContext(ctx, query, otp.UserID, otp.Email, otp.OTPCode, otp.ExpiresAt).Scan(&otp.ID, &otp.CreatedAt)
+	return err
+}
+
+func (r *userRepository) GetOTPByEmail(ctx context.Context, email string) (*domain.OTP, error) {
+	query := `SELECT id, user_id, email, otp, expires_at, created_at FROM user_otps WHERE email = $1`
+	var otp domain.OTP
+	err := r.db.QueryRowContext(ctx, query, email).Scan(
+		&otp.ID, &otp.UserID, &otp.Email, &otp.OTPCode, &otp.ExpiresAt, &otp.CreatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, usecase.ErrOTPNotFound
+		}
+		return nil, err
+	}
+	return &otp, nil
+}
+
+func (r *userRepository) DeleteOTP(ctx context.Context, email string) error {
+	query := `DELETE FROM user_otps WHERE email = $1`
+	_, err := r.db.ExecContext(ctx, query, email)
+	return err
+}
+
+func (r *userRepository) UpdateEmailVerificationStatus(ctx context.Context, userID int64, status bool) error {
+	query := `UPDATE users SET is_email_verified = $1 WHERE id = $2`
+	_, err := r.db.ExecContext(ctx, query, status, userID)
+	return err
+}

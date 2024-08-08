@@ -8,13 +8,19 @@ import (
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/repository"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/auth"
+	email "github.com/mohamedfawas/rmshop-clean-architecture/pkg/emailVerify"
+	otputil "github.com/mohamedfawas/rmshop-clean-architecture/pkg/otpUtility"
 )
 
 var (
-	ErrDuplicateEmail     = errors.New("email already exists")
-	ErrUserNotFound       = errors.New("user not found")
-	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrInvalidToken       = errors.New("invalid token")
+	ErrDuplicateEmail       = errors.New("email already exists")
+	ErrUserNotFound         = errors.New("user not found")
+	ErrInvalidCredentials   = errors.New("invalid credentials")
+	ErrInvalidToken         = errors.New("invalid token")
+	ErrOTPNotFound          = errors.New("OTP not found")
+	ErrInvalidOTP           = errors.New("invalid OTP")
+	ErrExpiredOTP           = errors.New("OTP has expired")
+	ErrEmailAlreadyVerified = errors.New("email already verified")
 )
 
 // UserUseCase defines the interface for user-related use cases
@@ -22,6 +28,9 @@ type UserUseCase interface {
 	Register(ctx context.Context, user *domain.User) error
 	Login(ctx context.Context, email, password string) (string, error)
 	Logout(ctx context.Context, token string) error
+	InitiateSignUp(ctx context.Context, user *domain.User) error
+	VerifyOTP(ctx context.Context, email, otp string) error
+	ResendOTP(ctx context.Context, email string) error
 	// Add other user-related use case methods here as needed, for example:
 	// GetByID(ctx context.Context, id int64) (*domain.User, error)
 	// Update(ctx context.Context, user *domain.User) error
@@ -30,12 +39,14 @@ type UserUseCase interface {
 
 // userUseCase implements the UserUseCase interface
 type userUseCase struct {
-	userRepo repository.UserRepository
+	userRepo    repository.UserRepository
+	emailSender *email.Sender
 }
 
 // NewUserUseCase creates a new instance of UserUseCase
-func NewUserUseCase(userRepo repository.UserRepository) UserUseCase {
-	return &userUseCase{userRepo: userRepo}
+func NewUserUseCase(userRepo repository.UserRepository, emailSender *email.Sender) UserUseCase {
+	return &userUseCase{userRepo: userRepo,
+		emailSender: emailSender}
 }
 
 // Register implements the user registration use case
@@ -110,4 +121,109 @@ func (u *userUseCase) Logout(ctx context.Context, token string) error {
 
 	// Blacklist the token
 	return u.userRepo.BlacklistToken(ctx, token, expiresAt)
+}
+
+func (u *userUseCase) InitiateSignUp(ctx context.Context, user *domain.User) error {
+	// Check if user already exists
+	_, err := u.userRepo.GetByEmail(ctx, user.Email)
+	if err == nil {
+		return ErrDuplicateEmail
+	} else if err != ErrUserNotFound {
+		return err
+	}
+
+	// Generate OTP
+	otp, err := otputil.GenerateOTP(6)
+	if err != nil {
+		return err
+	}
+	expiresAt := time.Now().Add(15 * time.Minute)
+
+	// Create user with unverified email
+	user.IsEmailVerified = false
+	err = u.userRepo.Create(ctx, user)
+	if err != nil {
+		return err
+	}
+
+	// Create OTP entry
+	otpEntry := &domain.OTP{
+		UserID:    user.ID,
+		Email:     user.Email,
+		OTPCode:   otp,
+		ExpiresAt: expiresAt,
+	}
+	err = u.userRepo.CreateOTP(ctx, otpEntry)
+	if err != nil {
+		return err
+	}
+
+	// Send OTP email
+	return u.emailSender.SendOTP(user.Email, otp)
+}
+
+func (u *userUseCase) VerifyOTP(ctx context.Context, email, otp string) error {
+	otpEntry, err := u.userRepo.GetOTPByEmail(ctx, email)
+	if err != nil {
+		if err == ErrOTPNotFound {
+			return ErrOTPNotFound
+		}
+		return err
+	}
+
+	if otpEntry.OTPCode != otp {
+		return ErrInvalidOTP
+	}
+
+	if time.Now().After(otpEntry.ExpiresAt) {
+		return ErrExpiredOTP
+	}
+
+	// Mark email as verified
+	err = u.userRepo.UpdateEmailVerificationStatus(ctx, otpEntry.UserID, true)
+	if err != nil {
+		return err
+	}
+
+	// Delete OTP entry
+	return u.userRepo.DeleteOTP(ctx, email)
+}
+
+func (u *userUseCase) ResendOTP(ctx context.Context, email string) error {
+	user, err := u.userRepo.GetByEmail(ctx, email)
+	if err != nil {
+		if err == ErrUserNotFound {
+			return ErrUserNotFound
+		}
+		return err
+	}
+
+	if user.IsEmailVerified {
+		return ErrEmailAlreadyVerified
+	}
+
+	// Delete existing OTP if any
+	_ = u.userRepo.DeleteOTP(ctx, email)
+
+	// Generate new OTP
+	otp, err := otputil.GenerateOTP(6)
+	if err != nil {
+		return err
+	}
+	expiresAt := time.Now().Add(15 * time.Minute)
+
+	// Create new OTP entry
+	otpEntry := &domain.OTP{
+		UserID:    user.ID,
+		Email:     user.Email,
+		OTPCode:   otp,
+		ExpiresAt: expiresAt,
+	}
+	err = u.userRepo.CreateOTP(ctx, otpEntry)
+	if err != nil {
+		return err
+	}
+
+	// Send OTP email
+	return u.emailSender.SendOTP(email, otp)
 }

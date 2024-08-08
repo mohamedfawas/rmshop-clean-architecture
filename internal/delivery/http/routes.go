@@ -28,6 +28,9 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 	r.HandleFunc("/user/register", userHandler.Register)
 	r.HandleFunc("/user/login", userHandler.Login)
 	r.HandleFunc("/user/logout", middleware.JWTAuthMiddleware(userHandler.Logout))
+	r.HandleFunc("/user/signup", userHandler.InitiateSignUp).Methods("POST")
+	r.HandleFunc("/user/verify-otp", userHandler.VerifyOTP).Methods("POST")
+	r.HandleFunc("/user/resend-otp", userHandler.ResendOTP).Methods("POST")
 
 	// Admin routes
 	r.HandleFunc("/admin/login", adminHandler.Login)
