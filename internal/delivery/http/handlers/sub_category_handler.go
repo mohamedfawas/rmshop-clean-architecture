@@ -57,3 +57,26 @@ func (h *SubCategoryHandler) CreateSubCategory(w http.ResponseWriter, r *http.Re
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(subCategory)
 }
+
+func (h *SubCategoryHandler) GetSubCategoriesByCategory(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	categoryID, err := strconv.Atoi(vars["categoryId"])
+	if err != nil {
+		http.Error(w, "Invalid category ID", http.StatusBadRequest)
+		return
+	}
+
+	subCategories, err := h.subCategoryUseCase.GetSubCategoriesByCategory(r.Context(), categoryID)
+	if err != nil {
+		log.Printf("Error retrieving sub-categories: %v", err)
+		if err == utils.ErrCategoryNotFound {
+			http.Error(w, "Category not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Failed to retrieve sub-categories", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(subCategories)
+}

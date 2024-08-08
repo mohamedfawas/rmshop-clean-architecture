@@ -64,3 +64,44 @@ func (r *subCategoryRepository) Create(ctx context.Context, subCategory *domain.
 
 	return nil
 }
+
+func (r *subCategoryRepository) GetByCategoryID(ctx context.Context, categoryID int) ([]*domain.SubCategory, error) {
+	query := `
+		SELECT id, parent_category_id, name, slug, created_at, deleted_at
+		FROM sub_categories
+		WHERE parent_category_id = $1 AND deleted_at IS NULL
+		ORDER BY id
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, categoryID)
+	if err != nil {
+		log.Printf("Error querying sub-categories: %v", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var subCategories []*domain.SubCategory
+	for rows.Next() {
+		var sc domain.SubCategory
+		err := rows.Scan(
+			&sc.ID,
+			&sc.ParentCategoryID,
+			&sc.Name,
+			&sc.Slug,
+			&sc.CreatedAt,
+			&sc.DeletedAt,
+		)
+		if err != nil {
+			log.Printf("Error scanning sub-category row: %v", err)
+			return nil, err
+		}
+		subCategories = append(subCategories, &sc)
+	}
+
+	if err = rows.Err(); err != nil {
+		log.Printf("Error after scanning all rows: %v", err)
+		return nil, err
+	}
+
+	return subCategories, nil
+}

@@ -14,6 +14,7 @@ import (
 
 type SubCategoryUseCase interface {
 	CreateSubCategory(ctx context.Context, categoryID int, subCategory *domain.SubCategory) error
+	GetSubCategoriesByCategory(ctx context.Context, categoryID int) ([]*domain.SubCategory, error)
 }
 
 type subCategoryUseCase struct {
@@ -66,4 +67,23 @@ func (u *subCategoryUseCase) CreateSubCategory(ctx context.Context, categoryID i
 	}
 
 	return nil
+}
+
+func (u *subCategoryUseCase) GetSubCategoriesByCategory(ctx context.Context, categoryID int) ([]*domain.SubCategory, error) {
+	// Check if the parent category exists
+	_, err := u.categoryRepo.GetByID(ctx, categoryID)
+	if err != nil {
+		if err == utils.ErrCategoryNotFound {
+			return nil, utils.ErrCategoryNotFound
+		}
+		return nil, errors.New("failed to retrieve parent category")
+	}
+
+	// Retrieve sub-categories
+	subCategories, err := u.subCategoryRepo.GetByCategoryID(ctx, categoryID)
+	if err != nil {
+		return nil, errors.New("failed to retrieve sub-categories")
+	}
+
+	return subCategories, nil
 }
