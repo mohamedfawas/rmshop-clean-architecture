@@ -159,3 +159,28 @@ func (r *subCategoryRepository) Update(ctx context.Context, subCategory *domain.
 
 	return nil
 }
+
+func (r *subCategoryRepository) SoftDelete(ctx context.Context, id int) error {
+	query := `
+		UPDATE sub_categories
+		SET deleted_at = NOW()
+		WHERE id = $1 AND deleted_at IS NULL
+	`
+
+	result, err := r.db.ExecContext(ctx, query, id)
+	if err != nil {
+		log.Printf("Error soft deleting sub-category: %v", err)
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return utils.ErrSubCategoryNotFound
+	}
+
+	return nil
+}

@@ -17,6 +17,7 @@ type SubCategoryUseCase interface {
 	GetSubCategoriesByCategory(ctx context.Context, categoryID int) ([]*domain.SubCategory, error)
 	GetSubCategoryByID(ctx context.Context, categoryID, subCategoryID int) (*domain.SubCategory, error)
 	UpdateSubCategory(ctx context.Context, categoryID int, subCategory *domain.SubCategory) error
+	SoftDeleteSubCategory(ctx context.Context, categoryID, subCategoryID int) error
 }
 
 type subCategoryUseCase struct {
@@ -151,6 +152,38 @@ func (u *subCategoryUseCase) UpdateSubCategory(ctx context.Context, categoryID i
 			return utils.ErrSubCategoryNotFound
 		}
 		return errors.New("failed to update subcategory")
+	}
+
+	return nil
+}
+
+func (u *subCategoryUseCase) SoftDeleteSubCategory(ctx context.Context, categoryID, subCategoryID int) error {
+	// Check if the parent category exists
+	_, err := u.categoryRepo.GetByID(ctx, categoryID)
+	if err != nil {
+		if err == utils.ErrCategoryNotFound {
+			return utils.ErrCategoryNotFound
+		}
+		return errors.New("failed to retrieve parent category")
+	}
+
+	// Check if the sub-category exists and belongs to the specified category
+	subCategory, err := u.subCategoryRepo.GetByID(ctx, subCategoryID)
+	if err != nil {
+		if err == utils.ErrSubCategoryNotFound {
+			return utils.ErrSubCategoryNotFound
+		}
+		return errors.New("failed to retrieve sub-category")
+	}
+
+	if subCategory.ParentCategoryID != categoryID {
+		return utils.ErrSubCategoryNotFound
+	}
+
+	// Perform the soft delete
+	err = u.subCategoryRepo.SoftDelete(ctx, subCategoryID)
+	if err != nil {
+		return errors.New("failed to soft delete sub-category")
 	}
 
 	return nil

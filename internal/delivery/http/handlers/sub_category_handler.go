@@ -156,3 +156,33 @@ func (h *SubCategoryHandler) UpdateSubCategory(w http.ResponseWriter, r *http.Re
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(subCategory)
 }
+
+func (h *SubCategoryHandler) SoftDeleteSubCategory(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	categoryID, err := strconv.Atoi(vars["categoryId"])
+	if err != nil {
+		http.Error(w, "Invalid category ID", http.StatusBadRequest)
+		return
+	}
+
+	subCategoryID, err := strconv.Atoi(vars["subcategoryId"])
+	if err != nil {
+		http.Error(w, "Invalid sub-category ID", http.StatusBadRequest)
+		return
+	}
+
+	err = h.subCategoryUseCase.SoftDeleteSubCategory(r.Context(), categoryID, subCategoryID)
+	if err != nil {
+		switch err {
+		case utils.ErrCategoryNotFound:
+			http.Error(w, "Category not found", http.StatusNotFound)
+		case utils.ErrSubCategoryNotFound:
+			http.Error(w, "Sub-category not found", http.StatusNotFound)
+		default:
+			http.Error(w, "Failed to delete sub-category", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}

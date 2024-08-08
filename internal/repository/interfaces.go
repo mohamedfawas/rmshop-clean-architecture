@@ -35,6 +35,7 @@ type SubCategoryRepository interface {
 	GetByCategoryID(ctx context.Context, categoryID int) ([]*domain.SubCategory, error)
 	GetByID(ctx context.Context, id int) (*domain.SubCategory, error)
 	Update(ctx context.Context, subCategory *domain.SubCategory) error
+	SoftDelete(ctx context.Context, id int) error
 }
 
 type ProductRepository interface {

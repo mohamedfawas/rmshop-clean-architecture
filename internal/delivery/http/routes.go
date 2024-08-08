@@ -64,6 +64,11 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 			middleware.AdminAuthMiddleware(
 				subCategoryHandler.UpdateSubCategory))).Methods("PUT")
 
+	r.HandleFunc("/admin/categories/{categoryId}/subcategories/{subcategoryId}",
+		middleware.JWTAuthMiddleware(
+			middleware.AdminAuthMiddleware(
+				subCategoryHandler.SoftDeleteSubCategory))).Methods("DELETE")
+
 	// Product routes
 	r.HandleFunc("/admin/products", middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(productHandler.CreateProduct))).Methods("POST")
 	r.HandleFunc("/admin/products", middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(productHandler.GetAllProducts))).Methods("GET")
