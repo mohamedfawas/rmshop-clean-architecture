@@ -166,6 +166,7 @@ func (h *UserHandler) InitiateSignUp(w http.ResponseWriter, r *http.Request) {
 	var input InitiateSignUpInput
 	err := json.NewDecoder(r.Body).Decode(&input)
 	if err != nil {
+		log.Printf("Error decoding request body: %v", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
@@ -173,6 +174,7 @@ func (h *UserHandler) InitiateSignUp(w http.ResponseWriter, r *http.Request) {
 	// Parse the date of birth
 	dob, err := time.Parse("2006-01-02", input.DateOfBirth)
 	if err != nil {
+		log.Printf("Error parsing date of birth: %v", err)
 		http.Error(w, "Invalid date format for date_of_birth", http.StatusBadRequest)
 		return
 	}
@@ -187,11 +189,12 @@ func (h *UserHandler) InitiateSignUp(w http.ResponseWriter, r *http.Request) {
 
 	err = h.userUseCase.InitiateSignUp(r.Context(), user)
 	if err != nil {
+		log.Printf("Error in InitiateSignUp: %v", err)
 		switch err {
 		case usecase.ErrDuplicateEmail:
 			http.Error(w, "Email already exists", http.StatusConflict)
 		default:
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			http.Error(w, "Internal server error: "+err.Error(), http.StatusInternalServerError)
 		}
 		return
 	}
@@ -209,18 +212,23 @@ func (h *UserHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 	var input VerifyOTPInput
 	err := json.NewDecoder(r.Body).Decode(&input)
 	if err != nil {
+		log.Printf("Error decoding request body: %v", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
 	err = h.userUseCase.VerifyOTP(r.Context(), input.Email, input.OTP)
 	if err != nil {
+		log.Printf("Error verifying OTP: %v", err)
 		switch err {
 		case usecase.ErrInvalidOTP:
 			http.Error(w, "Invalid OTP", http.StatusBadRequest)
 		case usecase.ErrExpiredOTP:
 			http.Error(w, "OTP has expired", http.StatusBadRequest)
+		case usecase.ErrOTPNotFound:
+			http.Error(w, "OTP not found", http.StatusNotFound)
 		default:
+			log.Printf("Unexpected error in VerifyOTP: %v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 		}
 		return

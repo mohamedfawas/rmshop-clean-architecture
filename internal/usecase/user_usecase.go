@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"log"
 	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
@@ -124,27 +125,36 @@ func (u *userUseCase) Logout(ctx context.Context, token string) error {
 }
 
 func (u *userUseCase) InitiateSignUp(ctx context.Context, user *domain.User) error {
+	log.Printf("Initiating sign up for email: %s", user.Email)
+
 	// Check if user already exists
 	_, err := u.userRepo.GetByEmail(ctx, user.Email)
 	if err == nil {
+		log.Printf("User with email %s already exists", user.Email)
 		return ErrDuplicateEmail
 	} else if err != ErrUserNotFound {
+		log.Printf("Error checking existing user: %v", err)
 		return err
 	}
 
 	// Generate OTP
 	otp, err := otputil.GenerateOTP(6)
 	if err != nil {
+		log.Printf("Error generating OTP: %v", err)
 		return err
 	}
+	log.Printf("OTP generated for email: %s", user.Email)
+
 	expiresAt := time.Now().Add(15 * time.Minute)
 
 	// Create user with unverified email
 	user.IsEmailVerified = false
 	err = u.userRepo.Create(ctx, user)
 	if err != nil {
+		log.Printf("Error creating user: %v", err)
 		return err
 	}
+	log.Printf("User created with ID: %d", user.ID)
 
 	// Create OTP entry
 	otpEntry := &domain.OTP{
@@ -155,38 +165,60 @@ func (u *userUseCase) InitiateSignUp(ctx context.Context, user *domain.User) err
 	}
 	err = u.userRepo.CreateOTP(ctx, otpEntry)
 	if err != nil {
+		log.Printf("Error creating OTP entry: %v", err)
 		return err
 	}
+	log.Printf("OTP entry created for user ID: %d", user.ID)
 
 	// Send OTP email
-	return u.emailSender.SendOTP(user.Email, otp)
+	err = u.emailSender.SendOTP(user.Email, otp)
+	if err != nil {
+		log.Printf("Error sending OTP email: %v", err)
+		return err
+	}
+	log.Printf("OTP email sent to: %s", user.Email)
+
+	return nil
 }
 
 func (u *userUseCase) VerifyOTP(ctx context.Context, email, otp string) error {
+	log.Printf("Attempting to verify OTP for email: %s", email)
+
 	otpEntry, err := u.userRepo.GetOTPByEmail(ctx, email)
 	if err != nil {
-		if err == ErrOTPNotFound {
-			return ErrOTPNotFound
-		}
+		log.Printf("Error retrieving OTP for email %s: %v", email, err)
 		return err
 	}
+	log.Printf("Retrieved OTP entry for email %s", email)
 
 	if otpEntry.OTPCode != otp {
+		log.Printf("Invalid OTP provided for email %s", email)
 		return ErrInvalidOTP
 	}
 
 	if time.Now().After(otpEntry.ExpiresAt) {
+		log.Printf("Expired OTP for email %s", email)
 		return ErrExpiredOTP
 	}
+
+	log.Printf("OTP verified successfully for email %s", email)
 
 	// Mark email as verified
 	err = u.userRepo.UpdateEmailVerificationStatus(ctx, otpEntry.UserID, true)
 	if err != nil {
+		log.Printf("Error updating email verification status for user ID %d: %v", otpEntry.UserID, err)
 		return err
 	}
 
 	// Delete OTP entry
-	return u.userRepo.DeleteOTP(ctx, email)
+	err = u.userRepo.DeleteOTP(ctx, email)
+	if err != nil {
+		log.Printf("Error deleting OTP entry for email %s: %v", email, err)
+		return err
+	}
+
+	log.Printf("OTP verification process completed successfully for email %s", email)
+	return nil
 }
 
 func (u *userUseCase) ResendOTP(ctx context.Context, email string) error {
