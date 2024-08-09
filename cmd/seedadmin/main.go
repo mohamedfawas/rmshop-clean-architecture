@@ -20,9 +20,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
-	defer db.Close()
+	defer db.Close() // Ensure the database connection is closed when the command exits
 
-	// Run migrations before seeding
+	// Run migrations before seeding to ensure the database schema is up to date
 	err = database.RunMigrations(db, "./migrations")
 	if err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)

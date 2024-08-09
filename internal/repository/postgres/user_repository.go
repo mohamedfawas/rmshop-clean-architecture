@@ -37,12 +37,12 @@ func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 		return err
 	}
 
-	query := `INSERT INTO users (name, email, password_hash, date_of_birth, phone_number, is_blocked, created_at)
-              VALUES ($1, $2, $3, $4, $5, $6, $7)
+	query := `INSERT INTO users (name, email, password_hash, date_of_birth, phone_number, is_blocked, is_email_verified, created_at)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
               RETURNING id, created_at`
 
 	err = tx.QueryRowContext(ctx, query,
-		user.Name, user.Email, user.PasswordHash, user.DOB, user.PhoneNumber, user.IsBlocked, user.CreatedAt).
+		user.Name, user.Email, user.PasswordHash, user.DOB, user.PhoneNumber, user.IsBlocked, user.IsEmailVerified, time.Now()).
 		Scan(&user.ID, &user.CreatedAt)
 	if err != nil {
 		pqErr, ok := err.(*pq.Error)

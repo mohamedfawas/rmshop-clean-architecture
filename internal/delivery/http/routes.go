@@ -13,12 +13,34 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 	log.Println("Setting up router...")
 	r := mux.NewRouter()
 
-	r.Use(func(next http.Handler) http.Handler {
+	// set up a middleware that logs every incoming HTTP request
+	r.Use(func(next http.Handler) http.Handler { // This is using the Use method of the router to add middleware
+		// Middleware is a function that takes a handler and returns a new handler
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			log.Printf("Incoming request: %s %s", r.Method, r.URL.Path)
+			// This creates a new HandlerFunc, which is the actual middleware
+
+			// Log information about the incoming request
+			log.Printf("Incoming request: %s %s", r.Method, r.URL.Path) // This line logs the HTTP method (GET, POST, etc.) and the request path
+
+			// Call the next handler in the chain
 			next.ServeHTTP(w, r)
+			// This line ensures that the request continues to be processed
+			// by passing it to the next handler in the middleware chain
 		})
 	})
+
+	// Admin routes
+	r.HandleFunc("/admin/login",
+		adminHandler.Login)
+	r.HandleFunc("/admin/logout",
+		middleware.JWTAuthMiddleware(adminHandler.Logout))
+
+	// Admin routes : Category routes
+	r.HandleFunc("/admin/categories",
+		middleware.JWTAuthMiddleware(
+			middleware.AdminAuthMiddleware(
+				categoryHandler.CreateCategory))).Methods("POST")
+
 	r.HandleFunc("/admin/categories", func(w http.ResponseWriter, r *http.Request) {
 		log.Println("Matched route: /admin/categories")
 		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(categoryHandler.GetAllCategories))(w, r)
@@ -32,12 +54,8 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 	r.HandleFunc("/user/verify-otp", userHandler.VerifyOTP).Methods("POST")
 	r.HandleFunc("/user/resend-otp", userHandler.ResendOTP).Methods("POST")
 
-	// Admin routes
-	r.HandleFunc("/admin/login", adminHandler.Login)
-	r.HandleFunc("/admin/logout", middleware.JWTAuthMiddleware(adminHandler.Logout))
-
 	// Category routes
-	r.HandleFunc("/admin/categories", middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(categoryHandler.CreateCategory)))
+	// r.HandleFunc("/admin/categories", middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(categoryHandler.CreateCategory)))
 	//r.HandleFunc("/admin/categories", middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(categoryHandler.GetAllCategories))).Methods("GET")
 	r.HandleFunc("/admin/categories/{categoryId}",
 		middleware.JWTAuthMiddleware(
@@ -78,6 +96,8 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 	r.HandleFunc("/admin/products/{productId}", middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(productHandler.GetProductByID))).Methods("GET")
 	r.HandleFunc("/admin/products/{productId}", middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(productHandler.UpdateProduct))).Methods("PUT")
 	r.HandleFunc("/admin/products/{productId}", middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(productHandler.SoftDeleteProduct))).Methods("DELETE")
+	//product listing on user side
+	r.HandleFunc("/products", middleware.JWTAuthMiddleware(productHandler.GetActiveProducts)).Methods("GET")
 
 	log.Println("Router setup complete")
 	// Wrap the entire mux with the logging middleware

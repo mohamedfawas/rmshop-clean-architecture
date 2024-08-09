@@ -161,3 +161,56 @@ func (r *productRepository) SoftDelete(ctx context.Context, id int64) error {
 
 	return nil
 }
+
+func (r *productRepository) GetActiveProducts(ctx context.Context, page, pageSize int) ([]*domain.Product, int, error) {
+	query := `
+        SELECT id, name, description, price, stock_quantity, category_id, sub_category_id, image_url, created_at, updated_at
+        FROM products
+        WHERE deleted_at IS NULL
+        ORDER BY id
+        LIMIT $1 OFFSET $2
+    `
+
+	countQuery := `
+        SELECT COUNT(*)
+        FROM products
+        WHERE deleted_at IS NULL
+    `
+
+	offset := (page - 1) * pageSize
+
+	rows, err := r.db.QueryContext(ctx, query, pageSize, offset)
+	if err != nil {
+		log.Printf("Error querying active products: %v", err)
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var products []*domain.Product
+	for rows.Next() {
+		var p domain.Product
+		err := rows.Scan(
+			&p.ID, &p.Name, &p.Description, &p.Price, &p.StockQuantity,
+			&p.CategoryID, &p.SubCategoryID, &p.ImageURL, &p.CreatedAt, &p.UpdatedAt,
+		)
+		if err != nil {
+			log.Printf("Error scanning product row: %v", err)
+			return nil, 0, err
+		}
+		products = append(products, &p)
+	}
+
+	if err = rows.Err(); err != nil {
+		log.Printf("Error after scanning all rows: %v", err)
+		return nil, 0, err
+	}
+
+	var totalCount int
+	err = r.db.QueryRowContext(ctx, countQuery).Scan(&totalCount)
+	if err != nil {
+		log.Printf("Error getting total count: %v", err)
+		return nil, 0, err
+	}
+
+	return products, totalCount, nil
+}

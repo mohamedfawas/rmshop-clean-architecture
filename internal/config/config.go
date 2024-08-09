@@ -39,12 +39,6 @@ func Load() (*Config, error) {
 	viper.AddConfigPath(".")      //add a path where Viper will search for the configuration file
 	viper.AddConfigPath("./internal/config")
 
-	// Set defaults for SMTP config
-	viper.SetDefault("SMTP.Host", "smtp.example.com")
-	viper.SetDefault("SMTP.Port", 587)
-	viper.SetDefault("SMTP.Username", "your_username")
-	viper.SetDefault("SMTP.Password", "your_password")
-
 	err := viper.ReadInConfig() //Reads configuration files
 	if err != nil {
 		return nil, err

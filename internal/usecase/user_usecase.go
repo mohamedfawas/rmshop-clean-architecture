@@ -11,6 +11,7 @@ import (
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/auth"
 	email "github.com/mohamedfawas/rmshop-clean-architecture/pkg/emailVerify"
 	otputil "github.com/mohamedfawas/rmshop-clean-architecture/pkg/otpUtility"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var (
@@ -88,7 +89,7 @@ func (u *userUseCase) Login(ctx context.Context, email, password string) (string
 	}
 
 	// Generate a JWT token for the authenticated user
-	token, err := auth.GenerateToken(user.ID)
+	token, err := auth.GenerateTokenWithRole(user.ID, "user")
 	if err != nil {
 		// If token generation fails, return the error
 		return "", err
@@ -136,6 +137,14 @@ func (u *userUseCase) InitiateSignUp(ctx context.Context, user *domain.User) err
 		log.Printf("Error checking existing user: %v", err)
 		return err
 	}
+
+	// Hash the password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	user.PasswordHash = string(hashedPassword)
+	user.Password = "" // Clear the plain text password
 
 	// Generate OTP
 	otp, err := otputil.GenerateOTP(6)

@@ -14,6 +14,7 @@ type ProductUseCase interface {
 	GetProductByID(ctx context.Context, id int64) (*domain.Product, error)
 	UpdateProduct(ctx context.Context, product *domain.Product) error
 	SoftDeleteProduct(ctx context.Context, id int64) error
+	GetActiveProducts(ctx context.Context, page, pageSize int) ([]*domain.Product, int, error)
 }
 
 type productUseCase struct {
@@ -56,4 +57,14 @@ func (u *productUseCase) UpdateProduct(ctx context.Context, product *domain.Prod
 
 func (u *productUseCase) SoftDeleteProduct(ctx context.Context, id int64) error {
 	return u.productRepo.SoftDelete(ctx, id)
+}
+
+func (u *productUseCase) GetActiveProducts(ctx context.Context, page, pageSize int) ([]*domain.Product, int, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20 // Default page size
+	}
+	return u.productRepo.GetActiveProducts(ctx, page, pageSize)
 }

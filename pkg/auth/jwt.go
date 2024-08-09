@@ -2,6 +2,7 @@ package auth
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -20,6 +21,9 @@ func GenerateToken(userID int64) (string, error) {
 
 func ValidateToken(tokenString string) (int64, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
 		return jwtSecret, nil
 	})
 
@@ -35,7 +39,7 @@ func ValidateToken(tokenString string) (int64, error) {
 		return int64(userID), nil
 	}
 
-	return 0, jwt.ErrSignatureInvalid
+	return 0, errors.New("invalid token")
 }
 
 func GetTokenClaims(tokenString string) (jwt.MapClaims, error) {
@@ -80,6 +84,9 @@ func RefreshToken(tokenString string) (string, error) {
 
 func ValidateTokenWithRole(tokenString string) (int64, string, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
 		return jwtSecret, nil
 	})
 
@@ -99,5 +106,5 @@ func ValidateTokenWithRole(tokenString string) (int64, string, error) {
 		return int64(userID), role, nil
 	}
 
-	return 0, "", jwt.ErrSignatureInvalid
+	return 0, "", errors.New("invalid token")
 }

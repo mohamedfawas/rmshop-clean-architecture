@@ -48,4 +48,5 @@ type ProductRepository interface {
 	GetByID(ctx context.Context, id int64) (*domain.Product, error)
 	Update(ctx context.Context, product *domain.Product) error
 	SoftDelete(ctx context.Context, id int64) error
+	GetActiveProducts(ctx context.Context, page, pageSize int) ([]*domain.Product, int, error)
 }

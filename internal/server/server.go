@@ -12,20 +12,23 @@ import (
 	email "github.com/mohamedfawas/rmshop-clean-architecture/pkg/emailVerify"
 )
 
+// Server struct holds the router which will be used to handle HTTP requests
 type Server struct {
 	router http.Handler
 }
 
+// NewServer creates and returns a new Server instance
 func NewServer(db *sql.DB, emailSender *email.Sender) *Server {
 	log.Println("Initializing server components...")
-	// User components
+
 	// Handler -> UseCase -> Repository.
-	userRepo := postgres.NewUserRepository(db)                   // repository is responsible for handling data persistence and retrieval for user-related operations.
-	userUseCase := usecase.NewUserUseCase(userRepo, emailSender) // Use cases contain the business logic of the application, user use case is initialized with the user repository, allowing it to perform data operations as needed.
-	userHandler := handlers.NewUserHandler(userUseCase)          // Handlers are responsible for processing HTTP requests and responses.
+	// User components initialization
+	userRepo := postgres.NewUserRepository(db)                   // Create a new user repository with the database connection
+	userUseCase := usecase.NewUserUseCase(userRepo, emailSender) // Create a new user use case with the user repository and email sender
+	userHandler := handlers.NewUserHandler(userUseCase)          // Create a new user handler with the user use case
 	log.Println("User components initialized")
 
-	// Admin components
+	// Admin components initialization
 	adminRepo := postgres.NewAdminRepository(db)
 	adminUseCase := usecase.NewAdminUseCase(adminRepo)
 	adminHandler := handlers.NewAdminHandler(adminUseCase)
@@ -41,12 +44,15 @@ func NewServer(db *sql.DB, emailSender *email.Sender) *Server {
 	subCategoryRepo := postgres.NewSubCategoryRepository(db)
 	subCategoryUseCase := usecase.NewSubCategoryUseCase(subCategoryRepo, categoryRepo)
 	subCategoryHandler := handlers.NewSubCategoryHandler(subCategoryUseCase)
+	log.Println("Sub-category components initialized")
 
 	// Product components
 	productRepo := postgres.NewProductRepository(db)
 	productUseCase := usecase.NewProductUseCase(productRepo)
 	productHandler := handlers.NewProductHandler(productUseCase)
+	log.Println("Product components initialized")
 
+	// Initialize the router with all handlers
 	router := httpDelivery.NewRouter(
 		userHandler,
 		adminHandler,
@@ -56,11 +62,14 @@ func NewServer(db *sql.DB, emailSender *email.Sender) *Server {
 	)
 	log.Println("Router initialized")
 
+	// Return a new Server instance with the initialized router
 	return &Server{
 		router: router,
 	}
 }
 
+// ServeHTTP makes the Server struct implement the http.Handler interface
+// This method is called for every HTTP request to the server
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.router.ServeHTTP(w, r)
 }

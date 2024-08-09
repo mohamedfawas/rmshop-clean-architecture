@@ -135,3 +135,50 @@ func (h *ProductHandler) SoftDeleteProduct(w http.ResponseWriter, r *http.Reques
 
 	w.WriteHeader(http.StatusNoContent)
 }
+
+func (h *ProductHandler) GetActiveProducts(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value("user_id").(int64)
+	if !ok {
+		log.Printf("Error retrieving user ID from context")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	page, err := strconv.Atoi(r.URL.Query().Get("page"))
+	if err != nil || page < 1 {
+		page = 1
+	}
+	pageSize, err := strconv.Atoi(r.URL.Query().Get("pageSize"))
+	if err != nil || pageSize < 1 {
+		pageSize = 20 // Default page size
+	}
+
+	products, totalCount, err := h.productUseCase.GetActiveProducts(r.Context(), page, pageSize)
+	if err != nil {
+		log.Printf("Error retrieving active products for user %d: %v", userID, err)
+		http.Error(w, "Failed to retrieve products", http.StatusInternalServerError)
+		return
+	}
+
+	response := struct {
+		Products   []*domain.Product `json:"products"`
+		TotalCount int               `json:"totalCount"`
+		Page       int               `json:"page"`
+		PageSize   int               `json:"pageSize"`
+	}{
+		Products:   products,
+		TotalCount: totalCount,
+		Page:       page,
+		PageSize:   pageSize,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("Error encoding products to JSON for user %d: %v", userID, err)
+		http.Error(w, "Failed to encode products", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("Successfully retrieved %d active products for user %d (page %d, pageSize %d, total %d)",
+		len(products), userID, page, pageSize, totalCount)
+}
