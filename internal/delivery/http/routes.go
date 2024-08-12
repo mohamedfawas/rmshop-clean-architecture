@@ -40,11 +40,56 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 		middleware.JWTAuthMiddleware(
 			middleware.AdminAuthMiddleware(
 				categoryHandler.CreateCategory))).Methods("POST")
+	r.HandleFunc("/admin/categories",
+		middleware.JWTAuthMiddleware(
+			middleware.AdminAuthMiddleware(
+				categoryHandler.GetAllCategories))).Methods("GET")
+	r.HandleFunc("/admin/categories/{categoryId}",
+		middleware.JWTAuthMiddleware(
+			middleware.AdminAuthMiddleware(
+				categoryHandler.GetActiveCategoryByID))).Methods("GET")
+	r.HandleFunc("/admin/categories/{categoryId}",
+		middleware.JWTAuthMiddleware(
+			middleware.AdminAuthMiddleware(
+				categoryHandler.UpdateCategory))).Methods("PUT")
+	r.HandleFunc("/admin/categories/{categoryId}",
+		middleware.JWTAuthMiddleware(
+			middleware.AdminAuthMiddleware(
+				categoryHandler.SoftDeleteCategory))).Methods("DELETE")
 
-	r.HandleFunc("/admin/categories", func(w http.ResponseWriter, r *http.Request) {
-		log.Println("Matched route: /admin/categories")
-		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(categoryHandler.GetAllCategories))(w, r)
-	}).Methods("GET")
+	// Admin routes :Subcategory routes
+	r.HandleFunc("/admin/categories/{categoryId}/subcategories",
+		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
+			subCategoryHandler.CreateSubCategory))).Methods("POST")
+	r.HandleFunc("/admin/categories/{categoryId}/subcategories",
+		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
+			subCategoryHandler.GetSubCategoriesByCategory))).Methods("GET")
+	r.HandleFunc("/admin/categories/{categoryId}/subcategories/{subcategoryId}",
+		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
+			subCategoryHandler.GetSubCategoryByID))).Methods("GET")
+	r.HandleFunc("/admin/categories/{categoryId}/subcategories/{subcategoryId}",
+		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
+			subCategoryHandler.UpdateSubCategory))).Methods("PUT")
+	r.HandleFunc("/admin/categories/{categoryId}/subcategories/{subcategoryId}",
+		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
+			subCategoryHandler.SoftDeleteSubCategory))).Methods("DELETE")
+
+	// Admin routes :Product routes
+	r.HandleFunc("/admin/products",
+		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
+			productHandler.CreateProduct))).Methods("POST")
+	r.HandleFunc("/admin/products",
+		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
+			productHandler.GetAllProducts))).Methods("GET")
+	r.HandleFunc("/admin/products/{productId}",
+		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
+			productHandler.GetProductByID))).Methods("GET")
+	r.HandleFunc("/admin/products/{productId}",
+		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
+			productHandler.UpdateProduct))).Methods("PUT")
+	r.HandleFunc("/admin/products/{productId}",
+		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
+			productHandler.SoftDeleteProduct))).Methods("DELETE")
 
 	// User routes
 	r.HandleFunc("/user/register", userHandler.Register)
@@ -54,48 +99,6 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 	r.HandleFunc("/user/verify-otp", userHandler.VerifyOTP).Methods("POST")
 	r.HandleFunc("/user/resend-otp", userHandler.ResendOTP).Methods("POST")
 
-	// Category routes
-	// r.HandleFunc("/admin/categories", middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(categoryHandler.CreateCategory)))
-	//r.HandleFunc("/admin/categories", middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(categoryHandler.GetAllCategories))).Methods("GET")
-	r.HandleFunc("/admin/categories/{categoryId}",
-		middleware.JWTAuthMiddleware(
-			middleware.AdminAuthMiddleware(
-				categoryHandler.GetActiveCategoryByID))).Methods("GET")
-	r.HandleFunc("/admin/categories/{categoryId}",
-		middleware.JWTAuthMiddleware(
-			middleware.AdminAuthMiddleware(
-				categoryHandler.UpdateCategory))).Methods("PUT")
-
-	r.HandleFunc("/admin/categories/{categoryId}",
-		middleware.JWTAuthMiddleware(
-			middleware.AdminAuthMiddleware(
-				categoryHandler.SoftDeleteCategory))).Methods("DELETE")
-
-	// Subcategory routes
-	r.HandleFunc("/admin/categories/{categoryId}/subcategories",
-		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(subCategoryHandler.CreateSubCategory))).Methods("POST")
-	r.HandleFunc("/admin/categories/{categoryId}/subcategories", middleware.JWTAuthMiddleware(
-		middleware.AdminAuthMiddleware(subCategoryHandler.GetSubCategoriesByCategory))).Methods("GET")
-	r.HandleFunc("/admin/categories/{categoryId}/subcategories/{subcategoryId}",
-		middleware.JWTAuthMiddleware(
-			middleware.AdminAuthMiddleware(
-				subCategoryHandler.GetSubCategoryByID))).Methods("GET")
-	r.HandleFunc("/admin/categories/{categoryId}/subcategories/{subcategoryId}",
-		middleware.JWTAuthMiddleware(
-			middleware.AdminAuthMiddleware(
-				subCategoryHandler.UpdateSubCategory))).Methods("PUT")
-
-	r.HandleFunc("/admin/categories/{categoryId}/subcategories/{subcategoryId}",
-		middleware.JWTAuthMiddleware(
-			middleware.AdminAuthMiddleware(
-				subCategoryHandler.SoftDeleteSubCategory))).Methods("DELETE")
-
-	// Product routes
-	r.HandleFunc("/admin/products", middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(productHandler.CreateProduct))).Methods("POST")
-	r.HandleFunc("/admin/products", middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(productHandler.GetAllProducts))).Methods("GET")
-	r.HandleFunc("/admin/products/{productId}", middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(productHandler.GetProductByID))).Methods("GET")
-	r.HandleFunc("/admin/products/{productId}", middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(productHandler.UpdateProduct))).Methods("PUT")
-	r.HandleFunc("/admin/products/{productId}", middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(productHandler.SoftDeleteProduct))).Methods("DELETE")
 	//product listing on user side
 	r.HandleFunc("/products", middleware.JWTAuthMiddleware(productHandler.GetActiveProducts)).Methods("GET")
 

@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
 )
@@ -33,6 +34,28 @@ func (h *AdminHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// If there's an error in parsing, return a 400 Bad Request error
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Trim whitespace from username and password
+	input.Username = strings.TrimSpace(input.Username)
+	input.Password = strings.TrimSpace(input.Password)
+
+	// Check for empty username or password
+	if input.Username == "" || input.Password == "" {
+		http.Error(w, "Username and password are required", http.StatusBadRequest)
+		return
+	}
+
+	// Check username length (assuming max length is 50)
+	if len(input.Username) > 50 {
+		http.Error(w, "Username is too long", http.StatusBadRequest)
+		return
+	}
+
+	// Check password length (assuming max length is 100)
+	if len(input.Password) > 100 {
+		http.Error(w, "Password is too long", http.StatusBadRequest)
 		return
 	}
 

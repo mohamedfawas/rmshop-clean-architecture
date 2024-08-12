@@ -154,7 +154,7 @@ func (u *userUseCase) InitiateSignUp(ctx context.Context, user *domain.User) err
 	}
 	log.Printf("OTP generated for email: %s", user.Email)
 
-	expiresAt := time.Now().Add(15 * time.Minute)
+	expiresAt := time.Now().Add(30 * time.Second)
 
 	// Create user with unverified email
 	user.IsEmailVerified = false
