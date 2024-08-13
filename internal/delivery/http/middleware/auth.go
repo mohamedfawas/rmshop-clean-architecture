@@ -37,6 +37,12 @@ func JWTAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
+		if role != "admin" {
+			log.Printf("Non-admin token used: %s", role)
+			http.Error(w, "Admin access required", http.StatusForbidden)
+			return
+		}
+
 		log.Printf("Token validated successfully. UserID: %d, Role: %s", userID, role)
 		ctx := context.WithValue(r.Context(), "user_id", userID)
 		ctx = context.WithValue(ctx, "user_role", role)

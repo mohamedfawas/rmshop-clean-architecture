@@ -43,3 +43,10 @@ func (r *adminRepository) BlacklistToken(ctx context.Context, token string, expi
 	_, err := r.db.ExecContext(ctx, query, token, expiresAt)
 	return err
 }
+
+func (r *adminRepository) IsTokenBlacklisted(ctx context.Context, token string) (bool, error) {
+	query := `SELECT EXISTS(SELECT 1 FROM blacklisted_tokens WHERE token = $1)`
+	var exists bool
+	err := r.db.QueryRowContext(ctx, query, token).Scan(&exists)
+	return exists, err
+}

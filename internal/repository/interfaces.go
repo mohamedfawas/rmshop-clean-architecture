@@ -22,6 +22,7 @@ type UserRepository interface {
 type AdminRepository interface {
 	GetByUsername(ctx context.Context, username string) (*domain.Admin, error)
 	BlacklistToken(ctx context.Context, token string, expiresAt time.Time) error
+	IsTokenBlacklisted(ctx context.Context, token string) (bool, error)
 }
 
 type CategoryRepository interface {

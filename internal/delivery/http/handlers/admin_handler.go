@@ -96,9 +96,12 @@ func (h *AdminHandler) Logout(w http.ResponseWriter, r *http.Request) {
 
 	err := h.adminUseCase.Logout(r.Context(), token)
 	if err != nil {
-		if err == usecase.ErrInvalidAdminToken {
+		switch err {
+		case usecase.ErrInvalidAdminToken:
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
-		} else {
+		case usecase.ErrTokenAlreadyBlacklisted:
+			http.Error(w, "Token already invalidated", http.StatusBadRequest)
+		default:
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 		}
 		return

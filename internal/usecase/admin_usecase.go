@@ -13,6 +13,7 @@ var (
 	ErrAdminNotFound           = errors.New("admin not found")
 	ErrInvalidAdminCredentials = errors.New("invalid admin credentials")
 	ErrInvalidAdminToken       = errors.New("invalid admin token")
+	ErrTokenAlreadyBlacklisted = errors.New("token already blacklisted")
 )
 
 type AdminUseCase interface {
@@ -56,9 +57,22 @@ func (u *adminUseCase) Login(ctx context.Context, username, password string) (st
 
 func (u *adminUseCase) Logout(ctx context.Context, token string) error {
 	// Validate the token
-	_, err := auth.ValidateToken(token)
+	_, role, err := auth.ValidateTokenWithRole(token)
 	if err != nil {
 		return ErrInvalidAdminToken
+	}
+
+	if role != "admin" {
+		return ErrInvalidAdminToken
+	}
+
+	// Check if token is already blacklisted
+	blacklisted, err := u.adminRepo.IsTokenBlacklisted(ctx, token)
+	if err != nil {
+		return err
+	}
+	if blacklisted {
+		return ErrTokenAlreadyBlacklisted
 	}
 
 	// Get token expiration time
