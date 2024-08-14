@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
@@ -15,6 +16,8 @@ type ProductUseCase interface {
 	UpdateProduct(ctx context.Context, product *domain.Product) error
 	SoftDeleteProduct(ctx context.Context, id int64) error
 	GetActiveProducts(ctx context.Context, page, pageSize int) ([]*domain.Product, int, error)
+	CreateProductWithImages(ctx context.Context, product *domain.Product, images []domain.ProductImage) error
+	UpdatePrimaryImage(ctx context.Context, productID int64, imageID int64) error
 }
 
 type productUseCase struct {
@@ -67,4 +70,72 @@ func (u *productUseCase) GetActiveProducts(ctx context.Context, page, pageSize i
 		pageSize = 20 // Default page size
 	}
 	return u.productRepo.GetActiveProducts(ctx, page, pageSize)
+}
+
+func (u *productUseCase) CreateProductWithImages(ctx context.Context, product *domain.Product, images []domain.ProductImage) error {
+	// Start a transaction
+	tx, err := u.productRepo.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Create the product
+	err = u.productRepo.CreateWithTx(ctx, tx, product)
+	if err != nil {
+		return err
+	}
+
+	// Add images and set primary image
+	imageIDs, err := u.productRepo.AddProductImagesWithTx(ctx, tx, product.ID, images)
+	if err != nil {
+		return err
+	}
+
+	// Find the primary image
+	var primaryImageID int64
+	for i, img := range images {
+		if img.IsPrimary {
+			primaryImageID = imageIDs[i]
+			break
+		}
+	}
+
+	// If no primary image was specified, use the first image
+	if primaryImageID == 0 && len(imageIDs) > 0 {
+		primaryImageID = imageIDs[0]
+	}
+
+	if primaryImageID != 0 {
+		err = u.productRepo.UpdatePrimaryImageWithTx(ctx, tx, product.ID, primaryImageID)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Commit the transaction
+	return tx.Commit()
+}
+
+func (u *productUseCase) UpdatePrimaryImage(ctx context.Context, productID int64, imageID int64) error {
+	// First, check if the product exists
+	product, err := u.productRepo.GetByID(ctx, productID)
+	if err != nil {
+		return err
+	}
+
+	// Check if the image belongs to the product
+	imageExists := false
+	for _, img := range product.Images {
+		if img.ID == imageID {
+			imageExists = true
+			break
+		}
+	}
+	if !imageExists {
+		return errors.New("image does not belong to the product")
+	}
+
+	// Update the primary image
+	return u.productRepo.UpdatePrimaryImage(ctx, productID, imageID)
 }

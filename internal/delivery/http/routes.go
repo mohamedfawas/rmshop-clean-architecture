@@ -90,6 +90,10 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 	r.HandleFunc("/admin/products/{productId}",
 		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
 			productHandler.SoftDeleteProduct))).Methods("DELETE")
+	//admin route : update primary image
+	r.HandleFunc("/admin/products/{productId}/primary-image",
+		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
+			productHandler.UpdatePrimaryImage))).Methods("PUT")
 
 	// User routes
 	r.HandleFunc("/user/register", userHandler.Register)

@@ -19,24 +19,24 @@ func NewProductHandler(productUseCase usecase.ProductUseCase) *ProductHandler {
 	return &ProductHandler{productUseCase: productUseCase}
 }
 
-func (h *ProductHandler) CreateProduct(w http.ResponseWriter, r *http.Request) {
-	var product domain.Product
-	err := json.NewDecoder(r.Body).Decode(&product)
-	if err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
+// func (h *ProductHandler) CreateProduct(w http.ResponseWriter, r *http.Request) {
+// 	var product domain.Product
+// 	err := json.NewDecoder(r.Body).Decode(&product)
+// 	if err != nil {
+// 		http.Error(w, "Invalid request body", http.StatusBadRequest)
+// 		return
+// 	}
 
-	err = h.productUseCase.CreateProduct(r.Context(), &product)
-	if err != nil {
-		http.Error(w, "Failed to create product", http.StatusInternalServerError)
-		return
-	}
+// 	err = h.productUseCase.CreateProduct(r.Context(), &product)
+// 	if err != nil {
+// 		http.Error(w, "Failed to create product", http.StatusInternalServerError)
+// 		return
+// 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(product)
-}
+// 	w.Header().Set("Content-Type", "application/json")
+// 	w.WriteHeader(http.StatusCreated)
+// 	json.NewEncoder(w).Encode(product)
+// }
 
 func (h *ProductHandler) GetAllProducts(w http.ResponseWriter, r *http.Request) {
 	log.Println("Entering GetAllProducts handler")
@@ -181,4 +181,81 @@ func (h *ProductHandler) GetActiveProducts(w http.ResponseWriter, r *http.Reques
 
 	log.Printf("Successfully retrieved %d active products for user %d (page %d, pageSize %d, total %d)",
 		len(products), userID, page, pageSize, totalCount)
+}
+
+func (h *ProductHandler) CreateProduct(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Product domain.Product        `json:"product"`
+		Images  []domain.ProductImage `json:"images"`
+	}
+	err := json.NewDecoder(r.Body).Decode(&input)
+	if err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Validate that we have at least one image
+	if len(input.Images) == 0 {
+		http.Error(w, "At least one image is required", http.StatusBadRequest)
+		return
+	}
+
+	// Ensure only one image is set as primary
+	primaryCount := 0
+	for _, img := range input.Images {
+		if img.IsPrimary {
+			primaryCount++
+		}
+	}
+	if primaryCount > 1 {
+		http.Error(w, "Only one image can be set as primary", http.StatusBadRequest)
+		return
+	}
+
+	// If no primary image is set, make the first one primary
+	if primaryCount == 0 {
+		input.Images[0].IsPrimary = true
+	}
+
+	err = h.productUseCase.CreateProductWithImages(r.Context(), &input.Product, input.Images)
+	if err != nil {
+		http.Error(w, "Failed to create product", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(input.Product)
+}
+func (h *ProductHandler) UpdatePrimaryImage(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	productID, err := strconv.ParseInt(vars["productId"], 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid product ID", http.StatusBadRequest)
+		return
+	}
+
+	var input struct {
+		ImageID int64 `json:"image_id"`
+	}
+	err = json.NewDecoder(r.Body).Decode(&input)
+	if err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	err = h.productUseCase.UpdatePrimaryImage(r.Context(), productID, input.ImageID)
+	if err != nil {
+		if err.Error() == "product not found or already deleted" {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else if err.Error() == "image does not belong to the product" {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		} else {
+			http.Error(w, "Failed to update primary image", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "Primary image updated successfully"})
 }

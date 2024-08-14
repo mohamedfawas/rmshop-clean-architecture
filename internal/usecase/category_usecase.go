@@ -30,16 +30,6 @@ func NewCategoryUseCase(categoryRepo repository.CategoryRepository) CategoryUseC
 }
 
 func (u *categoryUseCase) CreateCategory(ctx context.Context, category *domain.Category) error {
-	// Trim whitespace from category name
-	category.Name = strings.TrimSpace(category.Name)
-
-	// Validate category name
-	if category.Name == "" {
-		return utils.ErrInvalidCategoryName
-	}
-	if len(category.Name) > 50 {
-		return utils.ErrCategoryNameTooLong
-	}
 
 	// Generate slug
 	category.Slug = utils.GenerateSlug(category.Name)
@@ -47,6 +37,7 @@ func (u *categoryUseCase) CreateCategory(ctx context.Context, category *domain.C
 	// Set creation time
 	category.CreatedAt = time.Now()
 
+	// set category updation time
 	category.UpdatedAt = time.Now()
 
 	// Attempt to create the category

@@ -26,10 +26,12 @@ func main() {
 	defer db.Close() // Ensure the database connection is closed when the application exits
 
 	// Run migrations , Migrations are run to ensure the database schema is up to date.
+	log.Println("About to run migrations...")
 	err = database.RunMigrations(db, "./migrations")
 	if err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
+	log.Println("Migrations completed successfully")
 
 	// Initialize email sender for OTP functionality
 	emailSender := email.NewSender(cfg.SMTP.Host, cfg.SMTP.Port, cfg.SMTP.Username, cfg.SMTP.Password)

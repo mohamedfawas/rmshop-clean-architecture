@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
@@ -25,6 +26,25 @@ func (h *CategoryHandler) CreateCategory(w http.ResponseWriter, r *http.Request)
 	err := json.NewDecoder(r.Body).Decode(&category)
 	if err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	category.Name = strings.TrimSpace(category.Name) //trim whitespace from the category name
+	//check if category name is empty
+	if category.Name == "" {
+		http.Error(w, "A valid category name is required", http.StatusBadRequest)
+		return
+	}
+
+	//minimum length criteria
+	if len(category.Name) < 2 {
+		http.Error(w, "Category name should have minimum of 2 characters", http.StatusBadRequest)
+		return
+	}
+
+	//max length criteria
+	if len(category.Name) > 50 {
+		http.Error(w, "Category name should be less than 50 characters", http.StatusBadRequest)
 		return
 	}
 

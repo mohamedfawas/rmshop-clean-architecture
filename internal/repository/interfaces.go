@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
@@ -50,4 +51,11 @@ type ProductRepository interface {
 	Update(ctx context.Context, product *domain.Product) error
 	SoftDelete(ctx context.Context, id int64) error
 	GetActiveProducts(ctx context.Context, page, pageSize int) ([]*domain.Product, int, error)
+	AddProductImages(ctx context.Context, productID int64, images []domain.ProductImage) ([]int64, error)
+	GetProductImages(ctx context.Context, productID int64) ([]domain.ProductImage, error)
+	UpdatePrimaryImage(ctx context.Context, productID int64, imageID int64) error
+	BeginTx(ctx context.Context) (*sql.Tx, error)
+	CreateWithTx(ctx context.Context, tx *sql.Tx, product *domain.Product) error
+	AddProductImagesWithTx(ctx context.Context, tx *sql.Tx, productID int64, images []domain.ProductImage) ([]int64, error)
+	UpdatePrimaryImageWithTx(ctx context.Context, tx *sql.Tx, productID int64, imageID int64) error
 }
