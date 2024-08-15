@@ -15,7 +15,8 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 
 	// set up a middleware that logs every incoming HTTP request
 	r.Use(func(next http.Handler) http.Handler { // This is using the Use method of the router to add middleware
-		// Middleware is a function that takes a handler and returns a new handler
+
+		//Any request passing through this router will go through the middleware before reaching its final handler
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// This creates a new HandlerFunc, which is the actual middleware
 
@@ -26,6 +27,7 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 			next.ServeHTTP(w, r)
 			// This line ensures that the request continues to be processed
 			// by passing it to the next handler in the middleware chain
+			//This is crucial; without this line, the request would not proceed to the intended route handler
 		})
 	})
 
@@ -36,7 +38,7 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 		middleware.JWTAuthMiddleware(adminHandler.Logout))
 
 	// Admin routes : Category routes
-	r.HandleFunc("/admin/categories",
+	r.HandleFunc("/admin/categories", //add category names
 		middleware.JWTAuthMiddleware(
 			middleware.AdminAuthMiddleware(
 				categoryHandler.CreateCategory))).Methods("POST")
