@@ -5,12 +5,12 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/utils"
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/validator"
 )
 
 type CategoryHandler struct {
@@ -21,6 +21,7 @@ func NewCategoryHandler(categoryUseCase usecase.CategoryUseCase) *CategoryHandle
 	return &CategoryHandler{categoryUseCase: categoryUseCase}
 }
 
+// rechecked the code after testing
 func (h *CategoryHandler) CreateCategory(w http.ResponseWriter, r *http.Request) {
 	var category domain.Category
 	err := json.NewDecoder(r.Body).Decode(&category)
@@ -29,32 +30,26 @@ func (h *CategoryHandler) CreateCategory(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	category.Name = strings.TrimSpace(category.Name) //trim whitespace from the category name
-	//check if category name is empty
-	if category.Name == "" {
-		http.Error(w, "A valid category name is required", http.StatusBadRequest)
-		return
-	}
-
-	//minimum length criteria
-	if len(category.Name) < 2 {
-		http.Error(w, "Category name should have minimum of 2 characters", http.StatusBadRequest)
-		return
-	}
-
-	//max length criteria
-	if len(category.Name) > 50 {
-		http.Error(w, "Category name should be less than 50 characters", http.StatusBadRequest)
+	err = validator.ValidateCategoryName(category.Name)
+	if err != nil {
+		switch err {
+		case utils.ErrInvalidCategoryName:
+			http.Error(w, "Invalid category name", http.StatusBadRequest)
+		case utils.ErrCategoryNameTooShort:
+			http.Error(w, "Category name should have atleast 2 characters", http.StatusBadRequest)
+		case utils.ErrCategoryNameTooLong:
+			http.Error(w, "Category name length should not be greater than 50 characters", http.StatusBadRequest)
+		case utils.ErrCategoryNameNumeric:
+			http.Error(w, "Category name should not be purely numeric", http.StatusBadRequest)
+		default:
+			http.Error(w, "Invalid category name", http.StatusBadRequest)
+		}
 		return
 	}
 
 	err = h.categoryUseCase.CreateCategory(r.Context(), &category)
 	if err != nil {
 		switch err {
-		case utils.ErrInvalidCategoryName:
-			http.Error(w, "Invalid category name", http.StatusBadRequest)
-		case utils.ErrCategoryNameTooLong:
-			http.Error(w, "Category name too long", http.StatusBadRequest)
 		case utils.ErrDuplicateCategory:
 			http.Error(w, "Category already exists", http.StatusConflict)
 		default:
@@ -147,14 +142,27 @@ func (h *CategoryHandler) UpdateCategory(w http.ResponseWriter, r *http.Request)
 
 	category.ID = categoryID
 
-	err = h.categoryUseCase.UpdateCategory(r.Context(), &category)
+	err = validator.ValidateCategoryName(category.Name)
 	if err != nil {
-		log.Printf("Error updating category: %v", err)
 		switch err {
 		case utils.ErrInvalidCategoryName:
 			http.Error(w, "Invalid category name", http.StatusBadRequest)
+		case utils.ErrCategoryNameTooShort:
+			http.Error(w, "Category name should have atleast 2 characters", http.StatusBadRequest)
 		case utils.ErrCategoryNameTooLong:
-			http.Error(w, "Category name too long", http.StatusBadRequest)
+			http.Error(w, "Category name length should not be greater than 50 characters", http.StatusBadRequest)
+		case utils.ErrCategoryNameNumeric:
+			http.Error(w, "Category name should not be purely numeric", http.StatusBadRequest)
+		default:
+			http.Error(w, "Invalid category name", http.StatusBadRequest)
+		}
+		return
+	}
+
+	err = h.categoryUseCase.UpdateCategory(r.Context(), &category)
+	if err != nil {
+		//log.Printf("Error updating category: %v", err)
+		switch err {
 		case utils.ErrDuplicateCategory:
 			http.Error(w, "Category name already exists", http.StatusConflict)
 		case utils.ErrCategoryNotFound:

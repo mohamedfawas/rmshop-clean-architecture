@@ -14,7 +14,7 @@ import (
 )
 
 type CategoryUseCase interface {
-	CreateCategory(ctx context.Context, category *domain.Category) error
+	CreateCategory(ctx context.Context, category *domain.Category) error // faz:15 aug
 	GetAllCategories(ctx context.Context) ([]*domain.Category, error)
 	GetActiveCategoryByID(ctx context.Context, id int) (*domain.Category, error)
 	UpdateCategory(ctx context.Context, category *domain.Category) error
@@ -40,7 +40,7 @@ func (u *categoryUseCase) CreateCategory(ctx context.Context, category *domain.C
 	// set category updation time
 	category.UpdatedAt = time.Now()
 
-	// Attempt to create the category
+	// Attempt to create the category in the database
 	err := u.categoryRepo.Create(ctx, category)
 	if err != nil {
 		// Check if it's a duplicate category error (you'd need to implement this check in your repository)
