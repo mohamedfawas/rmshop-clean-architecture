@@ -259,3 +259,72 @@ func (h *ProductHandler) UpdatePrimaryImage(w http.ResponseWriter, r *http.Reque
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"message": "Primary image updated successfully"})
 }
+
+func (h *ProductHandler) AddProductImages(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	productID, err := strconv.ParseInt(vars["productId"], 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid product ID", http.StatusBadRequest)
+		return
+	}
+
+	var input struct {
+		Images []domain.ProductImage `json:"images"`
+	}
+	err = json.NewDecoder(r.Body).Decode(&input)
+	if err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if len(input.Images) == 0 {
+		http.Error(w, "At least one image is required", http.StatusBadRequest)
+		return
+	}
+
+	err = h.productUseCase.AddProductImages(r.Context(), productID, input.Images)
+	if err != nil {
+		if err.Error() == "product not found" {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else {
+			http.Error(w, "Failed to add product images", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]string{"message": "Images added successfully"})
+}
+
+func (h *ProductHandler) RemoveProductImage(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	productID, err := strconv.ParseInt(vars["productId"], 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid product ID", http.StatusBadRequest)
+		return
+	}
+
+	imageID, err := strconv.ParseInt(vars["imageId"], 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid image ID", http.StatusBadRequest)
+		return
+	}
+
+	err = h.productUseCase.RemoveProductImage(r.Context(), productID, imageID)
+	if err != nil {
+		switch err.Error() {
+		case "product not found":
+			http.Error(w, err.Error(), http.StatusNotFound)
+		case "image not found":
+			http.Error(w, err.Error(), http.StatusNotFound)
+		case "cannot delete primary image":
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		default:
+			http.Error(w, "Failed to remove product image", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "Image removed successfully"})
+}

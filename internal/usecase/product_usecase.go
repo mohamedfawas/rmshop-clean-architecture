@@ -18,6 +18,8 @@ type ProductUseCase interface {
 	GetActiveProducts(ctx context.Context, page, pageSize int) ([]*domain.Product, int, error)
 	CreateProductWithImages(ctx context.Context, product *domain.Product, images []domain.ProductImage) error
 	UpdatePrimaryImage(ctx context.Context, productID int64, imageID int64) error
+	AddProductImages(ctx context.Context, productID int64, images []domain.ProductImage) error
+	RemoveProductImage(ctx context.Context, productID, imageID int64) error
 }
 
 type productUseCase struct {
@@ -138,4 +140,56 @@ func (u *productUseCase) UpdatePrimaryImage(ctx context.Context, productID int64
 
 	// Update the primary image
 	return u.productRepo.UpdatePrimaryImage(ctx, productID, imageID)
+}
+
+func (u *productUseCase) AddProductImages(ctx context.Context, productID int64, images []domain.ProductImage) error {
+	// Check if the product exists
+	product, err := u.productRepo.GetByID(ctx, productID)
+	if err != nil {
+		return err
+	}
+	if product == nil {
+		return errors.New("product not found")
+	}
+
+	// Add the new images
+	_, err = u.productRepo.AddProductImages(ctx, productID, images)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (u *productUseCase) RemoveProductImage(ctx context.Context, productID, imageID int64) error {
+	// Check if the product exists
+	product, err := u.productRepo.GetByID(ctx, productID)
+	if err != nil {
+		return err
+	}
+	if product == nil {
+		return errors.New("product not found")
+	}
+
+	// Check if the image exists and belongs to the product
+	image, err := u.productRepo.GetProductImageByID(ctx, imageID)
+	if err != nil {
+		return err
+	}
+	if image == nil || image.ProductID != productID {
+		return errors.New("image not found")
+	}
+
+	// Check if it's the primary image
+	if product.PrimaryImageID != nil && *product.PrimaryImageID == imageID {
+		return errors.New("cannot delete primary image")
+	}
+
+	// Remove the image
+	err = u.productRepo.RemoveProductImage(ctx, imageID)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

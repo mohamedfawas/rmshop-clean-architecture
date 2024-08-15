@@ -228,8 +228,8 @@ func (r *productRepository) AddProductImages(ctx context.Context, productID int6
 	for _, img := range images {
 		var imageID int64
 		err := tx.QueryRowContext(ctx,
-			"INSERT INTO product_images (product_id, image_url) VALUES ($1, $2) RETURNING id",
-			productID, img.ImageURL).Scan(&imageID)
+			"INSERT INTO product_images (product_id, image_url, is_primary) VALUES ($1, $2, $3) RETURNING id",
+			productID, img.ImageURL, false).Scan(&imageID)
 		if err != nil {
 			return nil, err
 		}
@@ -320,5 +320,29 @@ func (r *productRepository) UpdatePrimaryImageWithTx(ctx context.Context, tx *sq
 	_, err := tx.ExecContext(ctx,
 		"UPDATE products SET primary_image_id = $1 WHERE id = $2",
 		imageID, productID)
+	return err
+}
+
+func (r *productRepository) GetProductImageByID(ctx context.Context, imageID int64) (*domain.ProductImage, error) {
+	query := `
+		SELECT id, product_id, image_url, is_primary, created_at
+		FROM product_images
+		WHERE id = $1
+	`
+	var img domain.ProductImage
+	err := r.db.QueryRowContext(ctx, query, imageID).Scan(
+		&img.ID, &img.ProductID, &img.ImageURL, &img.IsPrimary, &img.CreatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &img, nil
+}
+
+func (r *productRepository) RemoveProductImage(ctx context.Context, imageID int64) error {
+	query := `DELETE FROM product_images WHERE id = $1`
+	_, err := r.db.ExecContext(ctx, query, imageID)
 	return err
 }
