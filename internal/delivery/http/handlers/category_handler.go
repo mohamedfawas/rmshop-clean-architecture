@@ -42,7 +42,7 @@ func (h *CategoryHandler) CreateCategory(w http.ResponseWriter, r *http.Request)
 		case utils.ErrCategoryNameNumeric:
 			http.Error(w, "Category name should not be purely numeric", http.StatusBadRequest)
 		default:
-			http.Error(w, "Invalid category name", http.StatusBadRequest)
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		}
 		return
 	}
@@ -154,7 +154,7 @@ func (h *CategoryHandler) UpdateCategory(w http.ResponseWriter, r *http.Request)
 		case utils.ErrCategoryNameNumeric:
 			http.Error(w, "Category name should not be purely numeric", http.StatusBadRequest)
 		default:
-			http.Error(w, "Invalid category name", http.StatusBadRequest)
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		}
 		return
 	}
