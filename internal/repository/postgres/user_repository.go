@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"log"
 	"time"
 
@@ -62,15 +63,19 @@ func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 
 func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
 	// SQL query to select user details by email
-	query := `SELECT id, name, email, password_hash, date_of_birth, phone_number, is_blocked, created_at, updated_at, last_login 
+	query := `SELECT id, name, email, password_hash, date_of_birth, phone_number, is_blocked, created_at, updated_at, last_login ,is_email_verified
               FROM users WHERE email = $1`
 
 	var user domain.User
-	var lastLogin sql.NullTime
+	var lastLogin sql.NullTime //nulltime : nullable timestamp value
+	//it holds two values : Timestamp and Valid (bool, indicates whether the value is null or not)
+
+	var isEmailVerified bool
+
 	// Execute the query and scan the result into the user struct
 	err := r.db.QueryRowContext(ctx, query, email).Scan(
 		&user.ID, &user.Name, &user.Email, &user.PasswordHash, &user.DOB,
-		&user.PhoneNumber, &user.IsBlocked, &user.CreatedAt, &user.UpdatedAt, &lastLogin,
+		&user.PhoneNumber, &user.IsBlocked, &user.CreatedAt, &user.UpdatedAt, &lastLogin, &isEmailVerified,
 	)
 
 	if err != nil {
@@ -82,10 +87,15 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.
 		return nil, err
 	}
 
-	// If lastLogin is not null, set it in the user struct
+	// If lastLogin is not null, that means there is valid time stored in the lastLogin.Time
 	if lastLogin.Valid {
 		user.LastLogin = lastLogin.Time
 	}
+
+	//if the user details already added and email if not verified
+	// if !isEmailVerified {
+
+	// }
 
 	// Return the user struct and nil error
 	return &user, nil
@@ -150,5 +160,68 @@ func (r *userRepository) DeleteOTP(ctx context.Context, email string) error {
 func (r *userRepository) UpdateEmailVerificationStatus(ctx context.Context, userID int64, status bool) error {
 	query := `UPDATE users SET is_email_verified = $1 WHERE id = $2`
 	_, err := r.db.ExecContext(ctx, query, status, userID)
+	return err
+}
+
+func (r *userRepository) CreateVerificationEntry(ctx context.Context, entry *domain.VerificationEntry) error {
+	query := `INSERT INTO verification_entries (email, otp_code, user_data, password_hash, expires_at, is_verified, created_at)
+              VALUES ($1, $2, $3, $4, $5, $6, $7)
+              RETURNING id`
+
+	userDataJSON, err := json.Marshal(entry.UserData)
+	if err != nil {
+		log.Printf("Error marshaling user data: %v", err)
+		return err
+	}
+
+	err = r.db.QueryRowContext(ctx, query,
+		entry.Email,
+		entry.OTPCode,
+		userDataJSON,
+		entry.PasswordHash,
+		entry.ExpiresAt,
+		entry.IsVerified,
+		time.Now()).Scan(&entry.ID)
+
+	return err
+}
+
+func (r *userRepository) GetVerificationEntryByEmail(ctx context.Context, email string) (*domain.VerificationEntry, error) {
+	query := `SELECT id, email, otp_code, user_data, password_hash, expires_at, is_verified, created_at
+              FROM verification_entries
+              WHERE email = $1 AND is_verified = false
+              ORDER BY created_at DESC
+              LIMIT 1`
+
+	var entry domain.VerificationEntry
+	var userDataJSON []byte
+	err := r.db.QueryRowContext(ctx, query, email).Scan(
+		&entry.ID, &entry.Email, &entry.OTPCode, &userDataJSON, &entry.PasswordHash, &entry.ExpiresAt, &entry.IsVerified, &entry.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+
+	err = json.Unmarshal(userDataJSON, &entry.UserData)
+	if err != nil {
+		return nil, err
+	}
+
+	return &entry, nil
+}
+
+func (r *userRepository) UpdateVerificationEntry(ctx context.Context, entry *domain.VerificationEntry) error {
+	query := `UPDATE verification_entries
+              SET is_verified = $1
+              WHERE id = $2`
+
+	_, err := r.db.ExecContext(ctx, query, entry.IsVerified, entry.ID)
+	return err
+}
+
+func (r *userRepository) DeleteExpiredVerificationEntries(ctx context.Context) error {
+	query := `DELETE FROM verification_entries
+              WHERE expires_at < $1 AND is_verified = false`
+
+	_, err := r.db.ExecContext(ctx, query, time.Now())
 	return err
 }

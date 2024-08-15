@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
-	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/validator"
 )
 
 type UserHandler struct {
@@ -18,61 +19,6 @@ type UserHandler struct {
 
 func NewUserHandler(userUseCase usecase.UserUseCase) *UserHandler {
 	return &UserHandler{userUseCase: userUseCase}
-}
-
-type UserRegistrationInput struct {
-	Name        string `json:"name"`
-	Email       string `json:"email"`
-	Password    string `json:"password"`
-	DateOfBirth string `json:"date_of_birth"`
-	PhoneNumber string `json:"phone_number"`
-}
-
-func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
-	var input UserRegistrationInput
-	err := json.NewDecoder(r.Body).Decode(&input)
-	if err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	// Parse the date of birth
-	dob, err := time.Parse("2006-01-02", input.DateOfBirth)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Invalid date format for date_of_birth: %v", err), http.StatusBadRequest)
-		return
-	}
-
-	// Validate user input
-	err = validator.ValidateUserInput(input.Name, input.Email, input.Password, input.PhoneNumber, input.DateOfBirth)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	user := &domain.User{
-		Name:        input.Name,
-		Email:       input.Email,
-		Password:    input.Password,
-		DOB:         dob,
-		PhoneNumber: input.PhoneNumber,
-	}
-
-	err = h.userUseCase.Register(r.Context(), user) //If the data is read successfully, it tries to register the user
-	if err != nil {
-		// http.Error(w, err.Error(), http.StatusInternalServerError) //If there's an error during registration, it sends back an error message
-		// return
-		switch err {
-		case usecase.ErrDuplicateEmail:
-			http.Error(w, "Email already exists", http.StatusConflict)
-		default:
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-		}
-		return
-	}
-
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]string{"message": "User registered successfully"})
 }
 
 type LoginInput struct {
@@ -163,6 +109,12 @@ type InitiateSignUpInput struct {
 }
 
 func (h *UserHandler) InitiateSignUp(w http.ResponseWriter, r *http.Request) {
+	// Check Content-Type : input should be json type
+	if r.Header.Get("Content-Type") != "application/json" {
+		http.Error(w, "Unsupported Media Type", http.StatusUnsupportedMediaType)
+		return
+	}
+
 	var input InitiateSignUpInput
 	err := json.NewDecoder(r.Body).Decode(&input)
 	if err != nil {
@@ -171,11 +123,49 @@ func (h *UserHandler) InitiateSignUp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	//check for empty fields
+	if input.Name == "" || input.Email == "" || input.Password == "" || input.DateOfBirth == "" || input.PhoneNumber == "" {
+		http.Error(w, "All fields are required", http.StatusBadRequest)
+		return
+	}
+
+	//trim trailing and leading spaces
+	input.Name = strings.TrimSpace(input.Name)
+	input.Email = strings.TrimSpace(input.Email)
+	input.PhoneNumber = strings.TrimSpace(input.PhoneNumber)
+	input.DateOfBirth = strings.TrimSpace(input.DateOfBirth)
+
+	//validate email format
+	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+	if !emailRegex.MatchString(input.Email) {
+		http.Error(w, "Invalid Email Format", http.StatusBadRequest)
+		return
+	}
+
+	//validate password length
+	if len(input.Password) < 8 {
+		http.Error(w, "Password must be at least 8 characters long", http.StatusBadRequest)
+		return
+	}
+
 	// Parse the date of birth
 	dob, err := time.Parse("2006-01-02", input.DateOfBirth)
 	if err != nil {
 		log.Printf("Error parsing date of birth: %v", err)
 		http.Error(w, "Invalid date format for date_of_birth", http.StatusBadRequest)
+		return
+	}
+
+	//validate phone number
+	phoneRegex := regexp.MustCompile(`^\d{10}$`)
+	if !phoneRegex.MatchString(input.PhoneNumber) {
+		http.Error(w, "Invalid phone number (it should have 10 digits)", http.StatusBadRequest)
+		return
+	}
+
+	//max name length criteria
+	if len(input.Name) > 100 {
+		http.Error(w, "Name is too long (maximum 100 characters)", http.StatusBadRequest)
 		return
 	}
 
@@ -193,8 +183,10 @@ func (h *UserHandler) InitiateSignUp(w http.ResponseWriter, r *http.Request) {
 		switch err {
 		case usecase.ErrDuplicateEmail:
 			http.Error(w, "Email already exists", http.StatusConflict)
+		case usecase.ErrInvalidInput:
+			http.Error(w, err.Error(), http.StatusBadRequest)
 		default:
-			http.Error(w, "Internal server error: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
 		}
 		return
 	}

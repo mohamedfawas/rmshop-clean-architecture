@@ -18,6 +18,10 @@ type UserRepository interface {
 	GetOTPByEmail(ctx context.Context, email string) (*domain.OTP, error)
 	DeleteOTP(ctx context.Context, email string) error
 	UpdateEmailVerificationStatus(ctx context.Context, userID int64, status bool) error
+	CreateVerificationEntry(ctx context.Context, entry *domain.VerificationEntry) error
+	GetVerificationEntryByEmail(ctx context.Context, email string) (*domain.VerificationEntry, error)
+	UpdateVerificationEntry(ctx context.Context, entry *domain.VerificationEntry) error
+	DeleteExpiredVerificationEntries(ctx context.Context) error
 }
 
 type AdminRepository interface {

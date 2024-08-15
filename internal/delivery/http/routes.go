@@ -96,7 +96,6 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 			productHandler.UpdatePrimaryImage))).Methods("PUT")
 
 	// User routes
-	r.HandleFunc("/user/register", userHandler.Register)
 	r.HandleFunc("/user/login", userHandler.Login)
 	r.HandleFunc("/user/logout", middleware.JWTAuthMiddleware(userHandler.Logout))
 	r.HandleFunc("/user/signup", userHandler.InitiateSignUp).Methods("POST")

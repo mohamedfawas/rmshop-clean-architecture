@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"time"
 
@@ -23,20 +24,18 @@ var (
 	ErrInvalidOTP           = errors.New("invalid OTP")
 	ErrExpiredOTP           = errors.New("OTP has expired")
 	ErrEmailAlreadyVerified = errors.New("email already verified")
+	ErrInvalidInput         = errors.New("invalid input")
+	ErrDatabaseUnavailable  = errors.New("database unavailable")
+	ErrSMTPServerIssue      = errors.New("SMTP server issue")
 )
 
 // UserUseCase defines the interface for user-related use cases
 type UserUseCase interface {
-	Register(ctx context.Context, user *domain.User) error
 	Login(ctx context.Context, email, password string) (string, error)
 	Logout(ctx context.Context, token string) error
 	InitiateSignUp(ctx context.Context, user *domain.User) error
 	VerifyOTP(ctx context.Context, email, otp string) error
 	ResendOTP(ctx context.Context, email string) error
-	// Add other user-related use case methods here as needed, for example:
-	// GetByID(ctx context.Context, id int64) (*domain.User, error)
-	// Update(ctx context.Context, user *domain.User) error
-	// Delete(ctx context.Context, id int64) error
 }
 
 // userUseCase implements the UserUseCase interface
@@ -49,19 +48,6 @@ type userUseCase struct {
 func NewUserUseCase(userRepo repository.UserRepository, emailSender *email.Sender) UserUseCase {
 	return &userUseCase{userRepo: userRepo,
 		emailSender: emailSender}
-}
-
-// Register implements the user registration use case
-func (u *userUseCase) Register(ctx context.Context, user *domain.User) error {
-	// Add any business logic here (e.g., validation)
-	err := u.userRepo.Create(ctx, user)
-	if err != nil {
-		if err == ErrDuplicateEmail {
-			return ErrDuplicateEmail
-		}
-		return err
-	}
-	return nil
 }
 
 func (u *userUseCase) Login(ctx context.Context, email, password string) (string, error) {
@@ -128,110 +114,100 @@ func (u *userUseCase) Logout(ctx context.Context, token string) error {
 func (u *userUseCase) InitiateSignUp(ctx context.Context, user *domain.User) error {
 	log.Printf("Initiating sign up for email: %s", user.Email)
 
-	// Check if user already exists
-	_, err := u.userRepo.GetByEmail(ctx, user.Email)
-	if err == nil {
-		log.Printf("User with email %s already exists", user.Email)
-		return ErrDuplicateEmail
-	} else if err != ErrUserNotFound {
+	// Check if a verified user already exists with this email
+	existingUser, err := u.userRepo.GetByEmail(ctx, user.Email)
+	if err == nil && existingUser.IsEmailVerified {
 		log.Printf("Error checking existing user: %v", err)
-		return err
+		return ErrDuplicateEmail
 	}
 
 	// Hash the password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {
-		return err
+		return ErrInvalidInput
 	}
-	user.PasswordHash = string(hashedPassword)
+	//user.PasswordHash = string(hashedPassword)
 	user.Password = "" // Clear the plain text password
 
 	// Generate OTP
-	otp, err := otputil.GenerateOTP(6)
+	otp, err := otputil.GenerateOTP(6) //generate an otp of length 6
 	if err != nil {
 		log.Printf("Error generating OTP: %v", err)
 		return err
 	}
 	log.Printf("OTP generated for email: %s", user.Email)
 
-	expiresAt := time.Now().Add(30 * time.Second)
+	//otp expiration time : 15 minute
+	expiresAt := time.Now().Add(15 * time.Minute)
 
-	// Create user with unverified email
-	user.IsEmailVerified = false
-	err = u.userRepo.Create(ctx, user)
-	if err != nil {
-		log.Printf("Error creating user: %v", err)
-		return err
+	// Create a temporary verification entry
+	verificationEntry := &domain.VerificationEntry{
+		Email:        user.Email,
+		OTPCode:      otp,
+		UserData:     user,
+		PasswordHash: string(hashedPassword), // Store the hashed password here
+		ExpiresAt:    expiresAt,
+		IsVerified:   false,
 	}
-	log.Printf("User created with ID: %d", user.ID)
 
-	// Create OTP entry
-	otpEntry := &domain.OTP{
-		UserID:    user.ID,
-		Email:     user.Email,
-		OTPCode:   otp,
-		ExpiresAt: expiresAt,
-	}
-	err = u.userRepo.CreateOTP(ctx, otpEntry)
+	err = u.userRepo.CreateVerificationEntry(ctx, verificationEntry)
 	if err != nil {
-		log.Printf("Error creating OTP entry: %v", err)
-		return err
+		log.Printf("Error creating verification entry: %v", err)
+		return fmt.Errorf("error creating verification entry: %w", err)
 	}
-	log.Printf("OTP entry created for user ID: %d", user.ID)
 
 	// Send OTP email
 	err = u.emailSender.SendOTP(user.Email, otp)
 	if err != nil {
 		log.Printf("Error sending OTP email: %v", err)
-		return err
+		return fmt.Errorf("error sending OTP email: %w", err)
 	}
-	log.Printf("OTP email sent to: %s", user.Email)
 
 	return nil
 }
 
 func (u *userUseCase) VerifyOTP(ctx context.Context, email, otp string) error {
-	log.Printf("Attempting to verify OTP for email: %s", email)
-
-	otpEntry, err := u.userRepo.GetOTPByEmail(ctx, email)
+	verificationEntry, err := u.userRepo.GetVerificationEntryByEmail(ctx, email)
 	if err != nil {
-		log.Printf("Error retrieving OTP for email %s: %v", email, err)
-		return err
+		return ErrOTPNotFound
 	}
-	log.Printf("Retrieved OTP entry for email %s", email)
 
-	if otpEntry.OTPCode != otp {
-		log.Printf("Invalid OTP provided for email %s", email)
+	if verificationEntry.OTPCode != otp {
 		return ErrInvalidOTP
 	}
 
-	if time.Now().After(otpEntry.ExpiresAt) {
-		log.Printf("Expired OTP for email %s", email)
+	if time.Now().After(verificationEntry.ExpiresAt) {
 		return ErrExpiredOTP
 	}
 
-	log.Printf("OTP verified successfully for email %s", email)
+	// Create the user account
+	user := verificationEntry.UserData
+	user.IsEmailVerified = true
+	user.PasswordHash = verificationEntry.PasswordHash
 
-	// Mark email as verified
-	err = u.userRepo.UpdateEmailVerificationStatus(ctx, otpEntry.UserID, true)
-	if err != nil {
-		log.Printf("Error updating email verification status for user ID %d: %v", otpEntry.UserID, err)
-		return err
+	// Ensure the hashed password is set
+	if user.PasswordHash == "" {
+		return errors.New("password hash is missing")
 	}
 
-	// Delete OTP entry
-	err = u.userRepo.DeleteOTP(ctx, email)
+	err = u.userRepo.Create(ctx, user)
 	if err != nil {
-		log.Printf("Error deleting OTP entry for email %s: %v", email, err)
-		return err
+		return ErrDatabaseUnavailable
 	}
 
-	log.Printf("OTP verification process completed successfully for email %s", email)
+	// Mark the verification entry as verified
+	verificationEntry.IsVerified = true
+	err = u.userRepo.UpdateVerificationEntry(ctx, verificationEntry)
+	if err != nil {
+		return ErrDatabaseUnavailable
+	}
+
 	return nil
 }
 
 func (u *userUseCase) ResendOTP(ctx context.Context, email string) error {
-	user, err := u.userRepo.GetByEmail(ctx, email)
+	// Check if there's an existing unverified entry
+	existingEntry, err := u.userRepo.GetVerificationEntryByEmail(ctx, email)
 	if err != nil {
 		if err == ErrUserNotFound {
 			return ErrUserNotFound
@@ -239,32 +215,30 @@ func (u *userUseCase) ResendOTP(ctx context.Context, email string) error {
 		return err
 	}
 
-	if user.IsEmailVerified {
+	if existingEntry.IsVerified {
 		return ErrEmailAlreadyVerified
 	}
 
-	// Delete existing OTP if any
-	_ = u.userRepo.DeleteOTP(ctx, email)
-
 	// Generate new OTP
-	otp, err := otputil.GenerateOTP(6)
+	newOTP, err := otputil.GenerateOTP(6)
 	if err != nil {
-		return err
-	}
-	expiresAt := time.Now().Add(15 * time.Minute)
-
-	// Create new OTP entry
-	otpEntry := &domain.OTP{
-		UserID:    user.ID,
-		Email:     user.Email,
-		OTPCode:   otp,
-		ExpiresAt: expiresAt,
-	}
-	err = u.userRepo.CreateOTP(ctx, otpEntry)
-	if err != nil {
-		return err
+		return ErrInvalidInput
 	}
 
-	// Send OTP email
-	return u.emailSender.SendOTP(email, otp)
+	// Update existing entry or create a new one
+	existingEntry.OTPCode = newOTP
+	existingEntry.ExpiresAt = time.Now().Add(15 * time.Minute)
+
+	err = u.userRepo.UpdateVerificationEntry(ctx, existingEntry)
+	if err != nil {
+		return ErrDatabaseUnavailable
+	}
+
+	// Send new OTP email
+	err = u.emailSender.SendOTP(email, newOTP)
+	if err != nil {
+		return ErrSMTPServerIssue
+	}
+
+	return nil
 }
