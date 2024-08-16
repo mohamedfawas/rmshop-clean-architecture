@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
@@ -29,6 +30,8 @@ func (h *CategoryHandler) CreateCategory(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
+
+	category.Name = strings.TrimSpace(category.Name) //remove trailinng and leading white spaces
 
 	err = validator.ValidateCategoryName(category.Name)
 	if err != nil {
@@ -141,6 +144,8 @@ func (h *CategoryHandler) UpdateCategory(w http.ResponseWriter, r *http.Request)
 	}
 
 	category.ID = categoryID
+
+	category.Name = strings.TrimSpace(category.Name) //remove trailinng and leading white spaces
 
 	err = validator.ValidateCategoryName(category.Name)
 	if err != nil {

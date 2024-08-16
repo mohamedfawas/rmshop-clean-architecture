@@ -7,7 +7,6 @@ import (
 )
 
 func ValidateCategoryName(name string) error {
-	name = strings.TrimSpace(name) //remove trailinng and leading white spaces
 
 	if name == "" {
 		return utils.ErrInvalidCategoryName

@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/utils"
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/validator"
 )
 
 type UserHandler struct {
@@ -123,49 +124,67 @@ func (h *UserHandler) InitiateSignUp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//check for empty fields
-	if input.Name == "" || input.Email == "" || input.Password == "" || input.DateOfBirth == "" || input.PhoneNumber == "" {
-		http.Error(w, "All fields are required", http.StatusBadRequest)
-		return
-	}
-
 	//trim trailing and leading spaces
 	input.Name = strings.TrimSpace(input.Name)
 	input.Email = strings.TrimSpace(input.Email)
 	input.PhoneNumber = strings.TrimSpace(input.PhoneNumber)
 	input.DateOfBirth = strings.TrimSpace(input.DateOfBirth)
 
-	//validate email format
-	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
-	if !emailRegex.MatchString(input.Email) {
-		http.Error(w, "Invalid Email Format", http.StatusBadRequest)
-		return
-	}
-
-	//validate password length
-	if len(input.Password) < 8 {
-		http.Error(w, "Password must be at least 8 characters long", http.StatusBadRequest)
-		return
-	}
-
-	// Parse the date of birth
-	dob, err := time.Parse("2006-01-02", input.DateOfBirth)
+	//validate user name
+	err = validator.ValidateUserName(input.Name)
 	if err != nil {
-		log.Printf("Error parsing date of birth: %v", err)
-		http.Error(w, "Invalid date format for date_of_birth", http.StatusBadRequest)
+		switch err {
+		case utils.ErrInvalidUserName:
+			http.Error(w, "Give a valid name", http.StatusBadRequest)
+		case utils.ErrUserNameTooShort:
+			http.Error(w, "Username should have atleast two characters", http.StatusBadRequest)
+		case utils.ErrUserNameTooLong:
+			http.Error(w, "Username should have less than 200 characters", http.StatusBadRequest)
+		case utils.ErrUserNameWithNumericVals:
+			http.Error(w, "Username should not contain numeric characters", http.StatusBadRequest)
+		default:
+			http.Error(w, "Error while validating the user's name", http.StatusBadRequest)
+		}
 		return
 	}
+
+	//validate email
+	err = validator.ValidateUserEmail(input.Email)
+	if err != nil {
+		http.Error(w, "Give a valid email", http.StatusBadRequest)
+		return
+	}
+
+	//validate password
+	err = validator.ValidatePassword(input.Password)
+	if err != nil {
+		switch err {
+		case utils.ErrPasswordInvalid:
+			http.Error(w, "Give a valid password", http.StatusBadRequest)
+		case utils.ErrPasswordTooShort:
+			http.Error(w, "Password should have atleast 8 characters", http.StatusBadRequest)
+		case utils.ErrPasswordTooLong:
+			http.Error(w, "password should not have greater than 64 characters", http.StatusBadRequest)
+		case utils.ErrPasswordSecurity:
+			http.Error(w, "Password should have atleast one upper case letter, one lower case letter, one number and one special character", http.StatusBadRequest)
+		default:
+			http.Error(w, "Error while validating the password", http.StatusBadRequest)
+		}
+		return
+	}
+
+	// validate dob
+	err = validator.ValidateUserDOB(input.DateOfBirth)
+	if err != nil {
+		http.Error(w, "Please give dob in YYYY-MM-DD format", http.StatusBadRequest)
+		return
+	}
+	dob, _ := time.Parse("2006-01-02", input.DateOfBirth) //parse dob
 
 	//validate phone number
-	phoneRegex := regexp.MustCompile(`^\d{10}$`)
-	if !phoneRegex.MatchString(input.PhoneNumber) {
+	err = validator.ValidatePhoneNumber(input.PhoneNumber)
+	if err != nil {
 		http.Error(w, "Invalid phone number (it should have 10 digits)", http.StatusBadRequest)
-		return
-	}
-
-	//max name length criteria
-	if len(input.Name) > 100 {
-		http.Error(w, "Name is too long (maximum 100 characters)", http.StatusBadRequest)
 		return
 	}
 
