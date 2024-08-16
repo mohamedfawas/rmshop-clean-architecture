@@ -70,12 +70,10 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.
 	var lastLogin sql.NullTime //nulltime : nullable timestamp value
 	//it holds two values : Timestamp and Valid (bool, indicates whether the value is null or not)
 
-	var isEmailVerified bool
-
 	// Execute the query and scan the result into the user struct
 	err := r.db.QueryRowContext(ctx, query, email).Scan(
 		&user.ID, &user.Name, &user.Email, &user.PasswordHash, &user.DOB,
-		&user.PhoneNumber, &user.IsBlocked, &user.CreatedAt, &user.UpdatedAt, &lastLogin, &isEmailVerified,
+		&user.PhoneNumber, &user.IsBlocked, &user.CreatedAt, &user.UpdatedAt, &lastLogin, &user.IsEmailVerified,
 	)
 
 	if err != nil {
@@ -91,11 +89,6 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.
 	if lastLogin.Valid {
 		user.LastLogin = lastLogin.Time
 	}
-
-	//if the user details already added and email if not verified
-	// if !isEmailVerified {
-
-	// }
 
 	// Return the user struct and nil error
 	return &user, nil

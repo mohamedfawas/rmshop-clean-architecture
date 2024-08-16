@@ -201,7 +201,7 @@ func (h *UserHandler) InitiateSignUp(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error in InitiateSignUp: %v", err)
 		switch err {
 		case usecase.ErrDuplicateEmail:
-			http.Error(w, "Email already exists", http.StatusConflict)
+			http.Error(w, "Email already registered", http.StatusConflict)
 		case usecase.ErrInvalidInput:
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		default:
