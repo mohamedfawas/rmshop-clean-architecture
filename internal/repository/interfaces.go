@@ -15,13 +15,17 @@ type UserRepository interface {
 	BlacklistToken(ctx context.Context, token string, expiresAt time.Time) error
 	IsTokenBlacklisted(ctx context.Context, token string) (bool, error)
 	CreateOTP(ctx context.Context, otp *domain.OTP) error
-	GetOTPByEmail(ctx context.Context, email string) (*domain.OTP, error)
-	DeleteOTP(ctx context.Context, email string) error
-	UpdateEmailVerificationStatus(ctx context.Context, userID int64, status bool) error
 	CreateVerificationEntry(ctx context.Context, entry *domain.VerificationEntry) error
 	GetVerificationEntryByEmail(ctx context.Context, email string) (*domain.VerificationEntry, error)
 	UpdateVerificationEntry(ctx context.Context, entry *domain.VerificationEntry) error
+	DeleteVerificationEntry(ctx context.Context, email string) error
 	DeleteExpiredVerificationEntries(ctx context.Context) error
+	GetOTPByEmail(ctx context.Context, email string) (*domain.OTP, error)
+	UpdateEmailVerificationStatus(ctx context.Context, userID int64, status bool) error
+	DeleteOTP(ctx context.Context, email string) error
+	GetOTPResendInfo(ctx context.Context, email string) (int, time.Time, error)
+	UpdateOTPResendInfo(ctx context.Context, email string) error
+	UpdateVerificationEntryAfterResendOTP(ctx context.Context, entry *domain.VerificationEntry) error
 }
 
 type AdminRepository interface {

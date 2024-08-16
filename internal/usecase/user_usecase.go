@@ -15,20 +15,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-var (
-	ErrDuplicateEmail       = errors.New("email already exists")
-	ErrUserNotFound         = errors.New("user not found")
-	ErrInvalidCredentials   = errors.New("invalid credentials")
-	ErrInvalidToken         = errors.New("invalid token")
-	ErrOTPNotFound          = errors.New("OTP not found")
-	ErrInvalidOTP           = errors.New("invalid OTP")
-	ErrExpiredOTP           = errors.New("OTP has expired")
-	ErrEmailAlreadyVerified = errors.New("email already verified")
-	ErrInvalidInput         = errors.New("invalid input")
-	ErrDatabaseUnavailable  = errors.New("database unavailable")
-	ErrSMTPServerIssue      = errors.New("SMTP server issue")
-)
-
 // UserUseCase defines the interface for user-related use cases
 type UserUseCase interface {
 	Login(ctx context.Context, email, password string) (string, error)
@@ -138,7 +124,7 @@ func (u *userUseCase) InitiateSignUp(ctx context.Context, user *domain.User) err
 	log.Printf("OTP generated for email: %s", user.Email)
 
 	//otp expiration time : 15 minute
-	expiresAt := time.Now().Add(15 * time.Minute)
+	expiresAt := time.Now().UTC().Add(15 * time.Minute)
 
 	// Create a temporary verification entry
 	verificationEntry := &domain.VerificationEntry{
@@ -167,56 +153,81 @@ func (u *userUseCase) InitiateSignUp(ctx context.Context, user *domain.User) err
 }
 
 func (u *userUseCase) VerifyOTP(ctx context.Context, email, otp string) error {
-	verificationEntry, err := u.userRepo.GetVerificationEntryByEmail(ctx, email)
+	// Get the verification entry
+	entry, err := u.userRepo.GetVerificationEntryByEmail(ctx, email)
 	if err != nil {
-		return ErrOTPNotFound
+		if err == repository.ErrVerificationEntryNotFound {
+			return ErrNonExEmail
+		}
+		return err
 	}
 
-	if verificationEntry.OTPCode != otp {
-		return ErrInvalidOTP
-	}
-
-	if time.Now().After(verificationEntry.ExpiresAt) {
+	// Check if OTP is expired
+	if time.Now().UTC().After(entry.ExpiresAt) {
+		log.Printf("expiry time : %v", entry.ExpiresAt)
+		log.Printf("Expired OTP detected")
 		return ErrExpiredOTP
 	}
 
-	// Create the user account
-	user := verificationEntry.UserData
-	user.IsEmailVerified = true
-	user.PasswordHash = verificationEntry.PasswordHash
-
-	// Ensure the hashed password is set
-	if user.PasswordHash == "" {
-		return errors.New("password hash is missing")
+	// Verify OTP
+	if entry.OTPCode != otp {
+		return ErrInvalidOTP
 	}
+
+	// Check if the email is already verified
+	if entry.IsVerified {
+		return ErrEmailAlreadyVerified
+	}
+
+	// Create the user
+	user := entry.UserData
+	user.IsEmailVerified = true
+	user.PasswordHash = entry.PasswordHash
 
 	err = u.userRepo.Create(ctx, user)
 	if err != nil {
-		return ErrDatabaseUnavailable
+		return err
 	}
 
 	// Mark the verification entry as verified
-	verificationEntry.IsVerified = true
-	err = u.userRepo.UpdateVerificationEntry(ctx, verificationEntry)
+	entry.IsVerified = true
+	err = u.userRepo.UpdateVerificationEntry(ctx, entry)
 	if err != nil {
-		return ErrDatabaseUnavailable
+		return err
+	}
+
+	// delete the verification entry
+	err = u.userRepo.DeleteVerificationEntry(ctx, email)
+	if err != nil {
+		return err
 	}
 
 	return nil
 }
 
 func (u *userUseCase) ResendOTP(ctx context.Context, email string) error {
-	// Check if there's an existing unverified entry
-	existingEntry, err := u.userRepo.GetVerificationEntryByEmail(ctx, email)
+	// Get the verification entry
+	entry, err := u.userRepo.GetVerificationEntryByEmail(ctx, email)
 	if err != nil {
-		if err == ErrUserNotFound {
-			return ErrUserNotFound
+		if err == repository.ErrVerificationEntryNotFound {
+			return ErrNonExEmail
 		}
 		return err
 	}
 
-	if existingEntry.IsVerified {
-		return ErrEmailAlreadyVerified
+	// Check if signup process has expired
+	if time.Now().UTC().Sub(entry.CreatedAt) > signupExpiration {
+		return ErrSignupExpired
+	}
+
+	// Check rate limiting
+	resendCount, lastResendTime, err := u.userRepo.GetOTPResendInfo(ctx, email)
+	if err != nil {
+		return err
+	}
+
+	if resendCount >= maxResendAttempts && time.Now().UTC().Sub(lastResendTime) < resendCooldown {
+		return ErrTooManyResendAttempts
 	}
 
 	// Generate new OTP
@@ -225,13 +236,19 @@ func (u *userUseCase) ResendOTP(ctx context.Context, email string) error {
 		return ErrInvalidInput
 	}
 
-	// Update existing entry or create a new one
-	existingEntry.OTPCode = newOTP
-	existingEntry.ExpiresAt = time.Now().Add(15 * time.Minute)
+	// Update verification entry
+	entry.OTPCode = newOTP
+	entry.ExpiresAt = time.Now().UTC().Add(15 * time.Minute)
 
-	err = u.userRepo.UpdateVerificationEntry(ctx, existingEntry)
+	err = u.userRepo.UpdateVerificationEntryAfterResendOTP(ctx, entry)
 	if err != nil {
 		return ErrDatabaseUnavailable
+	}
+
+	// Update resend info
+	err = u.userRepo.UpdateOTPResendInfo(ctx, email)
+	if err != nil {
+		return err
 	}
 
 	// Send new OTP email

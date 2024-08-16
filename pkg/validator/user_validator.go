@@ -26,6 +26,11 @@ func ValidateUserName(name string) error {
 }
 
 func ValidateUserEmail(email string) error {
+
+	if email == "" {
+		return utils.ErrMissingEmail
+	}
+
 	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
 	if !emailRegex.MatchString(email) {
 		return utils.ErrInvalidEmail
@@ -86,65 +91,18 @@ func ValidatePhoneNumber(phoneNumber string) error {
 	return nil
 }
 
-// // IsValidName checks if the name is not empty
-// func IsValidName(name string) bool {
-// 	return len(name) > 0
-// }
+func ValidateOTP(otp string) error {
+	if len(otp) == 0 {
+		return utils.ErrMissingOTP
+	}
+	if len(otp) != 6 {
+		return utils.ErrOtpLength
+	}
 
-// // IsValidEmail checks if the email follows a valid format
-// func IsValidEmail(email string) bool {
-// 	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
-// 	return emailRegex.MatchString(email)
-// }
+	matched, _ := regexp.MatchString(`^\d{6}$`, otp)
+	if !matched {
+		return utils.ErrOtpNums
+	}
 
-// // IsValidPassword checks if the password is at least 8 characters utils.
-// func IsValidPassword(password string) bool {
-// 	return len(password) >= 8
-// }
-
-// // IsValidPhoneNumber checks if the phone number is exactly 10 digits
-// func IsValidPhoneNumber(phoneNumber string) bool {
-// 	phoneRegex := regexp.MustCompile(`^\d{10}$`)
-// 	return phoneRegex.MatchString(phoneNumber)
-// }
-
-// // IsValidDateOfBirth checks if the date of birth is in the correct format (YYYY-MM-DD)
-// func IsValidDateOfBirth(dob string) bool {
-// 	_, err := time.Parse("2006-01-02", dob)
-// 	return err == nil
-// }
-
-// // ValidateUserInput checks all user input fields
-// func ValidateUserInput(name, email, password, phoneNumber, dob string) error {
-
-// 	//trim the trailing and leading whitespace
-// 	name = strings.TrimSpace(name)
-// 	email = strings.TrimSpace(email)
-// 	phoneNumber = strings.TrimSpace(phoneNumber)
-// 	dob = strings.TrimSpace(dob)
-
-// 	if !IsValidName(name) {
-// 		return fmt.Errorf("invalid name")
-// 	}
-// 	if !IsValidEmail(email) {
-// 		return fmt.Errorf("invalid email format")
-// 	}
-// 	if !IsValidPassword(password) {
-// 		return fmt.Errorf("password must be at least 6 characters long")
-// 	}
-// 	if !IsValidPhoneNumber(phoneNumber) {
-// 		return fmt.Errorf("invalid phone number format")
-// 	}
-// 	if !IsValidDateOfBirth(dob) {
-// 		return fmt.Errorf("invalid date of birth format (use YYYY-MM-DD)")
-// 	}
-// 	return nil
-// }
-
-// func ParseDateOfBirth(dob string) time.Time {
-// 	dob, err := time.Parse("2006-01-02", dob)
-// 	if err != nil {
-// 		log.Printf("Error parsing date of birth: %v", err)
-// 		return dob
-// 	}
-// }
+	return nil
+}

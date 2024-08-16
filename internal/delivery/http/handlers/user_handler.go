@@ -124,9 +124,9 @@ func (h *UserHandler) InitiateSignUp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//trim trailing and leading spaces
-	input.Name = strings.TrimSpace(input.Name)
-	input.Email = strings.TrimSpace(input.Email)
+	//trim trailing and leading spaces and convert to lower case to make it case insensitive
+	input.Name = strings.ToLower(strings.TrimSpace(input.Name))
+	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
 	input.PhoneNumber = strings.TrimSpace(input.PhoneNumber)
 	input.DateOfBirth = strings.TrimSpace(input.DateOfBirth)
 
@@ -143,7 +143,7 @@ func (h *UserHandler) InitiateSignUp(w http.ResponseWriter, r *http.Request) {
 		case utils.ErrUserNameWithNumericVals:
 			http.Error(w, "Username should not contain numeric characters", http.StatusBadRequest)
 		default:
-			http.Error(w, "Error while validating the user's name", http.StatusBadRequest)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
 		}
 		return
 	}
@@ -151,7 +151,14 @@ func (h *UserHandler) InitiateSignUp(w http.ResponseWriter, r *http.Request) {
 	//validate email
 	err = validator.ValidateUserEmail(input.Email)
 	if err != nil {
-		http.Error(w, "Give a valid email", http.StatusBadRequest)
+		switch err {
+		case utils.ErrMissingEmail:
+			http.Error(w, "The email field is required and must be a valid email address", http.StatusBadRequest)
+		case utils.ErrInvalidEmail:
+			http.Error(w, "Give a valid email", http.StatusBadRequest)
+		default:
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -168,7 +175,7 @@ func (h *UserHandler) InitiateSignUp(w http.ResponseWriter, r *http.Request) {
 		case utils.ErrPasswordSecurity:
 			http.Error(w, "Password should have atleast one upper case letter, one lower case letter, one number and one special character", http.StatusBadRequest)
 		default:
-			http.Error(w, "Error while validating the password", http.StatusBadRequest)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
 		}
 		return
 	}
@@ -223,23 +230,55 @@ func (h *UserHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 	var input VerifyOTPInput
 	err := json.NewDecoder(r.Body).Decode(&input)
 	if err != nil {
-		log.Printf("Error decoding request body: %v", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Trim whitespace and make lower case
+	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
+	input.OTP = strings.TrimSpace(input.OTP)
+
+	// Validate email
+	err = validator.ValidateUserEmail(input.Email)
+	if err != nil {
+		switch err {
+		case utils.ErrMissingEmail:
+			http.Error(w, "The email field is required and must be a valid email address", http.StatusBadRequest)
+		case utils.ErrInvalidEmail:
+			http.Error(w, "Give a valid email", http.StatusBadRequest)
+		default:
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Validate OTP
+	if err := validator.ValidateOTP(input.OTP); err != nil {
+		switch err {
+		case utils.ErrMissingOTP:
+			http.Error(w, "Give a valid OTP", http.StatusBadRequest)
+		case utils.ErrOtpLength:
+			http.Error(w, "OTP must have 6 digits", http.StatusBadRequest)
+		case utils.ErrOtpNums:
+			http.Error(w, "OTP must contain digits only", http.StatusBadRequest)
+		default:
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
 		return
 	}
 
 	err = h.userUseCase.VerifyOTP(r.Context(), input.Email, input.OTP)
 	if err != nil {
-		log.Printf("Error verifying OTP: %v", err)
 		switch err {
 		case usecase.ErrInvalidOTP:
 			http.Error(w, "Invalid OTP", http.StatusBadRequest)
 		case usecase.ErrExpiredOTP:
 			http.Error(w, "OTP has expired", http.StatusBadRequest)
-		case usecase.ErrOTPNotFound:
-			http.Error(w, "OTP not found", http.StatusNotFound)
+		case usecase.ErrNonExEmail:
+			http.Error(w, "User not found", http.StatusNotFound)
+		case usecase.ErrEmailAlreadyVerified:
+			http.Error(w, "Email already verified", http.StatusBadRequest)
 		default:
-			log.Printf("Unexpected error in VerifyOTP: %v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 		}
 		return
@@ -261,13 +300,26 @@ func (h *UserHandler) ResendOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Trim whitespace and make lower case
+	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
+
+	// Validate email
+	if err := validator.ValidateUserEmail(input.Email); err != nil {
+		http.Error(w, "Invalid email format", http.StatusBadRequest)
+		return
+	}
+
 	err = h.userUseCase.ResendOTP(r.Context(), input.Email)
 	if err != nil {
 		switch err {
-		case usecase.ErrUserNotFound:
-			http.Error(w, "User not found", http.StatusNotFound)
+		case usecase.ErrNonExEmail:
+			http.Error(w, "Given Email not initiated sign up", http.StatusNotFound)
 		case usecase.ErrEmailAlreadyVerified:
 			http.Error(w, "Email already verified", http.StatusBadRequest)
+		case usecase.ErrTooManyResendAttempts:
+			http.Error(w, "Too many resend attempts. Please try again later.", http.StatusTooManyRequests)
+		case usecase.ErrSignupExpired:
+			http.Error(w, "Signup process has expired. Please start over.", http.StatusBadRequest)
 		default:
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 		}

@@ -9,6 +9,7 @@ import (
 
 	"github.com/lib/pq"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
+	"github.com/mohamedfawas/rmshop-clean-architecture/internal/repository"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
 )
 
@@ -79,7 +80,7 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.
 	if err != nil {
 		if err == sql.ErrNoRows {
 			// If no user is found, return a specific error
-			return nil, usecase.ErrUserNotFound
+			return nil, repository.ErrUserNotFound
 		}
 		// For any other error, return it as is
 		return nil, err
@@ -137,7 +138,7 @@ func (r *userRepository) GetOTPByEmail(ctx context.Context, email string) (*doma
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, usecase.ErrOTPNotFound
+			return nil, repository.ErrOTPNotFound
 		}
 		return nil, err
 	}
@@ -151,12 +152,13 @@ func (r *userRepository) DeleteOTP(ctx context.Context, email string) error {
 }
 
 func (r *userRepository) UpdateEmailVerificationStatus(ctx context.Context, userID int64, status bool) error {
-	query := `UPDATE users SET is_email_verified = $1 WHERE id = $2`
-	_, err := r.db.ExecContext(ctx, query, status, userID)
+	query := `UPDATE users SET is_email_verified = $1, updated_at = $2 WHERE id = $3`
+	_, err := r.db.ExecContext(ctx, query, status, time.Now(), userID)
 	return err
 }
 
 func (r *userRepository) CreateVerificationEntry(ctx context.Context, entry *domain.VerificationEntry) error {
+
 	query := `INSERT INTO verification_entries (email, otp_code, user_data, password_hash, expires_at, is_verified, created_at)
               VALUES ($1, $2, $3, $4, $5, $6, $7)
               RETURNING id`
@@ -188,11 +190,17 @@ func (r *userRepository) GetVerificationEntryByEmail(ctx context.Context, email 
 
 	var entry domain.VerificationEntry
 	var userDataJSON []byte
+	var expiresAt time.Time //later used to verify the time is in UTC
 	err := r.db.QueryRowContext(ctx, query, email).Scan(
-		&entry.ID, &entry.Email, &entry.OTPCode, &userDataJSON, &entry.PasswordHash, &entry.ExpiresAt, &entry.IsVerified, &entry.CreatedAt)
+		&entry.ID, &entry.Email, &entry.OTPCode, &userDataJSON, &entry.PasswordHash, &expiresAt, &entry.IsVerified, &entry.CreatedAt)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, repository.ErrVerificationEntryNotFound
+		}
 		return nil, err
 	}
+	// Ensure the time is in UTC
+	entry.ExpiresAt = expiresAt.UTC()
 
 	err = json.Unmarshal(userDataJSON, &entry.UserData)
 	if err != nil {
@@ -216,5 +224,45 @@ func (r *userRepository) DeleteExpiredVerificationEntries(ctx context.Context) e
               WHERE expires_at < $1 AND is_verified = false`
 
 	_, err := r.db.ExecContext(ctx, query, time.Now())
+	return err
+}
+
+func (r *userRepository) DeleteVerificationEntry(ctx context.Context, email string) error {
+	query := `DELETE FROM verification_entries WHERE email = $1`
+	_, err := r.db.ExecContext(ctx, query, email)
+	return err
+}
+
+func (r *userRepository) GetOTPResendInfo(ctx context.Context, email string) (int, time.Time, error) {
+	query := `SELECT resend_count, last_resend_time FROM otp_resend_info WHERE email = $1`
+	var count int
+	var lastResendTime time.Time
+	err := r.db.QueryRowContext(ctx, query, email).Scan(&count, &lastResendTime)
+	if err == sql.ErrNoRows {
+		return 0, time.Time{}, nil
+	}
+	return count, lastResendTime, err
+}
+
+func (r *userRepository) UpdateOTPResendInfo(ctx context.Context, email string) error {
+	query := `
+        INSERT INTO otp_resend_info (email, resend_count, last_resend_time)
+        VALUES ($1, 1, NOW())
+        ON CONFLICT (email) DO UPDATE
+        SET resend_count = otp_resend_info.resend_count + 1, last_resend_time = NOW()
+    `
+	_, err := r.db.ExecContext(ctx, query, email)
+	return err
+}
+
+func (r *userRepository) UpdateVerificationEntryAfterResendOTP(ctx context.Context, entry *domain.VerificationEntry) error {
+	query := `UPDATE verification_entries
+              SET is_verified = $1, otp_code = $2, expires_at = $3
+              WHERE id = $4`
+
+	_, err := r.db.ExecContext(ctx, query, entry.IsVerified, entry.OTPCode, entry.ExpiresAt, entry.ID)
+	if err != nil {
+		log.Printf("Error updating verification entry: %v", err)
+	}
 	return err
 }

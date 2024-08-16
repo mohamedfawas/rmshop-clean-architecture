@@ -15,6 +15,7 @@ var (
 
 	//user related : email
 	ErrInvalidEmail = errors.New("invalid email format")
+	ErrMissingEmail = errors.New("no email input given")
 
 	//user related : password
 	ErrPasswordTooShort = errors.New("password too short")
@@ -27,6 +28,13 @@ var (
 
 	//user related : dob
 	ErrInvalidPhoneNumber = errors.New("invalid phone number")
+
+	//user related : OTP
+	ErrMissingOTP            = errors.New("need valid otp input")
+	ErrOtpLength             = errors.New("otp must have 6 digits")
+	ErrOtpNums               = errors.New("non digits in otp")
+	ErrTooManyResendAttempts = errors.New("too many resend attempts")
+	ErrSignupExpired         = errors.New("signup process has expired")
 
 	//category related
 	ErrInvalidCategoryName    = errors.New("invalid category name")
