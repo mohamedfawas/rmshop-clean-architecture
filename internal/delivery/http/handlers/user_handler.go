@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -43,19 +42,32 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Call the Login method of the userUseCase, passing the email and password
+	// Trim and lowercase email
+	input.Email = strings.TrimSpace(strings.ToLower(input.Email))
+	input.Password = strings.TrimSpace(input.Password)
+
+	// validate credentials
+	if err := validator.ValidateUserLoginCredentials(input.Email, input.Password); err != nil {
+		http.Error(w, "Please give an input for email and password", http.StatusBadRequest)
+		return
+	}
+
+	// Validate email format
+	if err = validator.ValidateUserEmail(input.Email); err != nil {
+		http.Error(w, "Invalid email format", http.StatusBadRequest)
+		return
+	}
+
 	token, err := h.userUseCase.Login(r.Context(), input.Email, input.Password)
 	if err != nil {
-		// Handle different types of errors
 		switch err {
 		case usecase.ErrInvalidCredentials:
-			// If credentials are invalid, return a 401 Unauthorized error
 			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
+		case usecase.ErrUserBlocked:
+			http.Error(w, "User is blocked", http.StatusForbidden)
 		default:
-			// Log the actual error for debugging purposes
 			log.Printf("Login error: %v", err)
-			// For any other error, return a 500 Internal Server Error
-			http.Error(w, fmt.Sprintf("Internal server error: %v", err), http.StatusInternalServerError)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
 		}
 		return
 	}

@@ -106,11 +106,16 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 			productHandler.RemoveProductImage))).Methods("DELETE")
 
 	// User routes
-	r.HandleFunc("/user/login", userHandler.Login)
-	r.HandleFunc("/user/logout", middleware.JWTAuthMiddleware(userHandler.Logout))
-	r.HandleFunc("/user/signup", userHandler.InitiateSignUp).Methods("POST")
-	r.HandleFunc("/user/verify-otp", userHandler.VerifyOTP).Methods("POST")
-	r.HandleFunc("/user/resend-otp", userHandler.ResendOTP).Methods("POST")
+	r.HandleFunc("/user/login",
+		userHandler.Login).Methods("POST")
+	r.HandleFunc("/user/logout",
+		middleware.JWTAuthMiddleware(userHandler.Logout))
+	r.HandleFunc("/user/signup",
+		userHandler.InitiateSignUp).Methods("POST")
+	r.HandleFunc("/user/verify-otp",
+		userHandler.VerifyOTP).Methods("POST")
+	r.HandleFunc("/user/resend-otp",
+		userHandler.ResendOTP).Methods("POST")
 
 	//product listing on user side
 	r.HandleFunc("/products", middleware.JWTAuthMiddleware(productHandler.GetActiveProducts)).Methods("GET")

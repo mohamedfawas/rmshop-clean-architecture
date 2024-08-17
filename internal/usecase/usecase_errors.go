@@ -17,4 +17,5 @@ var (
 	ErrNonExEmail            = errors.New("OTP not found for given email") //non existent email
 	ErrSignupExpired         = errors.New("signup process has expired")
 	ErrTooManyResendAttempts = errors.New("too many resend attempts")
+	ErrUserBlocked           = errors.New("user is blocked")
 )

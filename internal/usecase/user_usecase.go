@@ -40,12 +40,16 @@ func (u *userUseCase) Login(ctx context.Context, email, password string) (string
 	// Attempt to retrieve the user by email from the repository
 	user, err := u.userRepo.GetByEmail(ctx, email)
 	if err != nil {
-		if err == ErrUserNotFound {
+		if err == repository.ErrUserNotFound {
 			// If the user is not found, return an invalid credentials error
 			return "", ErrInvalidCredentials
 		}
 		// For any other error, return it as is
 		return "", err
+	}
+
+	if user.IsBlocked {
+		return "", ErrUserBlocked
 	}
 
 	// Check if the provided password matches the stored password

@@ -36,6 +36,9 @@ var (
 	ErrTooManyResendAttempts = errors.New("too many resend attempts")
 	ErrSignupExpired         = errors.New("signup process has expired")
 
+	//user related : login
+	ErrLoginCredentialsMissing = errors.New("login credentials missing")
+
 	//category related
 	ErrInvalidCategoryName    = errors.New("invalid category name")
 	ErrCategoryNameTooLong    = errors.New("category name too long")

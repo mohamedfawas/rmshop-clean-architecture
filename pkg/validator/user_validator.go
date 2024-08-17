@@ -106,3 +106,10 @@ func ValidateOTP(otp string) error {
 
 	return nil
 }
+
+func ValidateUserLoginCredentials(email, password string) error {
+	if email == "" || password == "" {
+		return utils.ErrLoginCredentialsMissing
+	}
+	return nil
+}

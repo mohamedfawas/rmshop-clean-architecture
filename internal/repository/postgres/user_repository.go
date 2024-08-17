@@ -97,10 +97,10 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.
 
 func (r *userRepository) UpdateLastLogin(ctx context.Context, userID int64) error {
 	// SQL query to update the last_login field for a user
-	query := `UPDATE users SET last_login = NOW() WHERE id = $1`
+	query := `UPDATE users SET last_login = $1 WHERE id = $2`
 
 	// Execute the update query
-	_, err := r.db.ExecContext(ctx, query, userID)
+	_, err := r.db.ExecContext(ctx, query, time.Now(), userID)
 	return err
 }
 
