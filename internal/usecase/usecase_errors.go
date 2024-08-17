@@ -24,4 +24,6 @@ var (
 	ErrTokenAlreadyBlacklisted = errors.New("token already blacklisted")
 	ErrInvalidCategory         = errors.New("invalid category ID")
 	ErrInvalidSubCategory      = errors.New("invalid sub-category ID")
+	ErrProductNotFound         = errors.New("product not found")
+	ErrDuplicateImageURL       = errors.New("duplicate image URL")
 )

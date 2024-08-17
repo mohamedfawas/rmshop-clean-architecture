@@ -155,7 +155,19 @@ func (u *productUseCase) AddProductImages(ctx context.Context, productID int64, 
 		return err
 	}
 	if product == nil {
-		return errors.New("product not found")
+		return ErrProductNotFound
+	}
+
+	// Check for duplicate URLs
+	existingURLs := make(map[string]bool)
+	for _, img := range product.Images {
+		existingURLs[img.ImageURL] = true
+	}
+	for _, newImg := range images {
+		if existingURLs[newImg.ImageURL] {
+			return ErrDuplicateImageURL
+		}
+		existingURLs[newImg.ImageURL] = true
 	}
 
 	// Add the new images

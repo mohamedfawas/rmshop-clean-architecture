@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"regexp"
 	"strconv"
 
 	"github.com/gorilla/mux"
@@ -295,11 +296,27 @@ func (h *ProductHandler) AddProductImages(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if len(input.Images) > usecase.MaxImagesPerProduct {
+		http.Error(w, "Exceeded maximum number of images allowed", http.StatusBadRequest)
+		return
+	}
+
+	for _, img := range input.Images {
+		if !isValidImageURL(img.ImageURL) {
+			http.Error(w, "Invalid image URL", http.StatusBadRequest)
+			return
+		}
+	}
+
 	err = h.productUseCase.AddProductImages(r.Context(), productID, input.Images)
 	if err != nil {
-		if err.Error() == "product not found" {
-			http.Error(w, err.Error(), http.StatusNotFound)
-		} else {
+		switch err {
+		case usecase.ErrProductNotFound:
+			http.Error(w, "Product not found", http.StatusNotFound)
+		case usecase.ErrDuplicateImageURL:
+			http.Error(w, "Duplicate image URL detected", http.StatusBadRequest)
+		default:
+			log.Printf("Error adding product images: %v", err)
 			http.Error(w, "Failed to add product images", http.StatusInternalServerError)
 		}
 		return
@@ -307,6 +324,10 @@ func (h *ProductHandler) AddProductImages(w http.ResponseWriter, r *http.Request
 
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]string{"message": "Images added successfully"})
+}
+
+func isValidImageURL(url string) bool {
+	return regexp.MustCompile(`^https?://`).MatchString(url)
 }
 
 func (h *ProductHandler) RemoveProductImage(w http.ResponseWriter, r *http.Request) {
