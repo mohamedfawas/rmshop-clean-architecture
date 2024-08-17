@@ -5,11 +5,12 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/utils"
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/validator"
 )
 
 type ProductHandler struct {
@@ -165,74 +166,80 @@ func (h *ProductHandler) GetActiveProducts(w http.ResponseWriter, r *http.Reques
 		len(products), userID, page, pageSize, totalCount)
 }
 
-func (h *ProductHandler) CreateProduct(w http.ResponseWriter, r *http.Request) {
+// func (h *ProductHandler) CreateProduct(w http.ResponseWriter, r *http.Request) {
 
-	role, ok := r.Context().Value("user_role").(string)
-	if !ok || role != "admin" {
-		http.Error(w, "Admin access required", http.StatusForbidden)
-		return
-	}
+// 	role, ok := r.Context().Value("user_role").(string)
+// 	if !ok || role != "admin" {
+// 		http.Error(w, "Admin access required", http.StatusForbidden)
+// 		return
+// 	}
 
-	var input struct {
-		Product domain.Product        `json:"product"`
-		Images  []domain.ProductImage `json:"images"`
-	}
+// 	var input struct {
+// 		Product domain.Product        `json:"product"`
+// 		Images  []domain.ProductImage `json:"images"`
+// 	}
 
-	err := json.NewDecoder(r.Body).Decode(&input)
-	if err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
+// 	err := json.NewDecoder(r.Body).Decode(&input)
+// 	if err != nil {
+// 		http.Error(w, "Invalid request body", http.StatusBadRequest)
+// 		return
+// 	}
 
-	// Validate required fields
-	if input.Product.Name == "" || input.Product.Price <= 0 || input.Product.StockQuantity < 0 {
-		http.Error(w, "Missing or invalid required fields", http.StatusBadRequest)
-		return
-	}
+// 	// Validate required fields
+// 	if input.Product.Name == "" || input.Product.Price <= 0 || input.Product.StockQuantity < 0 {
+// 		http.Error(w, "Missing or invalid required fields", http.StatusBadRequest)
+// 		return
+// 	}
 
-	// Validate images
-	if len(input.Images) == 0 {
-		http.Error(w, "At least one image is required", http.StatusBadRequest)
-		return
-	}
+// 	// product validations
+//     if len(input.Product.Name) > 255 { // Adjust the length as per your database schema
+//         http.Error(w, "Product name is too long", http.StatusBadRequest)
+//         return
+//     }
 
-	primaryCount := 0
-	for _, img := range input.Images {
-		if img.IsPrimary {
-			primaryCount++
-		}
-		if !strings.HasPrefix(img.ImageURL, "http://") && !strings.HasPrefix(img.ImageURL, "https://") {
-			http.Error(w, "Invalid image URL", http.StatusBadRequest)
-			return
-		}
-	}
+// 	// Validate images
+// 	if len(input.Images) == 0 {
+// 		http.Error(w, "At least one image is required", http.StatusBadRequest)
+// 		return
+// 	}
 
-	if primaryCount > 1 {
-		http.Error(w, "Only one image can be set as primary", http.StatusBadRequest)
-		return
-	}
+// 	primaryCount := 0
+// 	for _, img := range input.Images {
+// 		if img.IsPrimary {
+// 			primaryCount++
+// 		}
+// 		if !strings.HasPrefix(img.ImageURL, "http://") && !strings.HasPrefix(img.ImageURL, "https://") {
+// 			http.Error(w, "Invalid image URL", http.StatusBadRequest)
+// 			return
+// 		}
+// 	}
 
-	// If no primary image is set, make the first one primary
-	if primaryCount == 0 && len(input.Images) > 0 {
-		input.Images[0].IsPrimary = true
-	}
+// 	if primaryCount > 1 {
+// 		http.Error(w, "Only one image can be set as primary", http.StatusBadRequest)
+// 		return
+// 	}
 
-	err = h.productUseCase.CreateProductWithImages(r.Context(), &input.Product, input.Images)
-	if err != nil {
-		switch err {
-		case usecase.ErrInvalidCategory, usecase.ErrInvalidSubCategory:
-			http.Error(w, err.Error(), http.StatusBadRequest)
-		default:
-			log.Printf("Error creating product: %v", err)
-			http.Error(w, "Failed to create product", http.StatusInternalServerError)
-		}
-		return
-	}
+// 	// If no primary image is set, make the first one primary
+// 	if primaryCount == 0 && len(input.Images) > 0 {
+// 		input.Images[0].IsPrimary = true
+// 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(input.Product)
-}
+// 	err = h.productUseCase.CreateProductWithImages(r.Context(), &input.Product, input.Images)
+// 	if err != nil {
+// 		switch err {
+// 		case usecase.ErrInvalidCategory, usecase.ErrInvalidSubCategory:
+// 			http.Error(w, err.Error(), http.StatusBadRequest)
+// 		default:
+// 			log.Printf("Error creating product: %v", err)
+// 			http.Error(w, "Failed to create product", http.StatusInternalServerError)
+// 		}
+// 		return
+// 	}
+
+//		w.Header().Set("Content-Type", "application/json")
+//		w.WriteHeader(http.StatusCreated)
+//		json.NewEncoder(w).Encode(input.Product)
+//	}
 func (h *ProductHandler) UpdatePrimaryImage(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	productID, err := strconv.ParseInt(vars["productId"], 10, 64)
@@ -333,4 +340,91 @@ func (h *ProductHandler) RemoveProductImage(w http.ResponseWriter, r *http.Reque
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"message": "Image removed successfully"})
+}
+
+func (h *ProductHandler) CreateProduct(w http.ResponseWriter, r *http.Request) {
+	// Check if the user is an admin
+	role, ok := r.Context().Value("user_role").(string)
+	if !ok || role != "admin" {
+		http.Error(w, "Admin access required", http.StatusForbidden)
+		return
+	}
+
+	// Parse the request body
+	var input struct {
+		Product domain.Product        `json:"product"`
+		Images  []domain.ProductImage `json:"images"`
+	}
+	err := json.NewDecoder(r.Body).Decode(&input)
+	if err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Validate the product and images
+	err = validator.ValidateProduct(&input.Product, input.Images)
+	if err != nil {
+		switch err {
+		case utils.ErrInvalidProductName, utils.ErrProductNameTooLong:
+			http.Error(w, "Invalid product name", http.StatusBadRequest)
+		case utils.ErrInvalidProductDescription:
+			http.Error(w, "Invalid product description", http.StatusBadRequest)
+		case utils.ErrInvalidProductPrice:
+			http.Error(w, "Invalid product price", http.StatusBadRequest)
+		case utils.ErrProductDescriptionRequired:
+			http.Error(w, "Product description is required", http.StatusBadRequest)
+		case utils.ErrStockQuantRequired:
+			http.Error(w, "Stock quantity is required", http.StatusBadRequest)
+		case utils.ErrInvalidStockQuantity:
+			http.Error(w, "Invalid stock quantity", http.StatusBadRequest)
+		case utils.ErrInvalidCategoryID:
+			http.Error(w, "Invalid category ID", http.StatusBadRequest)
+		case utils.ErrInvalidSubCategoryID:
+			http.Error(w, "Invalid sub-category ID", http.StatusBadRequest)
+		case utils.ErrNoImages:
+			http.Error(w, "At least one image is required", http.StatusBadRequest)
+		case utils.ErrTooManyImages:
+			http.Error(w, "Too many images", http.StatusBadRequest)
+		case utils.ErrInvalidImageURL:
+			http.Error(w, "Invalid image URL", http.StatusBadRequest)
+		case utils.ErrMultiplePrimaryImages:
+			http.Error(w, "Only one image can be set as primary", http.StatusBadRequest)
+		case utils.ErrNoPrimaryImage:
+			http.Error(w, "No primary image specified", http.StatusBadRequest)
+		default:
+			http.Error(w, "Invalid product data", http.StatusBadRequest)
+		}
+		return
+	}
+
+	// Create the product with images
+	err = h.productUseCase.CreateProductWithImages(r.Context(), &input.Product, input.Images)
+	if err != nil {
+		switch err {
+		case usecase.ErrInvalidCategory:
+			http.Error(w, "Invalid category", http.StatusBadRequest)
+		case usecase.ErrInvalidSubCategory:
+			http.Error(w, "Invalid sub-category", http.StatusBadRequest)
+		default:
+			log.Printf("Error creating product: %v", err)
+			http.Error(w, "Failed to create product", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Prepare the response
+	response := struct {
+		Message string         `json:"message"`
+		Product domain.Product `json:"product"`
+	}{
+		Message: "Product created successfully",
+		Product: input.Product,
+	}
+
+	// Send the response
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("Error encoding response: %v", err)
+	}
 }

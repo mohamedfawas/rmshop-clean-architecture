@@ -78,7 +78,7 @@ func (r *productRepository) Create(ctx context.Context, product *domain.Product)
 
 func (r *productRepository) GetAll(ctx context.Context) ([]*domain.Product, error) {
 	query := `
-		SELECT id, name, description, price, stock_quantity, category_id, sub_category_id, image_url, created_at, updated_at, deleted_at
+		SELECT id, name, description, price, stock_quantity, category_id, sub_category_id, created_at, updated_at, deleted_at
 		FROM products
 		WHERE deleted_at IS NULL
 		ORDER BY id
@@ -96,7 +96,7 @@ func (r *productRepository) GetAll(ctx context.Context) ([]*domain.Product, erro
 		var p domain.Product
 		err := rows.Scan(
 			&p.ID, &p.Name, &p.Description, &p.Price, &p.StockQuantity,
-			&p.CategoryID, &p.SubCategoryID, &p.ImageURL, &p.CreatedAt, &p.UpdatedAt,
+			&p.CategoryID, &p.SubCategoryID, &p.CreatedAt, &p.UpdatedAt,
 			&p.DeletedAt,
 		)
 		if err != nil {
@@ -151,14 +151,13 @@ func (r *productRepository) Update(ctx context.Context, product *domain.Product)
 	query := `
 		UPDATE products
 		SET name = $1, description = $2, price = $3, stock_quantity = $4,
-			category_id = $5, sub_category_id = $6, image_url = $7, updated_at = $8
-		WHERE id = $9 AND deleted_at IS NULL
+			category_id = $5, sub_category_id = $6, updated_at = $7
+		WHERE id = $8 AND deleted_at IS NULL
 	`
 
 	result, err := r.db.ExecContext(ctx, query,
 		product.Name, product.Description, product.Price, product.StockQuantity,
-		product.CategoryID, product.SubCategoryID, product.ImageURL,
-		time.Now(), product.ID)
+		product.CategoryID, product.SubCategoryID, time.Now(), product.ID)
 	if err != nil {
 		log.Printf("Error updating product: %v", err)
 		return err
@@ -199,59 +198,6 @@ func (r *productRepository) SoftDelete(ctx context.Context, id int64) error {
 	}
 
 	return nil
-}
-
-func (r *productRepository) GetActiveProducts(ctx context.Context, page, pageSize int) ([]*domain.Product, int, error) {
-	query := `
-        SELECT id, name, description, price, stock_quantity, category_id, sub_category_id, image_url, created_at, updated_at
-        FROM products
-        WHERE deleted_at IS NULL
-        ORDER BY id
-        LIMIT $1 OFFSET $2
-    `
-
-	countQuery := `
-        SELECT COUNT(*)
-        FROM products
-        WHERE deleted_at IS NULL
-    `
-
-	offset := (page - 1) * pageSize
-
-	rows, err := r.db.QueryContext(ctx, query, pageSize, offset)
-	if err != nil {
-		log.Printf("Error querying active products: %v", err)
-		return nil, 0, err
-	}
-	defer rows.Close()
-
-	var products []*domain.Product
-	for rows.Next() {
-		var p domain.Product
-		err := rows.Scan(
-			&p.ID, &p.Name, &p.Description, &p.Price, &p.StockQuantity,
-			&p.CategoryID, &p.SubCategoryID, &p.ImageURL, &p.CreatedAt, &p.UpdatedAt,
-		)
-		if err != nil {
-			log.Printf("Error scanning product row: %v", err)
-			return nil, 0, err
-		}
-		products = append(products, &p)
-	}
-
-	if err = rows.Err(); err != nil {
-		log.Printf("Error after scanning all rows: %v", err)
-		return nil, 0, err
-	}
-
-	var totalCount int
-	err = r.db.QueryRowContext(ctx, countQuery).Scan(&totalCount)
-	if err != nil {
-		log.Printf("Error getting total count: %v", err)
-		return nil, 0, err
-	}
-
-	return products, totalCount, nil
 }
 
 func (r *productRepository) AddProductImages(ctx context.Context, productID int64, images []domain.ProductImage) ([]int64, error) {
@@ -345,4 +291,69 @@ func (r *productRepository) RemoveProductImage(ctx context.Context, imageID int6
 	query := `DELETE FROM product_images WHERE id = $1`
 	_, err := r.db.ExecContext(ctx, query, imageID)
 	return err
+}
+
+func (r *productRepository) GetActiveProducts(ctx context.Context, page, pageSize int) ([]*domain.Product, int, error) {
+	query := `
+        SELECT id, name, description, price, stock_quantity, category_id, sub_category_id, created_at, updated_at, primary_image_id
+        FROM products
+        WHERE deleted_at IS NULL
+        ORDER BY id
+        LIMIT $1 OFFSET $2
+    `
+
+	countQuery := `
+        SELECT COUNT(*)
+        FROM products
+        WHERE deleted_at IS NULL
+    `
+
+	offset := (page - 1) * pageSize
+
+	rows, err := r.db.QueryContext(ctx, query, pageSize, offset)
+	if err != nil {
+		log.Printf("Error querying active products: %v", err)
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var products []*domain.Product
+	for rows.Next() {
+		var p domain.Product
+		err := rows.Scan(
+			&p.ID, &p.Name, &p.Description, &p.Price, &p.StockQuantity,
+			&p.CategoryID, &p.SubCategoryID, &p.CreatedAt, &p.UpdatedAt, &p.PrimaryImageID,
+		)
+		if err != nil {
+			log.Printf("Error scanning product row: %v", err)
+			return nil, 0, err
+		}
+		products = append(products, &p)
+	}
+
+	if err = rows.Err(); err != nil {
+		log.Printf("Error after scanning all rows: %v", err)
+		return nil, 0, err
+	}
+
+	var totalCount int
+	err = r.db.QueryRowContext(ctx, countQuery).Scan(&totalCount)
+	if err != nil {
+		log.Printf("Error getting total count: %v", err)
+		return nil, 0, err
+	}
+
+	// Optionally, fetch images for each product
+	for _, product := range products {
+		images, err := r.GetProductImages(ctx, product.ID)
+		if err != nil {
+			log.Printf("Error fetching images for product %d: %v", product.ID, err)
+			// Decide whether to return an error or continue
+			// For now, we'll log the error and continue
+			continue
+		}
+		product.Images = images
+	}
+
+	return products, totalCount, nil
 }

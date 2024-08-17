@@ -250,8 +250,21 @@ func (u *productUseCase) CreateProductWithImages(ctx context.Context, product *d
 		if err != nil {
 			return err
 		}
+		product.PrimaryImageID = &primaryImageID
 	}
 
 	// Commit the transaction
-	return tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+
+	// Fetch the images for the product
+	productImages, err := u.productRepo.GetProductImages(ctx, product.ID)
+	if err != nil {
+		return err
+	}
+
+	product.Images = productImages
+
+	return nil
 }

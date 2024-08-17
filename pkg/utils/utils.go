@@ -50,6 +50,22 @@ var (
 	ErrSubCategoryNotFound    = errors.New("subcategory not found")
 	ErrCategoryNameTooShort   = errors.New("category name too short")
 	ErrCategoryNameNumeric    = errors.New("category name purely numeric")
+
+	// product related
+	ErrInvalidProductName         = errors.New("invalid product name")
+	ErrProductNameTooLong         = errors.New("product name is too long")
+	ErrInvalidProductDescription  = errors.New("invalid product description")
+	ErrInvalidProductPrice        = errors.New("invalid product price")
+	ErrInvalidStockQuantity       = errors.New("invalid stock quantity")
+	ErrInvalidCategoryID          = errors.New("invalid category ID")
+	ErrInvalidSubCategoryID       = errors.New("invalid sub-category ID")
+	ErrNoImages                   = errors.New("at least one image is required")
+	ErrTooManyImages              = errors.New("too many images")
+	ErrInvalidImageURL            = errors.New("invalid image URL")
+	ErrMultiplePrimaryImages      = errors.New("multiple primary images not allowed")
+	ErrNoPrimaryImage             = errors.New("no primary image specified")
+	ErrStockQuantRequired         = errors.New("stock quantity is required")
+	ErrProductDescriptionRequired = errors.New("product description required")
 )
 
 func GenerateSlug(name string) string {
