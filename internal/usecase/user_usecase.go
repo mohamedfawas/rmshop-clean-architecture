@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -76,26 +75,26 @@ func (u *userUseCase) Login(ctx context.Context, email, password string) (string
 
 func (u *userUseCase) Logout(ctx context.Context, token string) error {
 	// Validate the token
-	_, err := auth.ValidateToken(token)
+	claims, err := auth.ValidateUserToken(token)
 	if err != nil {
-		// If the token is invalid, return an error
 		return ErrInvalidToken
+	}
+
+	// Check if the token is already blacklisted
+	isBlacklisted, err := u.userRepo.IsTokenBlacklisted(ctx, token)
+	if err != nil {
+		return err
+	}
+	if isBlacklisted {
+		return ErrTokenAlreadyBlacklisted
 	}
 
 	// Get token expiration time
-	claims, err := auth.GetTokenClaims(token)
-	if err != nil {
-		// If unable to get token claims, return an error
+	exp, ok := claims["exp"].(float64)
+	if !ok {
 		return ErrInvalidToken
 	}
-
-	// Convert the expiration time to int64
-	expFloat, ok := claims["exp"].(float64)
-	if !ok {
-		// If the expiration claim is not a float64, return an error
-		return errors.New("invalid expiration claim")
-	}
-	expiresAt := time.Unix(int64(expFloat), 0)
+	expiresAt := time.Unix(int64(exp), 0)
 
 	// Blacklist the token
 	return u.userRepo.BlacklistToken(ctx, token, expiresAt)

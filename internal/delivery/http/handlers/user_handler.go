@@ -82,34 +82,40 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 func (h *UserHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	// Extract the token from the Authorization header
-	token := r.Header.Get("Authorization")
-	if token == "" {
-		// If the token is missing, return a 401 Unauthorized error
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
 		http.Error(w, "Missing authorization token", http.StatusUnauthorized)
 		return
 	}
 
-	// Remove "Bearer " prefix if present
-	if len(token) > 7 && token[:7] == "Bearer " {
-		token = token[7:]
+	// Check for correct Authorization scheme
+	parts := strings.SplitN(authHeader, " ", 2)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+		http.Error(w, "Invalid authorization header format", http.StatusUnauthorized)
+		return
+	}
+
+	token := parts[1]
+	if token == "" {
+		http.Error(w, "Empty token", http.StatusUnauthorized)
+		return
 	}
 
 	// Call the Logout method of the userUseCase, passing the token
 	err := h.userUseCase.Logout(r.Context(), token)
 	if err != nil {
-		if err == usecase.ErrInvalidToken {
-			// If the token is invalid, return a 401 Unauthorized error
+		switch err {
+		case usecase.ErrInvalidToken:
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
-		} else {
-			// For any other error, return a 500 Internal Server Error
+		case usecase.ErrTokenAlreadyBlacklisted:
+			http.Error(w, "Token already invalidated", http.StatusBadRequest)
+		default:
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 		}
 		return
 	}
 
-	// If logout is successful, set the status code to 200 OK
 	w.WriteHeader(http.StatusOK)
-	// Send a success message in the response body
 	json.NewEncoder(w).Encode(map[string]string{"message": "Logged out successfully"})
 }
 

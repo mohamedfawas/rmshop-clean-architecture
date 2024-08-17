@@ -113,15 +113,10 @@ func (r *userRepository) BlacklistToken(ctx context.Context, token string, expir
 }
 
 func (r *userRepository) IsTokenBlacklisted(ctx context.Context, token string) (bool, error) {
-	// SQL query to check if a token is blacklisted and not expired
-	query := `SELECT EXISTS(SELECT 1 FROM blacklisted_tokens WHERE token = $1 AND expires_at > NOW())`
+	query := `SELECT EXISTS(SELECT 1 FROM blacklisted_tokens WHERE token = $1)`
 	var exists bool
-	// Execute the query and scan the result
 	err := r.db.QueryRowContext(ctx, query, token).Scan(&exists)
-	if err != nil {
-		return false, err
-	}
-	return exists, nil
+	return exists, err
 }
 
 func (r *userRepository) CreateOTP(ctx context.Context, otp *domain.OTP) error {

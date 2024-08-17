@@ -109,7 +109,7 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 	r.HandleFunc("/user/login",
 		userHandler.Login).Methods("POST")
 	r.HandleFunc("/user/logout",
-		middleware.JWTAuthMiddleware(userHandler.Logout))
+		middleware.UserAuthMiddleware(userHandler.Logout)).Methods("POST")
 	r.HandleFunc("/user/signup",
 		userHandler.InitiateSignUp).Methods("POST")
 	r.HandleFunc("/user/verify-otp",
@@ -118,7 +118,7 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 		userHandler.ResendOTP).Methods("POST")
 
 	//product listing on user side
-	r.HandleFunc("/products", middleware.JWTAuthMiddleware(productHandler.GetActiveProducts)).Methods("GET")
+	r.HandleFunc("/products", middleware.UserAuthMiddleware(productHandler.GetActiveProducts)).Methods("GET")
 
 	log.Println("Router setup complete")
 	// Wrap the entire mux with the logging middleware

@@ -9,13 +9,6 @@ import (
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/auth"
 )
 
-var (
-	ErrAdminNotFound           = errors.New("admin not found")
-	ErrInvalidAdminCredentials = errors.New("invalid admin credentials")
-	ErrInvalidAdminToken       = errors.New("invalid admin token")
-	ErrTokenAlreadyBlacklisted = errors.New("token already blacklisted")
-)
-
 type AdminUseCase interface {
 	Login(ctx context.Context, username, password string) (string, error)
 	Logout(ctx context.Context, token string) error
