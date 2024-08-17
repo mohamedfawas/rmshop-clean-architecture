@@ -22,4 +22,6 @@ var (
 	ErrTooManyResendAttempts   = errors.New("too many resend attempts")
 	ErrUserBlocked             = errors.New("user is blocked")
 	ErrTokenAlreadyBlacklisted = errors.New("token already blacklisted")
+	ErrInvalidCategory         = errors.New("invalid category ID")
+	ErrInvalidSubCategory      = errors.New("invalid sub-category ID")
 )

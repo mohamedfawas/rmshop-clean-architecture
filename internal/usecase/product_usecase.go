@@ -23,11 +23,17 @@ type ProductUseCase interface {
 }
 
 type productUseCase struct {
-	productRepo repository.ProductRepository
+	productRepo     repository.ProductRepository
+	categoryRepo    repository.CategoryRepository
+	subCategoryRepo repository.SubCategoryRepository
 }
 
-func NewProductUseCase(productRepo repository.ProductRepository) ProductUseCase {
-	return &productUseCase{productRepo: productRepo}
+func NewProductUseCase(productRepo repository.ProductRepository, categoryRepo repository.CategoryRepository, subCategoryRepo repository.SubCategoryRepository) ProductUseCase {
+	return &productUseCase{
+		productRepo:     productRepo,
+		categoryRepo:    categoryRepo,
+		subCategoryRepo: subCategoryRepo,
+	}
 }
 
 func (u *productUseCase) CreateProduct(ctx context.Context, product *domain.Product) error {
@@ -74,50 +80,50 @@ func (u *productUseCase) GetActiveProducts(ctx context.Context, page, pageSize i
 	return u.productRepo.GetActiveProducts(ctx, page, pageSize)
 }
 
-func (u *productUseCase) CreateProductWithImages(ctx context.Context, product *domain.Product, images []domain.ProductImage) error {
-	// Start a transaction
-	tx, err := u.productRepo.BeginTx(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
+// func (u *productUseCase) CreateProductWithImages(ctx context.Context, product *domain.Product, images []domain.ProductImage) error {
+// 	// Start a transaction
+// 	tx, err := u.productRepo.BeginTx(ctx)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	defer tx.Rollback()
 
-	// Create the product
-	err = u.productRepo.CreateWithTx(ctx, tx, product)
-	if err != nil {
-		return err
-	}
+// 	// Create the product
+// 	err = u.productRepo.CreateWithTx(ctx, tx, product)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	// Add images and set primary image
-	imageIDs, err := u.productRepo.AddProductImagesWithTx(ctx, tx, product.ID, images)
-	if err != nil {
-		return err
-	}
+// 	// Add images and set primary image
+// 	imageIDs, err := u.productRepo.AddProductImagesWithTx(ctx, tx, product.ID, images)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	// Find the primary image
-	var primaryImageID int64
-	for i, img := range images {
-		if img.IsPrimary {
-			primaryImageID = imageIDs[i]
-			break
-		}
-	}
+// 	// Find the primary image
+// 	var primaryImageID int64
+// 	for i, img := range images {
+// 		if img.IsPrimary {
+// 			primaryImageID = imageIDs[i]
+// 			break
+// 		}
+// 	}
 
-	// If no primary image was specified, use the first image
-	if primaryImageID == 0 && len(imageIDs) > 0 {
-		primaryImageID = imageIDs[0]
-	}
+// 	// If no primary image was specified, use the first image
+// 	if primaryImageID == 0 && len(imageIDs) > 0 {
+// 		primaryImageID = imageIDs[0]
+// 	}
 
-	if primaryImageID != 0 {
-		err = u.productRepo.UpdatePrimaryImageWithTx(ctx, tx, product.ID, primaryImageID)
-		if err != nil {
-			return err
-		}
-	}
+// 	if primaryImageID != 0 {
+// 		err = u.productRepo.UpdatePrimaryImageWithTx(ctx, tx, product.ID, primaryImageID)
+// 		if err != nil {
+// 			return err
+// 		}
+// 	}
 
-	// Commit the transaction
-	return tx.Commit()
-}
+// 	// Commit the transaction
+// 	return tx.Commit()
+// }
 
 func (u *productUseCase) UpdatePrimaryImage(ctx context.Context, productID int64, imageID int64) error {
 	// First, check if the product exists
@@ -192,4 +198,60 @@ func (u *productUseCase) RemoveProductImage(ctx context.Context, productID, imag
 	}
 
 	return nil
+}
+
+func (u *productUseCase) CreateProductWithImages(ctx context.Context, product *domain.Product, images []domain.ProductImage) error {
+	// Validate category and subcategory
+	_, err := u.categoryRepo.GetByID(ctx, product.CategoryID)
+	if err != nil {
+		return ErrInvalidCategory
+	}
+
+	_, err = u.subCategoryRepo.GetByID(ctx, product.SubCategoryID)
+	if err != nil {
+		return ErrInvalidSubCategory
+	}
+
+	// Start a transaction
+	tx, err := u.productRepo.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Set creation and update times
+	now := time.Now()
+	product.CreatedAt = now
+	product.UpdatedAt = now
+
+	// Create the product
+	err = u.productRepo.CreateWithTx(ctx, tx, product)
+	if err != nil {
+		return err
+	}
+
+	// Add images
+	imageIDs, err := u.productRepo.AddProductImagesWithTx(ctx, tx, product.ID, images)
+	if err != nil {
+		return err
+	}
+
+	// Set primary image
+	var primaryImageID int64
+	for i, img := range images {
+		if img.IsPrimary {
+			primaryImageID = imageIDs[i]
+			break
+		}
+	}
+
+	if primaryImageID != 0 {
+		err = u.productRepo.UpdatePrimaryImageWithTx(ctx, tx, product.ID, primaryImageID)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Commit the transaction
+	return tx.Commit()
 }

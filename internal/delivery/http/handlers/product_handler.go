@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gorilla/mux"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
@@ -18,25 +19,6 @@ type ProductHandler struct {
 func NewProductHandler(productUseCase usecase.ProductUseCase) *ProductHandler {
 	return &ProductHandler{productUseCase: productUseCase}
 }
-
-// func (h *ProductHandler) CreateProduct(w http.ResponseWriter, r *http.Request) {
-// 	var product domain.Product
-// 	err := json.NewDecoder(r.Body).Decode(&product)
-// 	if err != nil {
-// 		http.Error(w, "Invalid request body", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	err = h.productUseCase.CreateProduct(r.Context(), &product)
-// 	if err != nil {
-// 		http.Error(w, "Failed to create product", http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	w.Header().Set("Content-Type", "application/json")
-// 	w.WriteHeader(http.StatusCreated)
-// 	json.NewEncoder(w).Encode(product)
-// }
 
 func (h *ProductHandler) GetAllProducts(w http.ResponseWriter, r *http.Request) {
 	log.Println("Entering GetAllProducts handler")
@@ -184,42 +166,66 @@ func (h *ProductHandler) GetActiveProducts(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *ProductHandler) CreateProduct(w http.ResponseWriter, r *http.Request) {
+
+	role, ok := r.Context().Value("user_role").(string)
+	if !ok || role != "admin" {
+		http.Error(w, "Admin access required", http.StatusForbidden)
+		return
+	}
+
 	var input struct {
 		Product domain.Product        `json:"product"`
 		Images  []domain.ProductImage `json:"images"`
 	}
+
 	err := json.NewDecoder(r.Body).Decode(&input)
 	if err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	// Validate that we have at least one image
+	// Validate required fields
+	if input.Product.Name == "" || input.Product.Price <= 0 || input.Product.StockQuantity < 0 {
+		http.Error(w, "Missing or invalid required fields", http.StatusBadRequest)
+		return
+	}
+
+	// Validate images
 	if len(input.Images) == 0 {
 		http.Error(w, "At least one image is required", http.StatusBadRequest)
 		return
 	}
 
-	// Ensure only one image is set as primary
 	primaryCount := 0
 	for _, img := range input.Images {
 		if img.IsPrimary {
 			primaryCount++
 		}
+		if !strings.HasPrefix(img.ImageURL, "http://") && !strings.HasPrefix(img.ImageURL, "https://") {
+			http.Error(w, "Invalid image URL", http.StatusBadRequest)
+			return
+		}
 	}
+
 	if primaryCount > 1 {
 		http.Error(w, "Only one image can be set as primary", http.StatusBadRequest)
 		return
 	}
 
 	// If no primary image is set, make the first one primary
-	if primaryCount == 0 {
+	if primaryCount == 0 && len(input.Images) > 0 {
 		input.Images[0].IsPrimary = true
 	}
 
 	err = h.productUseCase.CreateProductWithImages(r.Context(), &input.Product, input.Images)
 	if err != nil {
-		http.Error(w, "Failed to create product", http.StatusInternalServerError)
+		switch err {
+		case usecase.ErrInvalidCategory, usecase.ErrInvalidSubCategory:
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		default:
+			log.Printf("Error creating product: %v", err)
+			http.Error(w, "Failed to create product", http.StatusInternalServerError)
+		}
 		return
 	}
 

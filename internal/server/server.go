@@ -48,7 +48,7 @@ func NewServer(db *sql.DB, emailSender *email.Sender) *Server {
 
 	// Product components
 	productRepo := postgres.NewProductRepository(db)
-	productUseCase := usecase.NewProductUseCase(productRepo)
+	productUseCase := usecase.NewProductUseCase(productRepo, categoryRepo, subCategoryRepo)
 	productHandler := handlers.NewProductHandler(productUseCase)
 	log.Println("Product components initialized")
 
