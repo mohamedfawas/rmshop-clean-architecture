@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
-	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/utils"
 )
 
 type adminRepository struct {
@@ -29,9 +29,9 @@ func (r *adminRepository) GetByUsername(ctx context.Context, username string) (*
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, usecase.ErrAdminNotFound
+			return nil, utils.ErrAdminNotFound
 		}
-		return nil, err
+		return nil, utils.ErrRetreivingAdminUsername
 	}
 
 	// Return the admin struct and nil error

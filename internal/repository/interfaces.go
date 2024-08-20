@@ -9,29 +9,29 @@ import (
 )
 
 type UserRepository interface {
-	Create(ctx context.Context, user *domain.User) error                //Create user method
-	GetByEmail(ctx context.Context, email string) (*domain.User, error) //Get user details using email
-	UpdateLastLogin(ctx context.Context, userID int64) error            //ecord the most recent time a user successfully authenticated (logged in) to the system
+	Create(ctx context.Context, user *domain.User) error                //fz
+	GetByEmail(ctx context.Context, email string) (*domain.User, error) //fz
+	UpdateLastLogin(ctx context.Context, userID int64) error
 	BlacklistToken(ctx context.Context, token string, expiresAt time.Time) error
 	IsTokenBlacklisted(ctx context.Context, token string) (bool, error)
 	CreateOTP(ctx context.Context, otp *domain.OTP) error
-	CreateVerificationEntry(ctx context.Context, entry *domain.VerificationEntry) error
-	GetVerificationEntryByEmail(ctx context.Context, email string) (*domain.VerificationEntry, error)
-	UpdateVerificationEntry(ctx context.Context, entry *domain.VerificationEntry) error
+	CreateVerificationEntry(ctx context.Context, entry *domain.VerificationEntry) error               //fz
+	GetVerificationEntryByEmail(ctx context.Context, email string) (*domain.VerificationEntry, error) //fz
+	UpdateVerificationEntry(ctx context.Context, entry *domain.VerificationEntry) error               //fz
 	DeleteVerificationEntry(ctx context.Context, email string) error
 	DeleteExpiredVerificationEntries(ctx context.Context) error
 	GetOTPByEmail(ctx context.Context, email string) (*domain.OTP, error)
 	UpdateEmailVerificationStatus(ctx context.Context, userID int64, status bool) error
 	DeleteOTP(ctx context.Context, email string) error
-	GetOTPResendInfo(ctx context.Context, email string) (int, time.Time, error)
-	UpdateOTPResendInfo(ctx context.Context, email string) error
-	UpdateVerificationEntryAfterResendOTP(ctx context.Context, entry *domain.VerificationEntry) error
+	GetOTPResendInfo(ctx context.Context, email string) (int, time.Time, error)                       //fz
+	UpdateOTPResendInfo(ctx context.Context, email string) error                                      //fz
+	UpdateVerificationEntryAfterResendOTP(ctx context.Context, entry *domain.VerificationEntry) error //fz
 }
 
 type AdminRepository interface {
-	GetByUsername(ctx context.Context, username string) (*domain.Admin, error)
-	BlacklistToken(ctx context.Context, token string, expiresAt time.Time) error
-	IsTokenBlacklisted(ctx context.Context, token string) (bool, error)
+	GetByUsername(ctx context.Context, username string) (*domain.Admin, error)   //fz
+	BlacklistToken(ctx context.Context, token string, expiresAt time.Time) error //fz
+	IsTokenBlacklisted(ctx context.Context, token string) (bool, error)          //fz
 }
 
 type CategoryRepository interface {

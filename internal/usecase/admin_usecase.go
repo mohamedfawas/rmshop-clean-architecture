@@ -2,11 +2,11 @@ package usecase
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/repository"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/auth"
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/utils"
 )
 
 type AdminUseCase interface {
@@ -26,24 +26,24 @@ func (u *adminUseCase) Login(ctx context.Context, username, password string) (st
 	// Attempt to retrieve the admin by username from the repository
 	admin, err := u.adminRepo.GetByUsername(ctx, username)
 	if err != nil {
-		if err == ErrAdminNotFound {
+		if err == utils.ErrAdminNotFound {
 			// If the admin is not found, return an invalid credentials error
-			return "", ErrInvalidAdminCredentials
+			return "", utils.ErrInvalidAdminCredentials
 		}
 		// For any other error, return it as is
-		return "", err
+		return "", utils.ErrRetreivingAdminUsername
 	}
 
 	// Check if the provided password matches the stored password
 	if !admin.CheckPassword(password) {
 		// If passwords don't match, return an invalid credentials error
-		return "", ErrInvalidAdminCredentials
+		return "", utils.ErrInvalidAdminCredentials
 	}
 
 	// Generate JWT token with admin role
 	token, err := auth.GenerateTokenWithRole(admin.ID, "admin")
 	if err != nil {
-		return "", err
+		return "", utils.ErrGenerateJWTTokenWithRole
 	}
 	return token, nil
 }
@@ -52,32 +52,32 @@ func (u *adminUseCase) Logout(ctx context.Context, token string) error {
 	// Validate the token
 	_, role, err := auth.ValidateTokenWithRole(token)
 	if err != nil {
-		return ErrInvalidAdminToken
+		return utils.ErrInvalidAdminToken
 	}
 
 	if role != "admin" {
-		return ErrInvalidAdminToken
+		return utils.ErrInvalidAdminToken
 	}
 
 	// Check if token is already blacklisted
 	blacklisted, err := u.adminRepo.IsTokenBlacklisted(ctx, token)
 	if err != nil {
-		return err
+		return utils.ErrCheckTokenBlacklisted
 	}
 	if blacklisted {
-		return ErrTokenAlreadyBlacklisted
+		return utils.ErrTokenAlreadyBlacklisted
 	}
 
 	// Get token expiration time
 	claims, err := auth.GetTokenClaims(token)
 	if err != nil {
-		return ErrInvalidAdminToken
+		return utils.ErrTokenExpired
 	}
 
 	// Convert the expiration time to int64
 	expFloat, ok := claims["exp"].(float64)
 	if !ok {
-		return errors.New("invalid expiration claim")
+		return utils.ErrInvalidExpirationClaim
 	}
 	expiresAt := time.Unix(int64(expFloat), 0)
 

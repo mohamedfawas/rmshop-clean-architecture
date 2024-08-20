@@ -1,1 +1,0 @@
-ALTER TABLE sub_categories ADD COLUMN gender_specific BOOLEAN NOT NULL DEFAULT false;

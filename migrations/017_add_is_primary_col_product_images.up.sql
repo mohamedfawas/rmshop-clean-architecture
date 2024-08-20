@@ -1,1 +1,0 @@
-ALTER TABLE product_images ADD COLUMN is_primary BOOLEAN NOT NULL DEFAULT false;

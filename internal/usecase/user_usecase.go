@@ -2,8 +2,6 @@ package usecase
 
 import (
 	"context"
-	"fmt"
-	"log"
 	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
@@ -11,6 +9,7 @@ import (
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/auth"
 	email "github.com/mohamedfawas/rmshop-clean-architecture/pkg/emailVerify"
 	otputil "github.com/mohamedfawas/rmshop-clean-architecture/pkg/otpUtility"
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/utils"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -39,35 +38,35 @@ func (u *userUseCase) Login(ctx context.Context, email, password string) (string
 	// Attempt to retrieve the user by email from the repository
 	user, err := u.userRepo.GetByEmail(ctx, email)
 	if err != nil {
-		if err == repository.ErrUserNotFound {
+		if err == utils.ErrUserNotFound {
 			// If the user is not found, return an invalid credentials error
-			return "", ErrInvalidCredentials
+			return "", utils.ErrInvalidCredentials
 		}
 		// For any other error, return it as is
 		return "", err
 	}
 
 	if user.IsBlocked {
-		return "", ErrUserBlocked
+		return "", utils.ErrUserBlocked
 	}
 
 	// Check if the provided password matches the stored password
 	if !user.CheckPassword(password) {
 		// If passwords don't match, return an invalid credentials error
-		return "", ErrInvalidCredentials
+		return "", utils.ErrInvalidCredentials
 	}
 	// Update the user's last login time
 	err = u.userRepo.UpdateLastLogin(ctx, user.ID)
 	if err != nil {
 		// If updating last login fails, return the error
-		return "", err
+		return "", utils.ErrUpdateLastLogin
 	}
 
 	// Generate a JWT token for the authenticated user
 	token, err := auth.GenerateTokenWithRole(user.ID, "user")
 	if err != nil {
 		// If token generation fails, return the error
-		return "", err
+		return "", utils.ErrGenerateJWTTokenWithRole
 	}
 	// Return the generated token
 	return token, nil
@@ -77,22 +76,22 @@ func (u *userUseCase) Logout(ctx context.Context, token string) error {
 	// Validate the token
 	claims, err := auth.ValidateUserToken(token)
 	if err != nil {
-		return ErrInvalidToken
+		return utils.ErrInvalidToken
 	}
 
 	// Check if the token is already blacklisted
 	isBlacklisted, err := u.userRepo.IsTokenBlacklisted(ctx, token)
 	if err != nil {
-		return err
+		return utils.ErrFailedToCheckBlacklisted
 	}
 	if isBlacklisted {
-		return ErrTokenAlreadyBlacklisted
+		return utils.ErrTokenAlreadyBlacklisted
 	}
 
 	// Get token expiration time
 	exp, ok := claims["exp"].(float64)
 	if !ok {
-		return ErrInvalidToken
+		return utils.ErrInvalidToken
 	}
 	expiresAt := time.Unix(int64(exp), 0)
 
@@ -101,32 +100,27 @@ func (u *userUseCase) Logout(ctx context.Context, token string) error {
 }
 
 func (u *userUseCase) InitiateSignUp(ctx context.Context, user *domain.User) error {
-	log.Printf("Initiating sign up for email: %s", user.Email)
-
-	// Check if a verified user already exists with this email
-	existingUser, err := u.userRepo.GetByEmail(ctx, user.Email)
+	existingUser, err := u.userRepo.GetByEmail(ctx, user.Email) // Check if a verified user (which is not soft deleted) already exists with this email
 	if err == nil && existingUser.IsEmailVerified {
-		log.Printf("Error checking existing user: %v", err)
-		return ErrDuplicateEmail
+		return utils.ErrDuplicateEmail
 	}
 
 	// Hash the password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {
-		return ErrInvalidInput
+		return utils.ErrHashingPassword
 	}
-	//user.PasswordHash = string(hashedPassword)
 	user.Password = "" // Clear the plain text password
 
 	// Generate OTP
 	otp, err := otputil.GenerateOTP(6) //generate an otp of length 6
 	if err != nil {
-		log.Printf("Error generating OTP: %v", err)
-		return err
+		//log.Printf("Error generating OTP: %v", err)
+		return utils.ErrGenerateOTP
 	}
-	log.Printf("OTP generated for email: %s", user.Email)
+	//log.Printf("OTP generated for email: %s", user.Email)
 
-	//otp expiration time : 15 minute
+	//otp expiration time : 15 minutes
 	expiresAt := time.Now().UTC().Add(15 * time.Minute)
 
 	// Create a temporary verification entry
@@ -141,15 +135,14 @@ func (u *userUseCase) InitiateSignUp(ctx context.Context, user *domain.User) err
 
 	err = u.userRepo.CreateVerificationEntry(ctx, verificationEntry)
 	if err != nil {
-		log.Printf("Error creating verification entry: %v", err)
-		return fmt.Errorf("error creating verification entry: %w", err)
+		return utils.ErrCreateVericationEntry
 	}
 
 	// Send OTP email
 	err = u.emailSender.SendOTP(user.Email, otp)
 	if err != nil {
-		log.Printf("Error sending OTP email: %v", err)
-		return fmt.Errorf("error sending OTP email: %w", err)
+		// log.Printf("Error sending OTP email: %v", err)
+		return utils.ErrSendingOTP
 	}
 
 	return nil
@@ -159,27 +152,25 @@ func (u *userUseCase) VerifyOTP(ctx context.Context, email, otp string) error {
 	// Get the verification entry
 	entry, err := u.userRepo.GetVerificationEntryByEmail(ctx, email)
 	if err != nil {
-		if err == repository.ErrVerificationEntryNotFound {
-			return ErrNonExEmail
+		if err == utils.ErrVerificationEntryNotFound {
+			return utils.ErrNonExEmail
 		}
 		return err
 	}
 
 	// Check if OTP is expired
 	if time.Now().UTC().After(entry.ExpiresAt) {
-		log.Printf("expiry time : %v", entry.ExpiresAt)
-		log.Printf("Expired OTP detected")
-		return ErrExpiredOTP
+		return utils.ErrExpiredOTP
 	}
 
 	// Verify OTP
 	if entry.OTPCode != otp {
-		return ErrInvalidOTP
+		return utils.ErrInvalidOTP
 	}
 
 	// Check if the email is already verified
 	if entry.IsVerified {
-		return ErrEmailAlreadyVerified
+		return utils.ErrEmailAlreadyVerified
 	}
 
 	// Create the user
@@ -189,20 +180,20 @@ func (u *userUseCase) VerifyOTP(ctx context.Context, email, otp string) error {
 
 	err = u.userRepo.Create(ctx, user)
 	if err != nil {
-		return err
+		return utils.ErrCreateUser
 	}
 
 	// Mark the verification entry as verified
 	entry.IsVerified = true
 	err = u.userRepo.UpdateVerificationEntry(ctx, entry)
 	if err != nil {
-		return err
+		return utils.ErrUpdateVerificationEntry
 	}
 
 	// delete the verification entry
 	err = u.userRepo.DeleteVerificationEntry(ctx, email)
 	if err != nil {
-		return err
+		return utils.ErrDeleteVerificationEntry
 	}
 
 	return nil
@@ -212,31 +203,31 @@ func (u *userUseCase) ResendOTP(ctx context.Context, email string) error {
 	// Get the verification entry
 	entry, err := u.userRepo.GetVerificationEntryByEmail(ctx, email)
 	if err != nil {
-		if err == repository.ErrVerificationEntryNotFound {
-			return ErrNonExEmail
+		if err == utils.ErrVerificationEntryNotFound {
+			return utils.ErrNonExEmail
 		}
 		return err
 	}
 
 	// Check if signup process has expired
 	if time.Now().UTC().Sub(entry.CreatedAt) > signupExpiration {
-		return ErrSignupExpired
+		return utils.ErrSignupExpired
 	}
 
 	// Check rate limiting
 	resendCount, lastResendTime, err := u.userRepo.GetOTPResendInfo(ctx, email)
 	if err != nil {
-		return err
+		return utils.ErrRetrieveOTPResendInfo
 	}
 
 	if resendCount >= maxResendAttempts && time.Now().UTC().Sub(lastResendTime) < resendCooldown {
-		return ErrTooManyResendAttempts
+		return utils.ErrTooManyResendAttempts
 	}
 
 	// Generate new OTP
 	newOTP, err := otputil.GenerateOTP(6)
 	if err != nil {
-		return ErrInvalidInput
+		return utils.ErrGenerateOTP
 	}
 
 	// Update verification entry
@@ -245,19 +236,19 @@ func (u *userUseCase) ResendOTP(ctx context.Context, email string) error {
 
 	err = u.userRepo.UpdateVerificationEntryAfterResendOTP(ctx, entry)
 	if err != nil {
-		return ErrDatabaseUnavailable
+		return utils.ErrUpdateVerficationAfterResend
 	}
 
 	// Update resend info
 	err = u.userRepo.UpdateOTPResendInfo(ctx, email)
 	if err != nil {
-		return err
+		return utils.ErrUpdateOTPResendTable
 	}
 
 	// Send new OTP email
 	err = u.emailSender.SendOTP(email, newOTP)
 	if err != nil {
-		return ErrSMTPServerIssue
+		return utils.ErrSMTPServerIssue
 	}
 
 	return nil

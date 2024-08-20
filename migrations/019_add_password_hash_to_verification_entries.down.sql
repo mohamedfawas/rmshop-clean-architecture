@@ -1,1 +1,0 @@
-ALTER TABLE verification_entries DROP COLUMN password_hash;

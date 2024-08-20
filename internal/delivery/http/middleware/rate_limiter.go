@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/api"
 	"golang.org/x/time/rate"
 )
 
@@ -54,8 +55,8 @@ func RateLimitMiddleware(next http.HandlerFunc, limiter *IPRateLimiter) http.Han
 	return func(w http.ResponseWriter, r *http.Request) {
 		ip := r.RemoteAddr
 
-		if limiter.GetLimiter(ip).Allow() == false {
-			http.Error(w, "Too many requests", http.StatusTooManyRequests)
+		if !limiter.GetLimiter(ip).Allow() {
+			api.SendResponse(w, http.StatusTooManyRequests, "Rate limit exceeded", nil, "Too many requests. Please try again later.")
 			return
 		}
 

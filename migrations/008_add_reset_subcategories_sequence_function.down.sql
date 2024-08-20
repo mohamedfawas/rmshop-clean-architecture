@@ -1,1 +1,0 @@
-DROP FUNCTION IF EXISTS reset_sub_categories_id_seq();

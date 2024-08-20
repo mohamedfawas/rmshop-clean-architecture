@@ -1,1 +1,0 @@
-ALTER TABLE product_images DROP COLUMN is_primary;

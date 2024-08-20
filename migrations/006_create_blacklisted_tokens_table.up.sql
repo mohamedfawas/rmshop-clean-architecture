@@ -1,4 +1,3 @@
--- 003_create_blacklisted_tokens_table.up.sql
 CREATE TABLE IF NOT EXISTS blacklisted_tokens (
     token TEXT PRIMARY KEY,
     expires_at TIMESTAMP WITHOUT TIME ZONE NOT NULL

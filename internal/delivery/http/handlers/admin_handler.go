@@ -6,6 +6,9 @@ import (
 	"strings"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/api"
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/utils"
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/validator"
 )
 
 type AdminHandler struct {
@@ -25,88 +28,86 @@ type AdminLoginResponse struct {
 	Token string `json:"token"`
 }
 
-// Login handles the HTTP request for admin login
 func (h *AdminHandler) Login(w http.ResponseWriter, r *http.Request) {
-	// Define a struct to parse the login input from JSON
 	var input AdminLoginInput
-	// Decode the JSON request body into the input struct
 	err := json.NewDecoder(r.Body).Decode(&input)
 	if err != nil {
-		// If there's an error in parsing, return a 400 Bad Request error
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	// Trim whitespace from username and password
-	input.Username = strings.TrimSpace(input.Username)
+	input.Username = strings.ToLower(strings.TrimSpace(input.Username))
 	input.Password = strings.TrimSpace(input.Password)
 
-	// Check for empty username or password
-	if input.Username == "" || input.Password == "" {
-		http.Error(w, "Username and password are required", http.StatusBadRequest)
-		return
-	}
-
-	// Check username length (assuming max length is 50)
-	if len(input.Username) > 50 {
-		http.Error(w, "Username is too long", http.StatusBadRequest)
-		return
-	}
-
-	// Check password length (assuming max length is 100)
-	if len(input.Password) > 100 {
-		http.Error(w, "Password is too long", http.StatusBadRequest)
-		return
-	}
-
-	// Call the Login method of the adminUseCase, passing the username and password
-	token, err := h.adminUseCase.Login(r.Context(), input.Username, input.Password)
+	err = validator.ValidateAdminCredentials(input.Username, input.Password)
 	if err != nil {
-		// Handle different types of errors
 		switch err {
-		case usecase.ErrInvalidAdminCredentials:
-			// If credentials are invalid, return a 401 Unauthorized error
-			http.Error(w, "Invalid username or password", http.StatusUnauthorized)
+		case utils.ErrInvalidAdminCredentials:
+			api.SendResponse(w, http.StatusBadRequest, "Login failed", nil, "Please provide both username and password")
+		case utils.ErrAdminUsernameTooLong:
+			api.SendResponse(w, http.StatusBadRequest, "Login failed", nil, "Provided username is too long")
+		case utils.ErrAdminPasswordTooLong:
+			api.SendResponse(w, http.StatusBadRequest, "Login failed", nil, "Provided password is too long")
 		default:
-			// For any other error, return a 500 Internal Server Error
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			api.SendResponse(w, http.StatusInternalServerError, "Login failed", nil, err.Error())
 		}
 		return
 	}
 
-	// If login is successful, set the Content-Type header to JSON
-	w.Header().Set("Content-Type", "application/json")
-	// Set the status code to 200 OK
-	w.WriteHeader(http.StatusOK)
-	// Encode and send the token in the response body
-	json.NewEncoder(w).Encode(AdminLoginResponse{Token: token})
+	token, err := h.adminUseCase.Login(r.Context(), input.Username, input.Password)
+	if err != nil {
+		switch err {
+		case utils.ErrInvalidAdminCredentials:
+			api.SendResponse(w, http.StatusUnauthorized, "Login failed", nil, "Invalid username or password")
+		case utils.ErrRetreivingAdminUsername:
+			api.SendResponse(w, http.StatusInternalServerError, "Login failed", nil, "Error while retrieving data of the given username")
+		case utils.ErrGenerateJWTTokenWithRole:
+			api.SendResponse(w, http.StatusInternalServerError, "Login failed", nil, "Error while generating JWT token")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Login failed", nil, "Internal server error")
+		}
+		return
+	}
+
+	response := AdminLoginResponse{Token: token}
+	api.SendResponse(w, http.StatusOK, "Login successful", response, "")
 }
 
 func (h *AdminHandler) Logout(w http.ResponseWriter, r *http.Request) {
-	token := r.Header.Get("Authorization")
-	if token == "" {
-		http.Error(w, "Missing authorization token", http.StatusUnauthorized)
-		return
-	}
-
-	// Remove "Bearer " prefix if present
-	if len(token) > 7 && token[:7] == "Bearer " {
-		token = token[7:]
-	}
-
-	err := h.adminUseCase.Logout(r.Context(), token)
+	authHeader := r.Header.Get("Authorization")
+	token, err := validator.ValidateAuthHeaderAndReturnToken(authHeader)
 	if err != nil {
 		switch err {
-		case usecase.ErrInvalidAdminToken:
-			http.Error(w, "Invalid token", http.StatusUnauthorized)
-		case usecase.ErrTokenAlreadyBlacklisted:
-			http.Error(w, "Token already invalidated", http.StatusBadRequest)
+		case utils.ErrMissingAuthToken:
+			api.SendResponse(w, http.StatusUnauthorized, "Logout failed", nil, "Missing authorization token")
+		case utils.ErrAuthHeaderFormat:
+			api.SendResponse(w, http.StatusUnauthorized, "Logout failed", nil, "Invalid authorization header format")
+		case utils.ErrEmptyToken:
+			api.SendResponse(w, http.StatusUnauthorized, "Logout failed", nil, "Empty token")
 		default:
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			api.SendResponse(w, http.StatusInternalServerError, "Logout failed", nil, err.Error())
 		}
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"message": "Admin logged out successfully"})
+	err = h.adminUseCase.Logout(r.Context(), token)
+	if err != nil {
+		switch err {
+		case utils.ErrInvalidAdminToken:
+			api.SendResponse(w, http.StatusUnauthorized, "Logout failed", nil, "Invalid token")
+		case utils.ErrTokenAlreadyBlacklisted:
+			api.SendResponse(w, http.StatusBadRequest, "Logout failed", nil, "Invalid token: token already invalidated")
+		case utils.ErrCheckTokenBlacklisted:
+			api.SendResponse(w, http.StatusInternalServerError, "Logout failed", nil, "Error while checking whether token is blacklisted")
+		case utils.ErrTokenExpired:
+			api.SendResponse(w, http.StatusBadRequest, "Logout failed", nil, "Invalid token: token expired")
+		case utils.ErrInvalidExpirationClaim:
+			api.SendResponse(w, http.StatusBadRequest, "Logout failed", nil, "Invalid token: expiration claim is invalid")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Logout failed", nil, err.Error())
+		}
+		return
+	}
+
+	api.SendResponse(w, http.StatusOK, "Admin logged out successfully", nil, "")
 }

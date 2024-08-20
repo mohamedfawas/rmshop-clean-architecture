@@ -30,14 +30,43 @@ var (
 	ErrInvalidPhoneNumber = errors.New("invalid phone number")
 
 	//user related : OTP
-	ErrMissingOTP            = errors.New("need valid otp input")
-	ErrOtpLength             = errors.New("otp must have 6 digits")
-	ErrOtpNums               = errors.New("non digits in otp")
-	ErrTooManyResendAttempts = errors.New("too many resend attempts")
-	ErrSignupExpired         = errors.New("signup process has expired")
+	ErrMissingOTP                   = errors.New("need valid otp input")
+	ErrOtpLength                    = errors.New("otp must have 6 digits")
+	ErrOtpNums                      = errors.New("non digits in otp")
+	ErrTooManyResendAttempts        = errors.New("too many resend attempts")
+	ErrSignupExpired                = errors.New("signup process has expired")
+	ErrRetrieveOTPResendInfo        = errors.New("error retrieving otp resend info")
+	ErrUpdateVerficationAfterResend = errors.New("error update verification entry after resend otp")
+	ErrUpdateOTPResendTable         = errors.New("error updating otp resend table")
+
+	//user repo errors
+	ErrUserNotFound              = errors.New("user not found")
+	ErrOTPNotFound               = errors.New("OTP not found")
+	ErrDuplicateEmail            = errors.New("email already exists")
+	ErrVerificationEntryNotFound = errors.New("verification entry not found")
 
 	//user related : login
-	ErrLoginCredentialsMissing = errors.New("login credentials missing")
+	ErrLoginCredentialsMissing  = errors.New("login credentials missing")
+	ErrCreateUser               = errors.New("failed to create user")
+	ErrUpdateVerificationEntry  = errors.New("error updating verification entry")
+	ErrDeleteVerificationEntry  = errors.New("error deleting verification entry")
+	ErrUpdateLastLogin          = errors.New("error updating last login")
+	ErrGenerateJWTTokenWithRole = errors.New("error generate jwt token with role")
+
+	//user related : logout
+	ErrMissingAuthToken         = errors.New("missing auth token")
+	ErrAuthHeaderFormat         = errors.New("invalid auth header format")
+	ErrEmptyToken               = errors.New("empty token")
+	ErrFailedToCheckBlacklisted = errors.New("failed to check if token is blacklisted")
+
+	//admin related : login
+	ErrMissingAdminCredentials = errors.New("admin username and password missing")
+	ErrAdminUsernameTooLong    = errors.New("admin username too long")
+	ErrAdminPasswordTooLong    = errors.New("admin password too long")
+	ErrRetreivingAdminUsername = errors.New("error retrieving admin username")
+	ErrCheckTokenBlacklisted   = errors.New("failed to check if token is blacklisted")
+	ErrInvalidExpirationClaim  = errors.New("invalid expiration claim")
+	ErrTokenExpired            = errors.New("token expired")
 
 	//category related
 	ErrInvalidCategoryName    = errors.New("invalid category name")
@@ -66,6 +95,35 @@ var (
 	ErrNoPrimaryImage             = errors.New("no primary image specified")
 	ErrStockQuantRequired         = errors.New("stock quantity is required")
 	ErrProductDescriptionRequired = errors.New("product description required")
+
+	//usecase errors
+	ErrAdminNotFound           = errors.New("admin not found")
+	ErrInvalidAdminCredentials = errors.New("invalid admin credentials")
+	ErrInvalidAdminToken       = errors.New("invalid admin token")
+	//ErrDuplicateEmail          = errors.New("email already exists")
+	//ErrUserNotFound            = errors.New("user not found")
+	ErrInvalidCredentials = errors.New("invalid credentials")
+	ErrInvalidToken       = errors.New("invalid token")
+	//ErrOTPNotFound             = errors.New("OTP not found")
+	ErrInvalidOTP           = errors.New("invalid OTP")
+	ErrExpiredOTP           = errors.New("OTP has expired")
+	ErrEmailAlreadyVerified = errors.New("email already verified")
+	ErrInvalidInput         = errors.New("invalid input")
+	ErrDatabaseUnavailable  = errors.New("database unavailable")
+	ErrSMTPServerIssue      = errors.New("SMTP server issue")
+	ErrNonExEmail           = errors.New("OTP not found for given email") //non existent email
+	//ErrSignupExpired           = errors.New("signup process has expired")
+	//ErrTooManyResendAttempts   = errors.New("too many resend attempts")
+	ErrUserBlocked             = errors.New("user is blocked")
+	ErrTokenAlreadyBlacklisted = errors.New("token already blacklisted")
+	ErrInvalidCategory         = errors.New("invalid category ID")
+	ErrInvalidSubCategory      = errors.New("invalid sub-category ID")
+	ErrProductNotFound         = errors.New("product not found")
+	ErrDuplicateImageURL       = errors.New("duplicate image URL")
+	ErrCreateVericationEntry   = errors.New("error creating verification entry")
+	ErrSendingOTP              = errors.New("error sending OTP email")
+	ErrGenerateOTP             = errors.New("error generating otp")
+	ErrHashingPassword         = errors.New("error hashing password")
 )
 
 func GenerateSlug(name string) string {

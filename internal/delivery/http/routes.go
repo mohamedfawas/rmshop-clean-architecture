@@ -3,10 +3,12 @@ package http
 import (
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/delivery/http/handlers"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/delivery/http/middleware"
+	"golang.org/x/time/rate"
 )
 
 func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHandler, categoryHandler *handlers.CategoryHandler, subCategoryHandler *handlers.SubCategoryHandler, productHandler *handlers.ProductHandler) http.Handler {
@@ -114,11 +116,16 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 		userHandler.InitiateSignUp).Methods("POST")
 	r.HandleFunc("/user/verify-otp",
 		userHandler.VerifyOTP).Methods("POST")
+	//create a new IP rate limiter
+	otpResendLimiter := middleware.NewIPRateLimiter(rate.Every(30*time.Second), 1)
+	// Allow 1 request per 30 seconds for OTP resend
 	r.HandleFunc("/user/resend-otp",
-		userHandler.ResendOTP).Methods("POST")
+		middleware.RateLimitMiddleware(
+			userHandler.ResendOTP, otpResendLimiter)).Methods("POST")
 
 	//product listing on user side
-	r.HandleFunc("/products", middleware.UserAuthMiddleware(productHandler.GetActiveProducts)).Methods("GET")
+	r.HandleFunc("/products", middleware.UserAuthMiddleware(
+		productHandler.GetActiveProducts)).Methods("GET")
 
 	log.Println("Router setup complete")
 	// Wrap the entire mux with the logging middleware

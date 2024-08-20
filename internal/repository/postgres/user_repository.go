@@ -11,6 +11,7 @@ import (
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/repository"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/utils"
 )
 
 // this code sets up a structure that will handle database operations related to users.
@@ -25,26 +26,38 @@ func NewUserRepository(db *sql.DB) *userRepository {
 
 //This approach follows the dependency injection principle, where the database connection is provided from outside rather than created within the repository. This makes the code more flexible and easier to test.
 
+func (r *userRepository) CreateVerificationEntry(ctx context.Context, entry *domain.VerificationEntry) error {
+
+	query := `INSERT INTO verification_entries (email, otp_code, user_data, password_hash, expires_at, is_verified, created_at)
+              VALUES ($1, $2, $3, $4, $5, $6, $7)
+              RETURNING id`
+
+	userDataJSON, err := json.Marshal(entry.UserData) // convert user struct to JSON-encoded byte slice
+	if err != nil {
+		log.Printf("Error marshaling user data: %v", err)
+		return err
+	}
+
+	err = r.db.QueryRowContext(ctx, query,
+		entry.Email,
+		entry.OTPCode,
+		userDataJSON,
+		entry.PasswordHash,
+		entry.ExpiresAt,
+		entry.IsVerified,
+		time.Now()).Scan(&entry.ID)
+
+	return err
+}
+
 func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	// Reset the sequence
-	_, err = tx.ExecContext(ctx, "SELECT reset_users_id_seq()")
-	if err != nil {
-		log.Printf("Error resetting sequence: %v", err)
-		return err
-	}
-
 	query := `INSERT INTO users (name, email, password_hash, date_of_birth, phone_number, is_blocked, is_email_verified, created_at)
               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
               RETURNING id, created_at`
 
-	err = tx.QueryRowContext(ctx, query,
-		user.Name, user.Email, user.PasswordHash, user.DOB, user.PhoneNumber, user.IsBlocked, user.IsEmailVerified, time.Now()).
+	err := r.db.QueryRowContext(ctx, query,
+		user.Name, user.Email, user.PasswordHash, user.DOB,
+		user.PhoneNumber, user.IsBlocked, user.IsEmailVerified, time.Now()).
 		Scan(&user.ID, &user.CreatedAt)
 	if err != nil {
 		pqErr, ok := err.(*pq.Error)
@@ -53,34 +66,29 @@ func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 		}
 		return err
 	}
-
-	if err = tx.Commit(); err != nil {
-		log.Printf("Error committing transaction: %v", err)
-		return err
-	}
-
 	return nil
 }
 
 func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
 	// SQL query to select user details by email
 	query := `SELECT id, name, email, password_hash, date_of_birth, phone_number, is_blocked, created_at, updated_at, last_login ,is_email_verified
-              FROM users WHERE email = $1`
+              FROM users 
+			  WHERE email = $1 AND deleted_at IS NULL`
 
 	var user domain.User
-	var lastLogin sql.NullTime //nulltime : nullable timestamp value
-	//it holds two values : Timestamp and Valid (bool, indicates whether the value is null or not)
+	var lastLogin sql.NullTime //nulltime : nullable timestamp value. it holds two values : Timestamp and Valid (bool, indicates whether the value is null or not)
 
 	// Execute the query and scan the result into the user struct
 	err := r.db.QueryRowContext(ctx, query, email).Scan(
 		&user.ID, &user.Name, &user.Email, &user.PasswordHash, &user.DOB,
-		&user.PhoneNumber, &user.IsBlocked, &user.CreatedAt, &user.UpdatedAt, &lastLogin, &user.IsEmailVerified,
+		&user.PhoneNumber, &user.IsBlocked, &user.CreatedAt, &user.UpdatedAt,
+		&lastLogin, &user.IsEmailVerified,
 	)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
 			// If no user is found, return a specific error
-			return nil, repository.ErrUserNotFound
+			return nil, utils.ErrUserNotFound
 		}
 		// For any other error, return it as is
 		return nil, err
@@ -152,30 +160,6 @@ func (r *userRepository) UpdateEmailVerificationStatus(ctx context.Context, user
 	return err
 }
 
-func (r *userRepository) CreateVerificationEntry(ctx context.Context, entry *domain.VerificationEntry) error {
-
-	query := `INSERT INTO verification_entries (email, otp_code, user_data, password_hash, expires_at, is_verified, created_at)
-              VALUES ($1, $2, $3, $4, $5, $6, $7)
-              RETURNING id`
-
-	userDataJSON, err := json.Marshal(entry.UserData)
-	if err != nil {
-		log.Printf("Error marshaling user data: %v", err)
-		return err
-	}
-
-	err = r.db.QueryRowContext(ctx, query,
-		entry.Email,
-		entry.OTPCode,
-		userDataJSON,
-		entry.PasswordHash,
-		entry.ExpiresAt,
-		entry.IsVerified,
-		time.Now()).Scan(&entry.ID)
-
-	return err
-}
-
 func (r *userRepository) GetVerificationEntryByEmail(ctx context.Context, email string) (*domain.VerificationEntry, error) {
 	query := `SELECT id, email, otp_code, user_data, password_hash, expires_at, is_verified, created_at
               FROM verification_entries
@@ -187,10 +171,11 @@ func (r *userRepository) GetVerificationEntryByEmail(ctx context.Context, email 
 	var userDataJSON []byte
 	var expiresAt time.Time //later used to verify the time is in UTC
 	err := r.db.QueryRowContext(ctx, query, email).Scan(
-		&entry.ID, &entry.Email, &entry.OTPCode, &userDataJSON, &entry.PasswordHash, &expiresAt, &entry.IsVerified, &entry.CreatedAt)
+		&entry.ID, &entry.Email, &entry.OTPCode, &userDataJSON,
+		&entry.PasswordHash, &expiresAt, &entry.IsVerified, &entry.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, repository.ErrVerificationEntryNotFound
+			return nil, utils.ErrVerificationEntryNotFound
 		}
 		return nil, err
 	}
