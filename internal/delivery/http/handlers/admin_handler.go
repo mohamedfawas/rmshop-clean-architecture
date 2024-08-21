@@ -32,7 +32,7 @@ func (h *AdminHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var input AdminLoginInput
 	err := json.NewDecoder(r.Body).Decode(&input)
 	if err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		api.SendResponse(w, http.StatusBadRequest, "Login failed", nil, "Invalid request body")
 		return
 	}
 
@@ -49,7 +49,7 @@ func (h *AdminHandler) Login(w http.ResponseWriter, r *http.Request) {
 		case utils.ErrAdminPasswordTooLong:
 			api.SendResponse(w, http.StatusBadRequest, "Login failed", nil, "Provided password is too long")
 		default:
-			api.SendResponse(w, http.StatusInternalServerError, "Login failed", nil, err.Error())
+			api.SendResponse(w, http.StatusInternalServerError, "Login failed", nil, "An unexpected error occurred")
 		}
 		return
 	}
@@ -64,7 +64,7 @@ func (h *AdminHandler) Login(w http.ResponseWriter, r *http.Request) {
 		case utils.ErrGenerateJWTTokenWithRole:
 			api.SendResponse(w, http.StatusInternalServerError, "Login failed", nil, "Error while generating JWT token")
 		default:
-			api.SendResponse(w, http.StatusInternalServerError, "Login failed", nil, "Internal server error")
+			api.SendResponse(w, http.StatusInternalServerError, "Login failed", nil, "An unexpected error occurred")
 		}
 		return
 	}
@@ -85,7 +85,7 @@ func (h *AdminHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		case utils.ErrEmptyToken:
 			api.SendResponse(w, http.StatusUnauthorized, "Logout failed", nil, "Empty token")
 		default:
-			api.SendResponse(w, http.StatusInternalServerError, "Logout failed", nil, err.Error())
+			api.SendResponse(w, http.StatusInternalServerError, "Logout failed", nil, "An unexpected error occured")
 		}
 		return
 	}
@@ -104,7 +104,7 @@ func (h *AdminHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		case utils.ErrInvalidExpirationClaim:
 			api.SendResponse(w, http.StatusBadRequest, "Logout failed", nil, "Invalid token: expiration claim is invalid")
 		default:
-			api.SendResponse(w, http.StatusInternalServerError, "Logout failed", nil, err.Error())
+			api.SendResponse(w, http.StatusInternalServerError, "Logout failed", nil, "An unexpected error occured")
 		}
 		return
 	}

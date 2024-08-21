@@ -21,38 +21,19 @@ func NewCategoryRepository(db *sql.DB) *categoryRepository {
 }
 
 func (r *categoryRepository) Create(ctx context.Context, category *domain.Category) error {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	// Reset the sequence
-	_, err = tx.ExecContext(ctx, "SELECT reset_categories_id_seq()")
-	if err != nil {
-		log.Printf("Error resetting sequence: %v", err)
-		return err
-	}
-
-	query := `INSERT INTO categories (name, slug, created_at) 
-              VALUES ($1, $2, $3) 
+	query := `INSERT INTO categories (name, slug, created_at,updated_at) 
+              VALUES ($1, $2, $3, $4) 
               RETURNING id`
 
-	err = tx.QueryRowContext(ctx, query,
-		category.Name, category.Slug, category.CreatedAt).Scan(&category.ID)
+	err := r.db.QueryRowContext(ctx, query,
+		category.Name, category.Slug, category.CreatedAt, category.UpdatedAt).Scan(&category.ID)
 	if err != nil {
 		pqErr, ok := err.(*pq.Error)
 		if ok && pqErr.Code == "23505" { // Unique violation error code
 			return utils.ErrDuplicateCategory
 		}
-		return err
+		return utils.ErrDBCreateCategory
 	}
-
-	if err = tx.Commit(); err != nil {
-		log.Printf("Error committing transaction: %v", err)
-		return err
-	}
-
 	return nil
 }
 
@@ -80,13 +61,11 @@ func (r *categoryRepository) GetByID(ctx context.Context, id int) (*domain.Categ
 }
 
 func (r *categoryRepository) GetAll(ctx context.Context) ([]*domain.Category, error) {
-	log.Println("Entering GetAll repository method")
-	query := `SELECT id, name, slug, created_at, deleted_at FROM categories WHERE deleted_at IS NULL ORDER BY id`
+	query := `SELECT id, name, slug, created_at, deleted_at,updated_at FROM categories WHERE deleted_at IS NULL ORDER BY id`
 
 	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
-		log.Printf("Error querying categories: %v", err)
-		return nil, err
+		return nil, utils.ErrQueryExecution
 	}
 	defer rows.Close()
 
@@ -99,20 +78,17 @@ func (r *categoryRepository) GetAll(ctx context.Context) ([]*domain.Category, er
 			&category.Slug,
 			&category.CreatedAt,
 			&category.DeletedAt,
+			&category.UpdatedAt,
 		)
 		if err != nil {
-			log.Printf("Error scanning category row: %v", err)
-			return nil, err
+			return nil, utils.ErrRowScan
 		}
 		categories = append(categories, &category)
 	}
 
 	if err = rows.Err(); err != nil {
-		log.Printf("Error after scanning all rows: %v", err)
-		return nil, err
+		return nil, utils.ErrQueryExecution
 	}
-
-	log.Printf("Retrieved %d categories from database", len(categories))
 	return categories, nil
 }
 

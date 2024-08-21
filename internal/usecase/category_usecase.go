@@ -14,8 +14,8 @@ import (
 )
 
 type CategoryUseCase interface {
-	CreateCategory(ctx context.Context, category *domain.Category) error // faz:15 aug
-	GetAllCategories(ctx context.Context) ([]*domain.Category, error)
+	CreateCategory(ctx context.Context, category *domain.Category) error // fz
+	GetAllCategories(ctx context.Context) ([]*domain.Category, error)    // fz
 	GetActiveCategoryByID(ctx context.Context, id int) (*domain.Category, error)
 	UpdateCategory(ctx context.Context, category *domain.Category) error
 	SoftDeleteCategory(ctx context.Context, id int) error
@@ -43,25 +43,20 @@ func (u *categoryUseCase) CreateCategory(ctx context.Context, category *domain.C
 	// Attempt to create the category in the database
 	err := u.categoryRepo.Create(ctx, category)
 	if err != nil {
-		// Check if it's a duplicate category error (you'd need to implement this check in your repository)
 		if err == utils.ErrDuplicateCategory {
 			return utils.ErrDuplicateCategory
 		}
-		// For any other error, return a generic error
-		return errors.New("failed to create category")
+		return utils.ErrDBCreateCategory
 	}
 
 	return nil
 }
 
 func (u *categoryUseCase) GetAllCategories(ctx context.Context) ([]*domain.Category, error) {
-	log.Println("Entering GetAllCategories use case")
 	categories, err := u.categoryRepo.GetAll(ctx)
 	if err != nil {
-		log.Printf("Failed to retrieve categories: %v", err)
 		return nil, err
 	}
-	log.Printf("Retrieved %d categories from repository", len(categories))
 	return categories, nil
 }
 

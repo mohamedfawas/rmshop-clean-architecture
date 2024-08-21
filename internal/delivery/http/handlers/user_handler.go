@@ -68,7 +68,7 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 		case utils.ErrGenerateJWTTokenWithRole:
 			api.SendResponse(w, http.StatusInternalServerError, "Login failed", nil, "Error while generating jwt token with role")
 		default:
-			api.SendResponse(w, http.StatusInternalServerError, "Login failed", nil, err.Error())
+			api.SendResponse(w, http.StatusInternalServerError, "Login failed", nil, "An unexpected error occured")
 		}
 		return
 	}
@@ -90,7 +90,7 @@ func (h *UserHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		case utils.ErrEmptyToken:
 			api.SendResponse(w, http.StatusUnauthorized, "Authentication failed", nil, "Empty token")
 		default:
-			api.SendResponse(w, http.StatusInternalServerError, "Authentication failed", nil, err.Error())
+			api.SendResponse(w, http.StatusInternalServerError, "Authentication failed", nil, "An unexpected error occured")
 		}
 		return
 	}
@@ -106,7 +106,7 @@ func (h *UserHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		case utils.ErrFailedToCheckBlacklisted:
 			api.SendResponse(w, http.StatusInternalServerError, "Logout failed", nil, "Failed to check if token is blacklisted")
 		default:
-			api.SendResponse(w, http.StatusInternalServerError, "Logout failed", nil, err.Error())
+			api.SendResponse(w, http.StatusInternalServerError, "Logout failed", nil, "An unexpected error occured")
 		}
 		return
 	}
@@ -155,7 +155,7 @@ func (h *UserHandler) InitiateSignUp(w http.ResponseWriter, r *http.Request) {
 		case utils.ErrUserNameWithNumericVals:
 			api.SendResponse(w, http.StatusBadRequest, "Invalid name", nil, "Name should not contain numeric characters")
 		default:
-			api.SendResponse(w, http.StatusInternalServerError, "Internal server error", nil, err.Error())
+			api.SendResponse(w, http.StatusInternalServerError, "Internal server error", nil, "An unexpected error occured")
 		}
 		return
 	}
@@ -169,7 +169,7 @@ func (h *UserHandler) InitiateSignUp(w http.ResponseWriter, r *http.Request) {
 		case utils.ErrInvalidEmail:
 			api.SendResponse(w, http.StatusBadRequest, "Invalid email", nil, "Please provide a valid email address")
 		default:
-			api.SendResponse(w, http.StatusInternalServerError, "Internal server error", nil, err.Error())
+			api.SendResponse(w, http.StatusInternalServerError, "Internal server error", nil, "An unexpected error occured")
 		}
 		return
 	}
@@ -187,7 +187,7 @@ func (h *UserHandler) InitiateSignUp(w http.ResponseWriter, r *http.Request) {
 		case utils.ErrPasswordSecurity:
 			api.SendResponse(w, http.StatusBadRequest, "Weak password", nil, "Password should have at least one upper case letter, one lower case letter, one number and one special character")
 		default:
-			api.SendResponse(w, http.StatusInternalServerError, "Internal server error", nil, err.Error())
+			api.SendResponse(w, http.StatusInternalServerError, "Internal server error", nil, "An unexpected error occured")
 		}
 		return
 	}
@@ -229,7 +229,7 @@ func (h *UserHandler) InitiateSignUp(w http.ResponseWriter, r *http.Request) {
 		case utils.ErrSendingOTP:
 			api.SendResponse(w, http.StatusInternalServerError, "Failed to initiate sign up", nil, "Error while sending OTP")
 		default:
-			api.SendResponse(w, http.StatusInternalServerError, "Failed to initiate sign up", nil, err.Error())
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to initiate sign up", nil, "An unexpected error occured")
 		}
 		return
 	}

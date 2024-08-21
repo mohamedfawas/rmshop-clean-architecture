@@ -40,7 +40,7 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 		middleware.JWTAuthMiddleware(adminHandler.Logout))
 
 	// Admin routes : Category routes
-	r.HandleFunc("/admin/categories", //add category names
+	r.HandleFunc("/admin/categories",
 		middleware.JWTAuthMiddleware(
 			middleware.AdminAuthMiddleware(
 				categoryHandler.CreateCategory))).Methods("POST")
@@ -111,7 +111,9 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 	r.HandleFunc("/user/login",
 		userHandler.Login).Methods("POST")
 	r.HandleFunc("/user/logout",
-		middleware.UserAuthMiddleware(userHandler.Logout)).Methods("POST")
+		middleware.JWTAuthMiddleware(
+			middleware.UserAuthMiddleware(
+				userHandler.Logout))).Methods("POST")
 	r.HandleFunc("/user/signup",
 		userHandler.InitiateSignUp).Methods("POST")
 	r.HandleFunc("/user/verify-otp",

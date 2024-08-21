@@ -10,6 +10,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/api"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/utils"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/validator"
 )
@@ -22,30 +23,30 @@ func NewCategoryHandler(categoryUseCase usecase.CategoryUseCase) *CategoryHandle
 	return &CategoryHandler{categoryUseCase: categoryUseCase}
 }
 
-// rechecked the code after testing
 func (h *CategoryHandler) CreateCategory(w http.ResponseWriter, r *http.Request) {
 	var category domain.Category
 	err := json.NewDecoder(r.Body).Decode(&category)
 	if err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		api.SendResponse(w, http.StatusBadRequest, "Failed to create category", nil, "Invalid request body")
 		return
 	}
 
-	category.Name = strings.TrimSpace(category.Name) //remove trailinng and leading white spaces
+	category.Name = strings.ToLower(strings.TrimSpace(category.Name))
 
 	err = validator.ValidateCategoryName(category.Name)
 	if err != nil {
 		switch err {
 		case utils.ErrInvalidCategoryName:
-			http.Error(w, "Invalid category name", http.StatusBadRequest)
+			api.SendResponse(w, http.StatusBadRequest, "Failed to create category", nil, "Please provide a valid category name")
 		case utils.ErrCategoryNameTooShort:
-			http.Error(w, "Category name should have atleast 2 characters", http.StatusBadRequest)
+			api.SendResponse(w, http.StatusBadRequest, "Failed to create category", nil, "Category name should have at least 2 characters")
 		case utils.ErrCategoryNameTooLong:
-			http.Error(w, "Category name length should not be greater than 50 characters", http.StatusBadRequest)
+			api.SendResponse(w, http.StatusBadRequest, "Failed to create category", nil, "Category name length should not be greater than 50 characters")
 		case utils.ErrCategoryNameNumeric:
-			http.Error(w, "Category name should not be purely numeric", http.StatusBadRequest)
+			api.SendResponse(w, http.StatusBadRequest, "Failed to create category", nil, "Category name should not be numeric")
 		default:
-			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			log.Printf("Unexpected error in category name validation: %v", err)
+			api.SendResponse(w, http.StatusBadRequest, "Failed to create category", nil, "Invalid category name")
 		}
 		return
 	}
@@ -54,34 +55,32 @@ func (h *CategoryHandler) CreateCategory(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		switch err {
 		case utils.ErrDuplicateCategory:
-			http.Error(w, "Category already exists", http.StatusConflict)
+			api.SendResponse(w, http.StatusConflict, "Failed to create category", nil, "Category already exists")
+		case utils.ErrDBCreateCategory:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to create category", nil, "Failed to create the category entry in database")
 		default:
-			http.Error(w, "Failed to create category", http.StatusInternalServerError)
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to create category", nil, "An unexpected error occurred")
 		}
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(category)
+	api.SendResponse(w, http.StatusCreated, "Category created successfully", category, "")
 }
 
 func (h *CategoryHandler) GetAllCategories(w http.ResponseWriter, r *http.Request) {
-	log.Println("Entering GetAllCategories handler")
-
-	// Log request details
-	log.Printf("Request Method: %s", r.Method)
-	log.Printf("Request URL: %s", r.URL)
-	log.Printf("Request Headers: %+v", r.Header)
-
 	categories, err := h.categoryUseCase.GetAllCategories(r.Context())
 	if err != nil {
-		log.Printf("Error retrieving categories: %v", err)
+		switch err {
+		case utils.ErrNoCategoriesFound:
+			http.Error(w, "No categories found", http.StatusNotFound)
+		case utils.ErrQueryExecution, utils.ErrRowScan:
+			http.Error(w, utils.ErrInternalServer, http.StatusInternalServerError)
+
+		}
+
 		http.Error(w, "Failed to retrieve categories", http.StatusInternalServerError)
 		return
 	}
-
-	log.Printf("Retrieved %d categories", len(categories))
 
 	w.Header().Set("Content-Type", "application/json")
 

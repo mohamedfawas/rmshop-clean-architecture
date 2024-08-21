@@ -6,6 +6,10 @@ import (
 	"strings"
 )
 
+const (
+	ErrInternalServer = "Internal server error"
+)
+
 var (
 	//user related : username
 	ErrInvalidUserName         = errors.New("invalid user name")
@@ -79,6 +83,12 @@ var (
 	ErrSubCategoryNotFound    = errors.New("subcategory not found")
 	ErrCategoryNameTooShort   = errors.New("category name too short")
 	ErrCategoryNameNumeric    = errors.New("category name purely numeric")
+	ErrDBCreateCategory       = errors.New("failed to create category in db")
+
+	//db errors
+	ErrQueryExecution    = errors.New("failed to execute query")
+	ErrRowScan           = errors.New("failed to scan row")
+	ErrNoCategoriesFound = errors.New("no category found")
 
 	// product related
 	ErrInvalidProductName         = errors.New("invalid product name")
