@@ -20,30 +20,17 @@ func NewSubCategoryRepository(db *sql.DB) *subCategoryRepository {
 }
 
 func (r *subCategoryRepository) Create(ctx context.Context, subCategory *domain.SubCategory) error {
-	// Start a transaction
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	// Reset the sequence
-	_, err = tx.ExecContext(ctx, "SELECT reset_sub_categories_id_seq()")
-	if err != nil {
-		log.Printf("Error resetting sequence: %v", err)
-		return err
-	}
-
 	// Insert the new sub-category
-	query := `INSERT INTO sub_categories (parent_category_id, name, slug, created_at) 
-              VALUES ($1, $2, $3, $4) 
+	query := `INSERT INTO sub_categories (parent_category_id, name, slug, created_at,updated_at) 
+              VALUES ($1, $2, $3, $4,$5) 
               RETURNING id`
 
-	err = tx.QueryRowContext(ctx, query,
+	err := r.db.QueryRowContext(ctx, query,
 		subCategory.ParentCategoryID,
 		subCategory.Name,
 		subCategory.Slug,
-		subCategory.CreatedAt).Scan(&subCategory.ID)
+		subCategory.CreatedAt,
+		subCategory.UpdatedAt).Scan(&subCategory.ID)
 
 	if err != nil {
 		log.Printf("Error inserting subcategory: %v", err)
@@ -54,15 +41,9 @@ func (r *subCategoryRepository) Create(ctx context.Context, subCategory *domain.
 				return utils.ErrDuplicateSubCategory
 			}
 		}
+		log.Printf("db error : failed to create sub category")
 		return err
 	}
-
-	// Commit the transaction
-	if err = tx.Commit(); err != nil {
-		log.Printf("Error committing transaction: %v", err)
-		return err
-	}
-
 	return nil
 }
 
@@ -109,7 +90,7 @@ func (r *subCategoryRepository) GetByCategoryID(ctx context.Context, categoryID 
 
 func (r *subCategoryRepository) GetByID(ctx context.Context, id int) (*domain.SubCategory, error) {
 	query := `
-		SELECT id, parent_category_id, name, slug, created_at, deleted_at
+		SELECT id, parent_category_id, name, slug, created_at, updated_at, deleted_at
 		FROM sub_categories
 		WHERE id = $1 AND deleted_at IS NULL
 	`
@@ -121,16 +102,18 @@ func (r *subCategoryRepository) GetByID(ctx context.Context, id int) (*domain.Su
 		&sc.Name,
 		&sc.Slug,
 		&sc.CreatedAt,
+		&sc.UpdatedAt,
 		&sc.DeletedAt,
 	)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
+			log.Printf("SubCategory not found: id=%d, error=%v", id, err)
 			return nil, utils.ErrSubCategoryNotFound
 		}
+		log.Printf("Failed to get SubCategory by id=%d: error=%v", id, err)
 		return nil, err
 	}
-
 	return &sc, nil
 }
 

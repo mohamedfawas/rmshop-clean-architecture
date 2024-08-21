@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log"
 	"strings"
 	"time"
 
@@ -34,30 +35,21 @@ func NewSubCategoryUseCase(subCategoryRepo repository.SubCategoryRepository, cat
 
 func (u *subCategoryUseCase) CreateSubCategory(ctx context.Context, categoryID int, subCategory *domain.SubCategory) error {
 	// Check if the parent category exists
-	_, err := u.categoryRepo.GetByID(ctx, categoryID)
+	parentCategory, err := u.categoryRepo.GetByID(ctx, categoryID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return utils.ErrCategoryNotFound
 		}
+		log.Printf("database error: failed to retrieve category details for ID %d: %v", categoryID, err)
 		return err
 	}
 
-	// Trim whitespace from subcategory name
-	subCategory.Name = strings.TrimSpace(subCategory.Name)
-
-	// Validate subcategory name
-	if subCategory.Name == "" {
-		return utils.ErrInvalidSubCategoryName
-	}
-	if len(subCategory.Name) > 50 {
-		return utils.ErrSubCategoryNameTooLong
-	}
-
 	// Generate slug
-	subCategory.Slug = utils.GenerateSlug(subCategory.Name)
+	subCategory.Slug = utils.GenerateSubCategorySlug(parentCategory.Slug, subCategory.Name)
 
 	// Set creation time and parent category ID
 	subCategory.CreatedAt = time.Now()
+	subCategory.UpdatedAt = time.Now()
 	subCategory.ParentCategoryID = categoryID
 
 	// Attempt to create the subcategory
@@ -66,7 +58,7 @@ func (u *subCategoryUseCase) CreateSubCategory(ctx context.Context, categoryID i
 		if err == utils.ErrDuplicateSubCategory {
 			return utils.ErrDuplicateSubCategory
 		}
-		return errors.New("failed to create subcategory")
+		return utils.ErrCreateSubCategory
 	}
 
 	return nil

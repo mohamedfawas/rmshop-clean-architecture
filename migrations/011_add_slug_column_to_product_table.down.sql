@@ -1,0 +1,2 @@
+ALTER TABLE products DROP COLUMN IF EXISTS slug;
+DROP INDEX IF EXISTS idx_products_slug;

@@ -2,6 +2,7 @@ package utils
 
 import (
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -11,29 +12,29 @@ const (
 )
 
 var (
-	//user related : username
+	//user : name
 	ErrInvalidUserName         = errors.New("invalid user name")
 	ErrUserNameTooShort        = errors.New("user name too short")
 	ErrUserNameTooLong         = errors.New("user name too long")
 	ErrUserNameWithNumericVals = errors.New("user name with numeric characters")
 
-	//user related : email
+	//user : email
 	ErrInvalidEmail = errors.New("invalid email format")
 	ErrMissingEmail = errors.New("no email input given")
 
-	//user related : password
+	//user : password
 	ErrPasswordTooShort = errors.New("password too short")
 	ErrPasswordTooLong  = errors.New("password too long")
 	ErrPasswordInvalid  = errors.New("invalid password")  //empty input string
 	ErrPasswordSecurity = errors.New("password not safe") //follow password combination - secure
 
-	//user related : dob
+	//user : dob
 	ErrDOBFormat = errors.New("invalid dob format")
 
-	//user related : dob
+	//user : phone number
 	ErrInvalidPhoneNumber = errors.New("invalid phone number")
 
-	//user related : OTP
+	//user : OTP
 	ErrMissingOTP                   = errors.New("need valid otp input")
 	ErrOtpLength                    = errors.New("otp must have 6 digits")
 	ErrOtpNums                      = errors.New("non digits in otp")
@@ -43,13 +44,13 @@ var (
 	ErrUpdateVerficationAfterResend = errors.New("error update verification entry after resend otp")
 	ErrUpdateOTPResendTable         = errors.New("error updating otp resend table")
 
-	//user repo errors
+	//user : db operations
 	ErrUserNotFound              = errors.New("user not found")
 	ErrOTPNotFound               = errors.New("OTP not found")
 	ErrDuplicateEmail            = errors.New("email already exists")
 	ErrVerificationEntryNotFound = errors.New("verification entry not found")
 
-	//user related : login
+	//user : login
 	ErrLoginCredentialsMissing  = errors.New("login credentials missing")
 	ErrCreateUser               = errors.New("failed to create user")
 	ErrUpdateVerificationEntry  = errors.New("error updating verification entry")
@@ -57,13 +58,13 @@ var (
 	ErrUpdateLastLogin          = errors.New("error updating last login")
 	ErrGenerateJWTTokenWithRole = errors.New("error generate jwt token with role")
 
-	//user related : logout
+	//user : logout
 	ErrMissingAuthToken         = errors.New("missing auth token")
 	ErrAuthHeaderFormat         = errors.New("invalid auth header format")
 	ErrEmptyToken               = errors.New("empty token")
 	ErrFailedToCheckBlacklisted = errors.New("failed to check if token is blacklisted")
 
-	//admin related : login
+	//admin : login
 	ErrMissingAdminCredentials = errors.New("admin username and password missing")
 	ErrAdminUsernameTooLong    = errors.New("admin username too long")
 	ErrAdminPasswordTooLong    = errors.New("admin password too long")
@@ -72,18 +73,23 @@ var (
 	ErrInvalidExpirationClaim  = errors.New("invalid expiration claim")
 	ErrTokenExpired            = errors.New("token expired")
 
-	//category related
-	ErrInvalidCategoryName    = errors.New("invalid category name")
-	ErrCategoryNameTooLong    = errors.New("category name too long")
-	ErrDuplicateCategory      = errors.New("category already exists")
-	ErrCategoryNotFound       = errors.New("category not found")
-	ErrInvalidSubCategoryName = errors.New("invalid subcategory name")
-	ErrSubCategoryNameTooLong = errors.New("subcategory name too long")
-	ErrDuplicateSubCategory   = errors.New("subcategory already exists")
-	ErrSubCategoryNotFound    = errors.New("subcategory not found")
-	ErrCategoryNameTooShort   = errors.New("category name too short")
-	ErrCategoryNameNumeric    = errors.New("category name purely numeric")
-	ErrDBCreateCategory       = errors.New("failed to create category in db")
+	//category
+	ErrInvalidCategoryName  = errors.New("invalid category name")
+	ErrCategoryNameTooLong  = errors.New("category name too long")
+	ErrDuplicateCategory    = errors.New("category already exists")
+	ErrCategoryNotFound     = errors.New("category not found")
+	ErrCategoryNameTooShort = errors.New("category name too short")
+	ErrCategoryNameNumeric  = errors.New("category name purely numeric")
+	ErrDBCreateCategory     = errors.New("failed to create category in db")
+
+	//sub category
+	ErrInvalidSubCategoryName  = errors.New("invalid subcategory name")
+	ErrSubCategoryNameTooLong  = errors.New("subcategory name too long")
+	ErrSubCategoryNotFound     = errors.New("subcategory not found")
+	ErrDuplicateSubCategory    = errors.New("subcategory already exists")
+	ErrSubCategoryNameTooShort = errors.New("sub category name too short")
+	ErrSubCategoryNameNumeric  = errors.New("sub category name purely numeric")
+	ErrCreateSubCategory       = errors.New("failed to create sub category")
 
 	//db errors
 	ErrQueryExecution    = errors.New("failed to execute query")
@@ -93,6 +99,7 @@ var (
 	// product related
 	ErrInvalidProductName         = errors.New("invalid product name")
 	ErrProductNameTooLong         = errors.New("product name is too long")
+	ErrProductNameTooShort        = errors.New("product name too short")
 	ErrInvalidProductDescription  = errors.New("invalid product description")
 	ErrInvalidProductPrice        = errors.New("invalid product price")
 	ErrInvalidStockQuantity       = errors.New("invalid stock quantity")
@@ -151,4 +158,22 @@ func GenerateSlug(name string) string {
 	slug = strings.Trim(slug, "-")
 
 	return slug
+}
+
+func GenerateSubCategorySlug(categorySlug, subCategoryName string) string {
+	// Convert sub-category name to lowercase
+	subCategorySlug := strings.ToLower(subCategoryName)
+
+	// Replace spaces with hyphens
+	subCategorySlug = strings.ReplaceAll(subCategorySlug, " ", "-")
+
+	// Remove any characters that are not alphanumeric or hyphens
+	reg := regexp.MustCompile("[^a-z0-9-]+")
+	subCategorySlug = reg.ReplaceAllString(subCategorySlug, "")
+
+	// Remove leading and trailing hyphens
+	subCategorySlug = strings.Trim(subCategorySlug, "-")
+
+	// Combine category slug with sub-category slug
+	return fmt.Sprintf("%s/%s", categorySlug, subCategorySlug)
 }

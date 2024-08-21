@@ -1,7 +1,6 @@
 package validator
 
 import (
-	"regexp"
 	"strings"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
@@ -10,11 +9,13 @@ import (
 
 const (
 	MaxProductNameLength        = 255
+	MinProductNameLength        = 2
 	MaxProductDescriptionLength = 5000
-	MaxImagesPerProduct         = 10
+	MinProductDescriptionLength = 10
+	MaxImagesPerProduct         = 5
 )
 
-func ValidateProduct(product *domain.Product, images []domain.ProductImage) error {
+func ValidateProduct(product *domain.Product) error {
 	// Validate product name
 	if strings.TrimSpace(product.Name) == "" {
 		return utils.ErrInvalidProductName
@@ -23,13 +24,17 @@ func ValidateProduct(product *domain.Product, images []domain.ProductImage) erro
 		return utils.ErrProductNameTooLong
 	}
 
+	if len(product.Name) < MinProductNameLength {
+		return utils.ErrProductNameTooShort
+	}
+
 	// Validate product description
 	if product.Description == "" {
 		return utils.ErrProductDescriptionRequired
 	}
 
-	if len(product.Description) > MaxProductDescriptionLength {
-		return utils.ErrInvalidProductDescription
+	if len(product.Description) > MaxProductDescriptionLength || len(product.Description) < MinProductDescriptionLength {
+		return utils.ErrInvalidProductDescription // product desc min_length<desc<max_length
 	}
 
 	// Validate price
@@ -39,45 +44,15 @@ func ValidateProduct(product *domain.Product, images []domain.ProductImage) erro
 
 	// Validate stock quantity
 	if product.StockQuantity == nil {
-		return utils.ErrStockQuantRequired
+		return utils.ErrInvalidStockQuantity
 	}
 	if *product.StockQuantity < 0 {
 		return utils.ErrInvalidStockQuantity
 	}
 
-	// Validate category and subcategory IDs
-	if product.CategoryID <= 0 {
-		return utils.ErrInvalidCategoryID
-	}
+	// Validate subcategory IDs
 	if product.SubCategoryID <= 0 {
 		return utils.ErrInvalidSubCategoryID
-	}
-
-	// Validate images
-	if len(images) == 0 {
-		return utils.ErrNoImages
-	}
-	if len(images) > MaxImagesPerProduct {
-		return utils.ErrTooManyImages
-	}
-
-	primaryImageCount := 0
-	urlRegex := regexp.MustCompile(`^https?://`)
-
-	for _, img := range images {
-		if !urlRegex.MatchString(img.ImageURL) {
-			return utils.ErrInvalidImageURL
-		}
-		if img.IsPrimary {
-			primaryImageCount++
-		}
-	}
-
-	if primaryImageCount == 0 {
-		return utils.ErrNoPrimaryImage
-	}
-	if primaryImageCount > 1 {
-		return utils.ErrMultiplePrimaryImages
 	}
 
 	return nil

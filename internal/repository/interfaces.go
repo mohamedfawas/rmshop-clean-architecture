@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"database/sql"
 	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
@@ -35,8 +34,8 @@ type AdminRepository interface {
 }
 
 type CategoryRepository interface {
-	Create(ctx context.Context, category *domain.Category) error   //faz 15 aug
-	GetByID(ctx context.Context, id int) (*domain.Category, error) // retrieving any category by ID
+	Create(ctx context.Context, category *domain.Category) error   //fz
+	GetByID(ctx context.Context, id int) (*domain.Category, error) // fz
 	GetAll(ctx context.Context) ([]*domain.Category, error)
 	GetActiveByID(ctx context.Context, id int) (*domain.Category, error) // New method for retrieving active categories
 	Update(ctx context.Context, category *domain.Category) error
@@ -45,27 +44,18 @@ type CategoryRepository interface {
 }
 
 type SubCategoryRepository interface {
-	Create(ctx context.Context, subCategory *domain.SubCategory) error
+	Create(ctx context.Context, subCategory *domain.SubCategory) error //fz
 	GetByCategoryID(ctx context.Context, categoryID int) ([]*domain.SubCategory, error)
-	GetByID(ctx context.Context, id int) (*domain.SubCategory, error)
+	GetByID(ctx context.Context, id int) (*domain.SubCategory, error) //fz
 	Update(ctx context.Context, subCategory *domain.SubCategory) error
 	SoftDelete(ctx context.Context, id int) error
 }
 
 type ProductRepository interface {
-	Create(ctx context.Context, product *domain.Product) error
-	GetAll(ctx context.Context) ([]*domain.Product, error)
-	GetByID(ctx context.Context, id int64) (*domain.Product, error)
-	Update(ctx context.Context, product *domain.Product) error
-	SoftDelete(ctx context.Context, id int64) error
-	GetActiveProducts(ctx context.Context, page, pageSize int) ([]*domain.Product, int, error)
-	GetProductImages(ctx context.Context, productID int64) ([]domain.ProductImage, error)
-	UpdatePrimaryImage(ctx context.Context, productID int64, imageID int64) error
-	BeginTx(ctx context.Context) (*sql.Tx, error)
-	CreateWithTx(ctx context.Context, tx *sql.Tx, product *domain.Product) error
-	AddProductImagesWithTx(ctx context.Context, tx *sql.Tx, productID int64, images []domain.ProductImage) ([]int64, error)
-	UpdatePrimaryImageWithTx(ctx context.Context, tx *sql.Tx, productID int64, imageID int64) error
-	AddProductImages(ctx context.Context, productID int64, images []domain.ProductImage) ([]int64, error)
-	GetProductImageByID(ctx context.Context, imageID int64) (*domain.ProductImage, error)
-	RemoveProductImage(ctx context.Context, imageID int64) error
+	Create(ctx context.Context, product *domain.Product) error //fz
+	// GetAll(ctx context.Context) ([]*domain.Product, error)
+	// GetByID(ctx context.Context, id int64) (*domain.Product, error)
+	// Update(ctx context.Context, product *domain.Product) error
+	// SoftDelete(ctx context.Context, id int64) error
+	SlugExists(ctx context.Context, slug string) (bool, error) //fz
 }

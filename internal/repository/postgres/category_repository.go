@@ -39,7 +39,7 @@ func (r *categoryRepository) Create(ctx context.Context, category *domain.Catego
 
 // Add the GetByID method
 func (r *categoryRepository) GetByID(ctx context.Context, id int) (*domain.Category, error) {
-	query := `SELECT id, name, slug, created_at, deleted_at FROM categories WHERE id = $1`
+	query := `SELECT id, name, slug, created_at, updated_at, deleted_at FROM categories WHERE id = $1 AND deleted_at IS NULL`
 
 	var category domain.Category
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
@@ -47,6 +47,7 @@ func (r *categoryRepository) GetByID(ctx context.Context, id int) (*domain.Categ
 		&category.Name,
 		&category.Slug,
 		&category.CreatedAt,
+		&category.UpdatedAt,
 		&category.DeletedAt,
 	)
 
