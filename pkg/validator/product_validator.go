@@ -43,10 +43,7 @@ func ValidateProduct(product *domain.Product) error {
 	}
 
 	// Validate stock quantity
-	if product.StockQuantity == nil {
-		return utils.ErrInvalidStockQuantity
-	}
-	if *product.StockQuantity < 0 {
+	if product.StockQuantity == nil || *product.StockQuantity < 0 {
 		return utils.ErrInvalidStockQuantity
 	}
 

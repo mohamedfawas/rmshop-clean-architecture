@@ -112,6 +112,8 @@ var (
 	ErrNoPrimaryImage             = errors.New("no primary image specified")
 	ErrStockQuantRequired         = errors.New("stock quantity is required")
 	ErrProductDescriptionRequired = errors.New("product description required")
+	ErrDuplicateProductName       = errors.New("product name already exists")
+	ErrDuplicateProductSlug       = errors.New("product slug already exists")
 
 	//usecase errors
 	ErrAdminNotFound           = errors.New("admin not found")

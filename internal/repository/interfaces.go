@@ -58,4 +58,5 @@ type ProductRepository interface {
 	// Update(ctx context.Context, product *domain.Product) error
 	// SoftDelete(ctx context.Context, id int64) error
 	SlugExists(ctx context.Context, slug string) (bool, error) //fz
+	NameExists(ctx context.Context, name string) (bool, error) //fz
 }

@@ -95,15 +95,15 @@ func (r *subCategoryRepository) GetByID(ctx context.Context, id int) (*domain.Su
 		WHERE id = $1 AND deleted_at IS NULL
 	`
 
-	var sc domain.SubCategory
+	var subCategory domain.SubCategory
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
-		&sc.ID,
-		&sc.ParentCategoryID,
-		&sc.Name,
-		&sc.Slug,
-		&sc.CreatedAt,
-		&sc.UpdatedAt,
-		&sc.DeletedAt,
+		&subCategory.ID,
+		&subCategory.ParentCategoryID,
+		&subCategory.Name,
+		&subCategory.Slug,
+		&subCategory.CreatedAt,
+		&subCategory.UpdatedAt,
+		&subCategory.DeletedAt,
 	)
 
 	if err != nil {
@@ -114,7 +114,7 @@ func (r *subCategoryRepository) GetByID(ctx context.Context, id int) (*domain.Su
 		log.Printf("Failed to get SubCategory by id=%d: error=%v", id, err)
 		return nil, err
 	}
-	return &sc, nil
+	return &subCategory, nil
 }
 
 func (r *subCategoryRepository) Update(ctx context.Context, subCategory *domain.SubCategory) error {
