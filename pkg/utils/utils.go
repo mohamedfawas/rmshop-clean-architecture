@@ -5,6 +5,16 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
+)
+
+// usecase constants
+const (
+	MaxResendAttempts   = 3
+	ResendCooldown      = 1 * time.Minute
+	SignupExpiration    = 1 * time.Hour
+	MaxImagesPerProduct = 5
+	MaxFileSize         = 10 * 1024 * 1024 // 10 MB
 )
 
 const (
@@ -143,6 +153,11 @@ var (
 	ErrSendingOTP              = errors.New("error sending OTP email")
 	ErrGenerateOTP             = errors.New("error generating otp")
 	ErrHashingPassword         = errors.New("error hashing password")
+
+	//image
+	ErrImageNotFound   = errors.New("image not found")
+	ErrFileTooLarge    = errors.New("file too large")
+	ErrInvalidFileType = errors.New("invalid file type")
 )
 
 func GenerateSlug(name string) string {

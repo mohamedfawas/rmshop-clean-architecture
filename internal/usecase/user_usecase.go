@@ -210,7 +210,7 @@ func (u *userUseCase) ResendOTP(ctx context.Context, email string) error {
 	}
 
 	// Check if signup process has expired
-	if time.Now().UTC().Sub(entry.CreatedAt) > signupExpiration {
+	if time.Now().UTC().Sub(entry.CreatedAt) > utils.SignupExpiration {
 		return utils.ErrSignupExpired
 	}
 
@@ -220,7 +220,7 @@ func (u *userUseCase) ResendOTP(ctx context.Context, email string) error {
 		return utils.ErrRetrieveOTPResendInfo
 	}
 
-	if resendCount >= maxResendAttempts && time.Now().UTC().Sub(lastResendTime) < resendCooldown {
+	if resendCount >= utils.MaxResendAttempts && time.Now().UTC().Sub(lastResendTime) < utils.ResendCooldown {
 		return utils.ErrTooManyResendAttempts
 	}
 

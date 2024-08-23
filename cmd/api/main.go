@@ -6,6 +6,7 @@ import (
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/config"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/server"
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/cloudinary"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/database"
 	email "github.com/mohamedfawas/rmshop-clean-architecture/pkg/emailVerify"
 )
@@ -36,8 +37,13 @@ func main() {
 	// Initialize email sender for OTP functionality
 	emailSender := email.NewSender(cfg.SMTP.Host, cfg.SMTP.Port, cfg.SMTP.Username, cfg.SMTP.Password)
 
+	// Initialize Cloudinary service
+	cloudinaryService, err := cloudinary.NewCloudinaryService(cfg.Cloudinary.CloudName, cfg.Cloudinary.APIKey, cfg.Cloudinary.APISecret)
+	if err != nil {
+		log.Fatalf("Failed to initialize Cloudinary: %v", err)
+	}
 	// Create a new server instance with the database connection and email sender
-	srv := server.NewServer(db, emailSender)
+	srv := server.NewServer(db, emailSender, cloudinaryService)
 
 	// Start the HTTP server
 	log.Printf("Starting server on : %s", cfg.Server.Port)

@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS products (
     created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP WITHOUT TIME ZONE,
+    slug VARCHAR(255) UNIQUE NOT NULL,
     primary_image_id INTEGER,
     CONSTRAINT fk_sub_category
         FOREIGN KEY (sub_category_id)
@@ -16,3 +17,4 @@ CREATE TABLE IF NOT EXISTS products (
 );
 
 CREATE INDEX idx_products_sub_category ON products(sub_category_id);
+CREATE INDEX idx_products_slug ON products(slug);

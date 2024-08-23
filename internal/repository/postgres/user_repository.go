@@ -9,7 +9,6 @@ import (
 
 	"github.com/lib/pq"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
-	"github.com/mohamedfawas/rmshop-clean-architecture/internal/repository"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/utils"
 )
@@ -141,7 +140,7 @@ func (r *userRepository) GetOTPByEmail(ctx context.Context, email string) (*doma
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, repository.ErrOTPNotFound
+			return nil, utils.ErrOTPNotFound
 		}
 		return nil, err
 	}

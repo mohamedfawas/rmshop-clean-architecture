@@ -43,7 +43,7 @@ func ValidateProduct(product *domain.Product) error {
 	}
 
 	// Validate stock quantity
-	if product.StockQuantity == nil || *product.StockQuantity < 0 {
+	if product.StockQuantity == 0 || product.StockQuantity < 0 {
 		return utils.ErrInvalidStockQuantity
 	}
 
@@ -52,5 +52,43 @@ func ValidateProduct(product *domain.Product) error {
 		return utils.ErrInvalidSubCategoryID
 	}
 
+	return nil
+}
+
+func ValidateProductName(name string) error {
+	if len(name) < 2 {
+		return utils.ErrProductNameTooShort
+	}
+	if len(name) > 255 {
+		return utils.ErrProductNameTooLong
+	}
+	return nil
+}
+
+func ValidateProductDescription(description string) error {
+	if len(description) < 10 || len(description) > 5000 {
+		return utils.ErrProductDescriptionRequired
+	}
+	return nil
+}
+
+func ValidateProductPrice(price float64) error {
+	if price <= 0 {
+		return utils.ErrInvalidProductPrice
+	}
+	return nil
+}
+
+func ValidateProductStockQuantity(quantity int) error {
+	if quantity < 0 {
+		return utils.ErrInvalidStockQuantity
+	}
+	return nil
+}
+
+func ValidateProductSubCategoryID(subCategoryID int) error {
+	if subCategoryID <= 0 {
+		return utils.ErrInvalidSubCategoryID
+	}
 	return nil
 }

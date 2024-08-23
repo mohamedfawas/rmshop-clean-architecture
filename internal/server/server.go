@@ -9,6 +9,7 @@ import (
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/delivery/http/handlers"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/repository/postgres"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/cloudinary"
 	email "github.com/mohamedfawas/rmshop-clean-architecture/pkg/emailVerify"
 )
 
@@ -18,7 +19,7 @@ type Server struct {
 }
 
 // NewServer creates and returns a new Server instance
-func NewServer(db *sql.DB, emailSender *email.Sender) *Server {
+func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudinary.CloudinaryService) *Server {
 	log.Println("Initializing server components...")
 
 	// Handler -> UseCase -> Repository.
@@ -48,7 +49,7 @@ func NewServer(db *sql.DB, emailSender *email.Sender) *Server {
 
 	// Product components
 	productRepo := postgres.NewProductRepository(db)
-	productUseCase := usecase.NewProductUseCase(productRepo, subCategoryRepo)
+	productUseCase := usecase.NewProductUseCase(productRepo, subCategoryRepo, cloudinaryService)
 	productHandler := handlers.NewProductHandler(productUseCase)
 	log.Println("Product components initialized")
 

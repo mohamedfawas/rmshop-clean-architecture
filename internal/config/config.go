@@ -3,14 +3,21 @@ package config
 import "github.com/spf13/viper"
 
 type Config struct {
-	Server ServerConfig
-	DB     DBConfig
-	Admin  AdminConfig
-	SMTP   SMTPConfig
+	Server     ServerConfig
+	DB         DBConfig
+	Admin      AdminConfig
+	SMTP       SMTPConfig
+	Cloudinary CloudinaryConfig
 }
 
 type ServerConfig struct {
 	Port string
+}
+
+type CloudinaryConfig struct {
+	CloudName string
+	APIKey    string
+	APISecret string
 }
 
 type DBConfig struct {

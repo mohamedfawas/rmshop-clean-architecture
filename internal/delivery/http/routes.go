@@ -88,9 +88,9 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 	// r.HandleFunc("/admin/products/{productId}",
 	// 	middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
 	// 		productHandler.GetProductByID))).Methods("GET")
-	// r.HandleFunc("/admin/products/{productId}",
-	// 	middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
-	// 		productHandler.UpdateProduct))).Methods("PUT")
+	r.HandleFunc("/admin/products/{productId}",
+		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
+			productHandler.UpdateProduct))).Methods("PUT")
 	// r.HandleFunc("/admin/products/{productId}",
 	// 	middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
 	// 		productHandler.SoftDeleteProduct))).Methods("DELETE")
@@ -106,6 +106,12 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 	// r.HandleFunc("/admin/products/{productId}/images/{imageId}",
 	// 	middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
 	// 		productHandler.RemoveProductImage))).Methods("DELETE")
+
+	// product image management
+	r.HandleFunc("/admin/products/{productId}/images",
+		middleware.JWTAuthMiddleware(
+			middleware.AdminAuthMiddleware(
+				productHandler.AddProductImage))).Methods("POST")
 
 	// User routes
 	r.HandleFunc("/user/login",
