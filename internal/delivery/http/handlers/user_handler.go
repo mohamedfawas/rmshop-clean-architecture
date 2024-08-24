@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mohamedfawas/rmshop-clean-architecture/internal/delivery/http/middleware"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/api"
@@ -99,9 +100,9 @@ func (h *UserHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	err = h.userUseCase.Logout(r.Context(), token)
 	if err != nil {
 		switch err {
-		case usecase.ErrInvalidToken:
+		case utils.ErrInvalidToken:
 			api.SendResponse(w, http.StatusUnauthorized, "Logout failed", nil, "Invalid token")
-		case usecase.ErrTokenAlreadyBlacklisted:
+		case utils.ErrTokenAlreadyBlacklisted:
 			api.SendResponse(w, http.StatusBadRequest, "Logout failed", nil, "Token already invalidated")
 		case utils.ErrFailedToCheckBlacklisted:
 			api.SendResponse(w, http.StatusInternalServerError, "Logout failed", nil, "Failed to check if token is blacklisted")
@@ -365,4 +366,142 @@ func (h *UserHandler) ResendOTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	api.SendResponse(w, http.StatusOK, "OTP resent successfully", map[string]string{"message": "New OTP sent to your email"}, "")
+}
+
+func (h *UserHandler) GetUserProfile(w http.ResponseWriter, r *http.Request) {
+	// Extract user ID from the context (set by the JWT middleware)
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	if !ok {
+		api.SendResponse(w, http.StatusUnauthorized, "Failed to retrieve user profile", nil, "Invalid user id in token")
+		return
+	}
+
+	// call the use case method to get the user profile
+	user, err := h.userUseCase.GetUserProfile(r.Context(), userID)
+	if err != nil {
+		switch err {
+		case utils.ErrUserNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Failed to retrieve user profile", nil, "The requested user profile does not exist")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to retrieve user profile", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	type UserProfileResponse struct {
+		ID              int64     `json:"id"`
+		Name            string    `json:"name"`
+		Email           string    `json:"email"`
+		DOB             string    `json:"date_of_birth"`
+		PhoneNumber     string    `json:"phone_number"`
+		IsEmailVerified bool      `json:"is_email_verified"`
+		CreatedAt       time.Time `json:"created_at"`
+		LastLogin       time.Time `json:"last_login,omitempty"`
+		IsBlocked       bool      `json:"is_blocked"`
+	}
+
+	response := UserProfileResponse{
+		ID:              user.ID,
+		Name:            user.Name,
+		Email:           user.Email,
+		DOB:             user.DOB.Format("2006-01-02"),
+		PhoneNumber:     user.PhoneNumber,
+		IsEmailVerified: user.IsEmailVerified,
+		IsBlocked:       user.IsBlocked,
+		CreatedAt:       user.CreatedAt,
+		LastLogin:       user.LastLogin,
+	}
+	api.SendResponse(w, http.StatusOK, "User profile retrieved successfully", response, "")
+}
+
+func (h *UserHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
+	//extract user id from the jwt token
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	if !ok {
+		api.SendResponse(w, http.StatusUnauthorized, "Failed to update profile", nil, "Invalid token")
+		return
+	}
+
+	var updateData domain.UserUpdatedData
+	err := json.NewDecoder(r.Body).Decode(&updateData)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to update user profile", nil, "Invalid request body")
+		return
+	}
+
+	//trim space and convert to lower case
+	updateData.Name = strings.ToLower(strings.TrimSpace(updateData.Name))
+	updateData.PhoneNumber = strings.TrimSpace(updateData.PhoneNumber)
+
+	//no input data
+	if updateData.Name == "" && updateData.PhoneNumber == "" {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to update user profile", nil, "No update data provided")
+		return
+	}
+
+	//validate the updated name
+	if updateData.Name != "" {
+		err = validator.ValidateUserName(updateData.Name)
+		if err != nil {
+			switch err {
+			case utils.ErrUserNameTooShort:
+				api.SendResponse(w, http.StatusBadRequest, "Failed to update user profile", nil, "Given name is too short: name should have atleast 2 characters")
+			case utils.ErrUserNameTooLong:
+				api.SendResponse(w, http.StatusBadRequest, "Failed to update user profile", nil, "Given name is too long: name should have less than 200 characters")
+			case utils.ErrUserNameWithNumericVals:
+				api.SendResponse(w, http.StatusBadRequest, "Failed to update user profile", nil, "Numerical values are not allowed in name")
+			default:
+				api.SendResponse(w, http.StatusInternalServerError, "Failed to update user profile", nil, "An unexpected error occured")
+			}
+			return
+		}
+	}
+
+	if updateData.PhoneNumber != "" {
+		//validate updated phone number
+		err = validator.ValidatePhoneNumber(updateData.PhoneNumber)
+		if err != nil {
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update user profile", nil, "Please give a valid phone number with 10 digits")
+			return
+		}
+	}
+
+	updatedUser, err := h.userUseCase.UpdateProfile(r.Context(), userID, &updateData)
+	if err != nil {
+		switch err {
+		case utils.ErrUserNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Failed to update user profile", nil, "User not found")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to update user profile", nil, "An unexpected error occured")
+		}
+		return
+	}
+
+	type updatedUserResponse struct {
+		ID              int64     `json:"id"`
+		Name            string    `json:"name"`
+		Email           string    `json:"email"`
+		DOB             string    `json:"date_of_birth"`
+		PhoneNumber     string    `json:"phone_number"`
+		IsEmailVerified bool      `json:"is_email_verified"`
+		CreatedAt       time.Time `json:"created_at"`
+		UpdatedAt       time.Time `json:"updated_at"`
+		LastLogin       time.Time `json:"last_login,omitempty"`
+		IsBlocked       bool      `json:"is_blocked"`
+	}
+
+	response := updatedUserResponse{
+		ID:              updatedUser.ID,
+		Name:            updatedUser.Name,
+		Email:           updatedUser.Email,
+		DOB:             updatedUser.DOB.Format("2006-01-02"),
+		PhoneNumber:     updatedUser.PhoneNumber,
+		IsEmailVerified: updatedUser.IsEmailVerified,
+		CreatedAt:       updatedUser.CreatedAt,
+		UpdatedAt:       updatedUser.UpdatedAt,
+		LastLogin:       updatedUser.LastLogin,
+		IsBlocked:       updatedUser.IsBlocked,
+	}
+
+	api.SendResponse(w, http.StatusOK, "Successfully updated the user profile", response, "")
 }

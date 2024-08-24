@@ -9,7 +9,6 @@ import (
 
 	"github.com/lib/pq"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
-	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/utils"
 )
 
@@ -61,7 +60,7 @@ func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 	if err != nil {
 		pqErr, ok := err.(*pq.Error)
 		if ok && pqErr.Code == "23505" { // Unique violation error code
-			return usecase.ErrDuplicateEmail
+			return utils.ErrDuplicateEmail
 		}
 		return err
 	}
@@ -244,4 +243,43 @@ func (r *userRepository) UpdateVerificationEntryAfterResendOTP(ctx context.Conte
 		log.Printf("Error updating verification entry: %v", err)
 	}
 	return err
+}
+
+func (r *userRepository) GetByID(ctx context.Context, id int64) (*domain.User, error) {
+	query := `SELECT id, name, email, password_hash, date_of_birth, phone_number, is_blocked, is_email_verified, created_at, updated_at, last_login
+              FROM users 
+              WHERE id = $1 AND deleted_at IS NULL`
+
+	var user domain.User
+	var lastLogin sql.NullTime //time.Time can't hold null values
+
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&user.ID, &user.Name, &user.Email, &user.PasswordHash, &user.DOB,
+		&user.PhoneNumber, &user.IsBlocked, &user.IsEmailVerified,
+		&user.CreatedAt, &user.UpdatedAt, &lastLogin,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, utils.ErrUserNotFound
+		}
+		log.Printf("failed to retrieve the user by id  : %v ", err)
+		return nil, err
+	}
+
+	if lastLogin.Valid {
+		user.LastLogin = lastLogin.Time
+	}
+
+	return &user, nil
+}
+
+func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
+	query := `UPDATE users 	SET name=$1, phone_number=$2,updated_at= NOW() WHERE id=$3`
+	_, err := r.db.ExecContext(ctx, query, user.Name, user.PhoneNumber, user.ID)
+	if err != nil {
+		log.Printf("Failed to update the user data: %v", err)
+		return err
+	}
+	return nil
 }

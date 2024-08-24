@@ -22,6 +22,11 @@ type User struct {
 	LastLogin       time.Time  `json:"last_login,omitempty"` //omitempty option in a JSON tag tells the JSON encoder to omit the field if it has an empty value
 }
 
+type UserUpdatedData struct {
+	Name        string `json:"name"`
+	PhoneNumber string `json:"phone_number"`
+}
+
 func (u *User) CheckPassword(password string) bool {
 	// Compare the provided password with the stored password hash
 	err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password))

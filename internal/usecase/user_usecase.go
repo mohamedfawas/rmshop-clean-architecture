@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
@@ -20,6 +21,8 @@ type UserUseCase interface {
 	InitiateSignUp(ctx context.Context, user *domain.User) error
 	VerifyOTP(ctx context.Context, email, otp string) error
 	ResendOTP(ctx context.Context, email string) error
+	GetUserProfile(ctx context.Context, userID int64) (*domain.User, error) //fz
+	UpdateProfile(ctx context.Context, userID int64, updateData *domain.UserUpdatedData) (*domain.User, error)
 }
 
 // userUseCase implements the UserUseCase interface
@@ -252,4 +255,38 @@ func (u *userUseCase) ResendOTP(ctx context.Context, email string) error {
 	}
 
 	return nil
+}
+
+func (u *userUseCase) GetUserProfile(ctx context.Context, userID int64) (*domain.User, error) {
+	user, err := u.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		if err == utils.ErrUserNotFound {
+			return nil, utils.ErrUserNotFound
+		}
+		log.Printf("Error: %v", err)
+		return nil, utils.ErrInternalServer
+	}
+	return user, nil
+}
+
+func (u *userUseCase) UpdateProfile(ctx context.Context, userID int64, updateData *domain.UserUpdatedData) (*domain.User, error) {
+	user, err := u.userRepo.GetByID(ctx, userID)
+
+	if err != nil {
+		return nil, utils.ErrUserNotFound
+	}
+
+	if updateData.Name != "" {
+		user.Name = updateData.Name
+	}
+
+	if updateData.PhoneNumber != "" {
+		user.PhoneNumber = updateData.PhoneNumber
+	}
+
+	err = u.userRepo.Update(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
 }

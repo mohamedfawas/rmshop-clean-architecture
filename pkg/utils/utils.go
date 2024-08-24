@@ -18,7 +18,7 @@ const (
 )
 
 const (
-	ErrInternalServer = "Internal server error"
+	InternalServerErrorString = "Internal server error"
 )
 
 var (
@@ -74,6 +74,10 @@ var (
 	ErrEmptyToken               = errors.New("empty token")
 	ErrFailedToCheckBlacklisted = errors.New("failed to check if token is blacklisted")
 
+	// user : update profile
+	ErrNoUpdateData   = errors.New("no update data found")
+	ErrUpdateUserData = errors.New("error updating user data")
+
 	//admin : login
 	ErrMissingAdminCredentials = errors.New("admin username and password missing")
 	ErrAdminUsernameTooLong    = errors.New("admin username too long")
@@ -116,7 +120,6 @@ var (
 	ErrInvalidCategoryID          = errors.New("invalid category ID")
 	ErrInvalidSubCategoryID       = errors.New("invalid sub-category ID")
 	ErrNoImages                   = errors.New("at least one image is required")
-	ErrTooManyImages              = errors.New("too many images")
 	ErrInvalidImageURL            = errors.New("invalid image URL")
 	ErrMultiplePrimaryImages      = errors.New("multiple primary images not allowed")
 	ErrNoPrimaryImage             = errors.New("no primary image specified")
@@ -155,9 +158,14 @@ var (
 	ErrHashingPassword         = errors.New("error hashing password")
 
 	//image
-	ErrImageNotFound   = errors.New("image not found")
-	ErrFileTooLarge    = errors.New("file too large")
-	ErrInvalidFileType = errors.New("invalid file type")
+	ErrImageNotFound = errors.New("image not found")
+
+	ErrFileTooLarge    = errors.New("file size exceeds the maximum limit of 10MB")
+	ErrInvalidFileType = errors.New("invalid file type. Only .jpg, .jpeg, .png, and .gif are allowed")
+	ErrTooManyImages   = errors.New("maximum number of images (5) reached for this product")
+	ErrEmptyFile       = errors.New("file is empty")
+
+	ErrInternalServer = errors.New("Internal server error")
 )
 
 func GenerateSlug(name string) string {

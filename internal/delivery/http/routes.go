@@ -131,6 +131,14 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 		middleware.RateLimitMiddleware(
 			userHandler.ResendOTP, otpResendLimiter)).Methods("POST")
 
+	// user profile
+	r.HandleFunc("/user/profile",
+		middleware.JWTAuthMiddleware(middleware.UserAuthMiddleware(
+			userHandler.GetUserProfile))).Methods("GET")
+	r.HandleFunc("/user/profile",
+		middleware.JWTAuthMiddleware(middleware.UserAuthMiddleware(
+			userHandler.UpdateProfile))).Methods("PUT")
+
 	//product listing on user side
 	// r.HandleFunc("/products", middleware.UserAuthMiddleware(
 	// 	productHandler.GetActiveProducts)).Methods("GET")

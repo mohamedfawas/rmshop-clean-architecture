@@ -13,8 +13,8 @@ import (
 type contextKey string
 
 const (
-	userIDKey   contextKey = "user_id"
-	userRoleKey contextKey = "user_role"
+	UserIDKey   contextKey = "user_id"
+	UserRoleKey contextKey = "user_role"
 )
 
 func JWTAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
@@ -36,15 +36,15 @@ func JWTAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), userIDKey, userID)
-		ctx = context.WithValue(ctx, userRoleKey, role)
+		ctx := context.WithValue(r.Context(), UserIDKey, userID)
+		ctx = context.WithValue(ctx, UserRoleKey, role)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	}
 }
 
 func UserAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		role, ok := r.Context().Value(userRoleKey).(string)
+		role, ok := r.Context().Value(UserRoleKey).(string)
 		if !ok || role != "user" {
 			api.SendResponse(w, http.StatusForbidden, "Authentication failed", nil, "Access denied: user role required")
 			return
@@ -58,7 +58,7 @@ func AdminAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		//log.Println("Entering AdminAuthMiddleware")
 
 		// Retrieve the role from the context
-		role, ok := r.Context().Value(userRoleKey).(string)
+		role, ok := r.Context().Value(UserRoleKey).(string)
 		if !ok {
 			//log.Printf("Role not found in context")
 			api.SendResponse(w, http.StatusForbidden, "Access denied", nil, "Admin access required")

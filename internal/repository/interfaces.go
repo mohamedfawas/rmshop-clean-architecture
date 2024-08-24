@@ -25,6 +25,8 @@ type UserRepository interface {
 	GetOTPResendInfo(ctx context.Context, email string) (int, time.Time, error)                       //fz
 	UpdateOTPResendInfo(ctx context.Context, email string) error                                      //fz
 	UpdateVerificationEntryAfterResendOTP(ctx context.Context, entry *domain.VerificationEntry) error //fz
+	GetByID(ctx context.Context, id int64) (*domain.User, error)                                      //fz
+	Update(ctx context.Context, user *domain.User) error                                              //fz
 }
 
 type AdminRepository interface {

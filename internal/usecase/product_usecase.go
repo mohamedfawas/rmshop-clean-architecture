@@ -176,6 +176,11 @@ func (u *productUseCase) AddImage(ctx context.Context, productID int64, file mul
 		return utils.ErrInvalidFileType
 	}
 
+	// Check for empty file
+	if fileHeader.Size == 0 {
+		return utils.ErrEmptyFile
+	}
+
 	// Check the number of existing images
 	currentCount, err := u.productRepo.GetImageCount(ctx, productID)
 	if err != nil {
