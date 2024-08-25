@@ -53,6 +53,8 @@ var (
 	ErrRetrieveOTPResendInfo        = errors.New("error retrieving otp resend info")
 	ErrUpdateVerficationAfterResend = errors.New("error update verification entry after resend otp")
 	ErrUpdateOTPResendTable         = errors.New("error updating otp resend table")
+	ErrCreateVerificationEntry      = errors.New("error creating verification entry")
+	ErrSendingResetToken            = errors.New("error sending reset token")
 
 	//user : db operations
 	ErrUserNotFound              = errors.New("user not found")

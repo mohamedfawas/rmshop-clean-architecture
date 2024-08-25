@@ -89,6 +89,7 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.
 			return nil, utils.ErrUserNotFound
 		}
 		// For any other error, return it as is
+		log.Printf("error while retrieving user by email : %v", err)
 		return nil, err
 	}
 

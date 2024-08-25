@@ -21,8 +21,9 @@ type UserUseCase interface {
 	InitiateSignUp(ctx context.Context, user *domain.User) error
 	VerifyOTP(ctx context.Context, email, otp string) error
 	ResendOTP(ctx context.Context, email string) error
-	GetUserProfile(ctx context.Context, userID int64) (*domain.User, error) //fz
-	UpdateProfile(ctx context.Context, userID int64, updateData *domain.UserUpdatedData) (*domain.User, error)
+	GetUserProfile(ctx context.Context, userID int64) (*domain.User, error)                                    //fz
+	UpdateProfile(ctx context.Context, userID int64, updateData *domain.UserUpdatedData) (*domain.User, error) //fz
+	ForgotPassword(ctx context.Context, email string) error                                                    //fz
 }
 
 // userUseCase implements the UserUseCase interface
@@ -266,14 +267,22 @@ func (u *userUseCase) GetUserProfile(ctx context.Context, userID int64) (*domain
 		log.Printf("Error: %v", err)
 		return nil, utils.ErrInternalServer
 	}
+
+	if user.IsBlocked {
+		return nil, utils.ErrUserBlocked
+	}
+
 	return user, nil
 }
 
 func (u *userUseCase) UpdateProfile(ctx context.Context, userID int64, updateData *domain.UserUpdatedData) (*domain.User, error) {
 	user, err := u.userRepo.GetByID(ctx, userID)
-
 	if err != nil {
 		return nil, utils.ErrUserNotFound
+	}
+
+	if user.IsBlocked {
+		return nil, utils.ErrUserBlocked
 	}
 
 	if updateData.Name != "" {
@@ -289,4 +298,46 @@ func (u *userUseCase) UpdateProfile(ctx context.Context, userID int64, updateDat
 		return nil, err
 	}
 	return user, nil
+}
+
+func (u *userUseCase) ForgotPassword(ctx context.Context, email string) error {
+	// check if the user exists
+	user, err := u.userRepo.GetByEmail(ctx, email)
+	if err != nil {
+		// user not found error and internal server error
+		return err
+	}
+
+	// check if user is blocked
+	if user.IsBlocked {
+		return utils.ErrUserBlocked
+	}
+
+	// Generate reset token (OTP)
+	resetToken, err := otputil.GenerateOTP(6)
+	if err != nil {
+		return utils.ErrGenerateOTP
+	}
+
+	//create a verification entry
+	expiresAt := time.Now().UTC().Add(15 * time.Minute)
+	verificationEntry := &domain.VerificationEntry{
+		Email:     user.Email,
+		OTPCode:   resetToken,
+		ExpiresAt: expiresAt,
+		Type:      "password_reset",
+	}
+
+	err = u.userRepo.CreateVerificationEntry(ctx, verificationEntry)
+	if err != nil {
+		return utils.ErrCreateVericationEntry
+	}
+
+	//send reset token email
+	err = u.emailSender.SendPasswordResetToken(user.Email, resetToken)
+	if err != nil {
+		return utils.ErrSendingResetToken
+	}
+
+	return nil
 }

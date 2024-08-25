@@ -25,3 +25,12 @@ func (s *Sender) SendOTP(to, otp string) error {
 
 	return s.dialer.DialAndSend(m)
 }
+
+func (s *Sender) SendPasswordResetToken(to, token string) error {
+	m := gomail.NewMessage()
+	m.SetHeader("From", "noreply@yourdomain.com")
+	m.SetHeader("To", to)
+	m.SetHeader("Subject", "Password Reset Token for Real Madrid Shop")
+	m.SetBody("text/plain", fmt.Sprintf("Your password reset token is: %s", token))
+	return s.dialer.DialAndSend(m)
+}

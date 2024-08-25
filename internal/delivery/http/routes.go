@@ -139,6 +139,11 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 		middleware.JWTAuthMiddleware(middleware.UserAuthMiddleware(
 			userHandler.UpdateProfile))).Methods("PUT")
 
+	// user : forgot password
+	r.HandleFunc("/user/forgot-password",
+		middleware.RateLimitMiddleware(
+			userHandler.ForgotPassword, otpResendLimiter)).Methods("POST")
+
 	//product listing on user side
 	// r.HandleFunc("/products", middleware.UserAuthMiddleware(
 	// 	productHandler.GetActiveProducts)).Methods("GET")

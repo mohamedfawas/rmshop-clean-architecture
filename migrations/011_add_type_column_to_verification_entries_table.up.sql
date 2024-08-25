@@ -1,0 +1,1 @@
+ALTER TABLE verification_entries ADD COLUMN type VARCHAR(20) NOT NULL DEFAULT 'signup';

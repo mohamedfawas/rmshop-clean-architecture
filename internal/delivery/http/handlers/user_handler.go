@@ -382,6 +382,8 @@ func (h *UserHandler) GetUserProfile(w http.ResponseWriter, r *http.Request) {
 		switch err {
 		case utils.ErrUserNotFound:
 			api.SendResponse(w, http.StatusNotFound, "Failed to retrieve user profile", nil, "The requested user profile does not exist")
+		case utils.ErrUserBlocked:
+			api.SendResponse(w, http.StatusForbidden, "Failed to retrieve user profile", nil, "User is blocked")
 		default:
 			api.SendResponse(w, http.StatusInternalServerError, "Failed to retrieve user profile", nil, "An unexpected error occurred")
 		}
@@ -471,6 +473,8 @@ func (h *UserHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		switch err {
 		case utils.ErrUserNotFound:
 			api.SendResponse(w, http.StatusNotFound, "Failed to update user profile", nil, "User not found")
+		case utils.ErrUserBlocked:
+			api.SendResponse(w, http.StatusForbidden, "Failed to update user profile", nil, "User is blocked")
 		default:
 			api.SendResponse(w, http.StatusInternalServerError, "Failed to update user profile", nil, "An unexpected error occured")
 		}
@@ -504,4 +508,51 @@ func (h *UserHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	api.SendResponse(w, http.StatusOK, "Successfully updated the user profile", response, "")
+}
+
+func (h *UserHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Email string `json:"email"`
+	}
+
+	// parse the request
+	err := json.NewDecoder(r.Body).Decode(&input)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to parse request", nil, "Invalid request body")
+		return
+	}
+
+	input.Email = strings.ToLower(strings.TrimSpace(input.Email))
+
+	if input.Email == "" {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to initiate the setup", nil, "Please provide a valid email address")
+		return
+	}
+
+	err = validator.ValidateUserEmail(input.Email)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to initiate the setup", nil, "Please provide a valid email address")
+		return
+	}
+
+	err = h.userUseCase.ForgotPassword(r.Context(), input.Email)
+	if err != nil {
+		switch err {
+		case utils.ErrUserNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Failed to initiate password reset", nil, "User not found")
+		case utils.ErrGenerateOTP:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to initiate password reset", nil, "Error generating reset token")
+		case utils.ErrCreateVerificationEntry:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to initiate password reset", nil, "Error creating verification entry")
+		case utils.ErrSendingResetToken:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to initiate password reset", nil, "Error sending reset token")
+		case utils.ErrUserBlocked:
+			api.SendResponse(w, http.StatusForbidden, "Failed to initiate password reset", nil, "user is blocked")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to initiate password reset", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	api.SendResponse(w, http.StatusOK, "Password reset initiated", nil, "")
 }
