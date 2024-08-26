@@ -37,11 +37,19 @@ func main() {
 	// Initialize email sender for OTP functionality
 	emailSender := email.NewSender(cfg.SMTP.Host, cfg.SMTP.Port, cfg.SMTP.Username, cfg.SMTP.Password)
 
-	// Initialize Cloudinary service
+	// Add debug logging for Cloudinary configuration
+	log.Printf("Cloudinary Config - CloudName: %s, APIKey: %s, APISecret: %s",
+		cfg.Cloudinary.CloudName,
+		cfg.Cloudinary.APIKey,
+		cfg.Cloudinary.APISecret)
+
+	// // Initialize Cloudinary service
 	cloudinaryService, err := cloudinary.NewCloudinaryService(cfg.Cloudinary.CloudName, cfg.Cloudinary.APIKey, cfg.Cloudinary.APISecret)
+
 	if err != nil {
-		log.Fatalf("Failed to initialize Cloudinary: %v", err)
+		log.Fatalf("Failed to initialize Cloudinary instance: %v", err)
 	}
+
 	// Create a new server instance with the database connection and email sender
 	srv := server.NewServer(db, emailSender, cloudinaryService)
 

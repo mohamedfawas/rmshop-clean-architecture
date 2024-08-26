@@ -3,6 +3,7 @@ package cloudinary
 import (
 	"context"
 	"fmt"
+	"log"
 	"mime/multipart"
 	"time"
 
@@ -15,8 +16,13 @@ type CloudinaryService struct {
 }
 
 func NewCloudinaryService(cloudName, apiKey, apiSecret string) (*CloudinaryService, error) {
+	if cloudName == "" || apiKey == "" || apiSecret == "" {
+		return nil, fmt.Errorf("cloudinary credentials are incomplete")
+	}
+
 	cld, err := cloudinary.NewFromParams(cloudName, apiKey, apiSecret)
 	if err != nil {
+		log.Printf("Failed to create cloudinary service instance : %v", err)
 		return nil, err
 	}
 	return &CloudinaryService{cld: cld}, nil
@@ -30,6 +36,7 @@ func (s *CloudinaryService) UploadImage(ctx context.Context, file multipart.File
 
 	result, err := s.cld.Upload.Upload(ctx, file, uploadParams)
 	if err != nil {
+		log.Printf("error while uploading to cloudinary :%v", err)
 		return "", err
 	}
 

@@ -61,11 +61,11 @@ type ProductRepository interface {
 	// SoftDelete(ctx context.Context, id int64) error
 	SlugExists(ctx context.Context, slug string) (bool, error) //fz
 	NameExists(ctx context.Context, name string) (bool, error) //fz
-	Update(ctx context.Context, product *domain.Product) error
+	Update(ctx context.Context, product *domain.Product) error //fz
 	SoftDelete(ctx context.Context, id int64) error
-	GetByID(ctx context.Context, id int64) (*domain.Product, error)
+	GetByID(ctx context.Context, id int64) (*domain.Product, error)                         //fz
 	NameExistsBeforeUpdate(ctx context.Context, name string, excludeID int64) (bool, error) //fz
-	AddImage(ctx context.Context, productID int64, imageURL string, isPrimary bool) error
+	AddImage(ctx context.Context, productID int64, imageURL string, isPrimary bool) error   //fz
 	GetImageCount(ctx context.Context, productID int64) (int, error)
 	DeleteImage(ctx context.Context, productID int64, imageURL string) error
 	GetProductImages(ctx context.Context, productID int64) ([]*domain.ProductImage, error)

@@ -93,7 +93,7 @@ func (h *ProductHandler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Decode the request body into a map
-	var updateFields map[string]interface{}
+	var updateFields map[string]interface{} // interface can take any data type
 	err = json.NewDecoder(r.Body).Decode(&updateFields)
 	if err != nil {
 		api.SendResponse(w, http.StatusBadRequest, "Invalid request", nil, "Failed to parse request body")
@@ -112,9 +112,14 @@ func (h *ProductHandler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
 		switch key {
 		case "name":
 			if name, ok := value.(string); ok {
-				updatedProduct.Name = strings.TrimSpace(name)
+				updatedProduct.Name = strings.ToLower(strings.TrimSpace(name))
 				if err := validator.ValidateProductName(updatedProduct.Name); err != nil {
-					api.SendResponse(w, http.StatusBadRequest, "Validation failed", nil, err.Error())
+					switch err {
+					case utils.ErrProductNameTooShort:
+						api.SendResponse(w, http.StatusBadRequest, "Validation failed", nil, "Product name should have atleast 2 characters")
+					case utils.ErrProductNameTooLong:
+						api.SendResponse(w, http.StatusBadRequest, "Validation failed", nil, "Product name should not have more than 255 characters")
+					}
 					return
 				}
 			} else {
@@ -125,7 +130,7 @@ func (h *ProductHandler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
 			if description, ok := value.(string); ok {
 				updatedProduct.Description = strings.TrimSpace(description)
 				if err := validator.ValidateProductDescription(updatedProduct.Description); err != nil {
-					api.SendResponse(w, http.StatusBadRequest, "Validation failed", nil, err.Error())
+					api.SendResponse(w, http.StatusBadRequest, "Validation failed", nil, "Product description should be between 10 and 5000 characters")
 					return
 				}
 			} else {
@@ -193,14 +198,16 @@ func (h *ProductHandler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
 
 func (h *ProductHandler) AddProductImage(w http.ResponseWriter, r *http.Request) {
 	// Parse the multipart form
-	err := r.ParseMultipartForm(10 << 20) // 10 MB max
+	err := r.ParseMultipartForm(10 << 20) // 10 MB max , 10 << 20 is a bitwise shift operation that calculates 10 * 2^20, which equals approximately 10 MB
 	if err != nil {
 		api.SendResponse(w, http.StatusBadRequest, "Failed to parse form", nil, "Invalid form data")
 		return
 	}
 
 	// Get the product ID from the URL
-	vars := mux.Vars(r)
+	vars := mux.Vars(r) // extracts the variables (path parameters) from the URL
+	//The Vars function returns a map where the keys are the parameter names defined in the URL route, and the values are the corresponding segments in the actual request URL.
+	//if your route is /products/{productId}, vars["productId"] will contain the value passed in the URL for productId.
 	productID, err := strconv.ParseInt(vars["productId"], 10, 64)
 	if err != nil {
 		api.SendResponse(w, http.StatusBadRequest, "Invalid product ID", nil, "Product ID must be a number")

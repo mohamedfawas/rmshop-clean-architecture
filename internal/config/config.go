@@ -1,6 +1,10 @@
 package config
 
-import "github.com/spf13/viper"
+import (
+	"log"
+
+	"github.com/spf13/viper"
+)
 
 type Config struct {
 	Server     ServerConfig
@@ -48,14 +52,22 @@ func Load() (*Config, error) {
 
 	err := viper.ReadInConfig() //Reads configuration files
 	if err != nil {
+		log.Printf("Error reading config file: %v", err)
 		return nil, err
 	}
+
+	log.Printf("Config file used: %s", viper.ConfigFileUsed())
 
 	var config Config
 	err = viper.Unmarshal(&config) //unmarshal the configuration values from a Viper instance into a struct
 	if err != nil {
+		log.Printf("Error unmarshaling config: %v", err)
 		return nil, err
 	}
+	log.Printf("values of db are : %s", config.DB.Host)
+	log.Printf("values of cloudinary are : %s", config.Cloudinary.CloudName)
 
+	// Debug print Cloudinary configuration
+	log.Printf("Loaded Cloudinary config: %+v", config.Cloudinary)
 	return &config, nil
 }

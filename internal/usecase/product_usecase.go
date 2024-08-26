@@ -117,7 +117,7 @@ func (u *productUseCase) UpdateProduct(ctx context.Context, product *domain.Prod
 		return err
 	}
 
-	// Check if the subcategory exists and is not deleted
+	// Check if the subcategory exists and is not soft deleted
 	if product.SubCategoryID != existingProduct.SubCategoryID {
 		subCategory, err := u.subCategoryRepo.GetByID(ctx, product.SubCategoryID)
 		if err != nil {
@@ -137,7 +137,7 @@ func (u *productUseCase) UpdateProduct(ctx context.Context, product *domain.Prod
 
 	// Check for duplicate name only if the name has changed
 	if product.Name != existingProduct.Name {
-		exists, err := u.productRepo.NameExistsBeforeUpdate(ctx, product.Name, product.ID)
+		exists, err := u.productRepo.NameExistsBeforeUpdate(ctx, product.Name, product.ID) //check whether any active product names exist with the updated name
 		if err != nil {
 			return err
 		}
@@ -184,6 +184,7 @@ func (u *productUseCase) AddImage(ctx context.Context, productID int64, file mul
 	// Check the number of existing images
 	currentCount, err := u.productRepo.GetImageCount(ctx, productID)
 	if err != nil {
+		log.Printf("error while retreiving the image count : %v", err)
 		return err
 	}
 
@@ -202,6 +203,7 @@ func (u *productUseCase) AddImage(ctx context.Context, productID int64, file mul
 	if err != nil {
 		// If there's an error adding to the database, we should delete the image from Cloudinary
 		_ = u.cloudinary.DeleteImage(ctx, imageURL)
+		log.Printf("error while adding image to the database : %v", err)
 		return err
 	}
 

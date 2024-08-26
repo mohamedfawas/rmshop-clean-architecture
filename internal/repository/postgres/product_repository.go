@@ -148,6 +148,9 @@ func (r *productRepository) NameExistsBeforeUpdate(ctx context.Context, name str
 	query := `SELECT EXISTS(SELECT 1 FROM products WHERE LOWER(name) = LOWER($1) AND id != $2 AND deleted_at IS NULL)`
 	var exists bool
 	err := r.db.QueryRowContext(ctx, query, name, excludeID).Scan(&exists)
+	if err != nil {
+		log.Printf("Database error while checking whether name exists before update : %v", err)
+	}
 	return exists, err
 }
 
