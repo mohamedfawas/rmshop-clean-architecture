@@ -59,8 +59,6 @@ func (h *AdminHandler) Login(w http.ResponseWriter, r *http.Request) {
 		switch err {
 		case utils.ErrInvalidAdminCredentials:
 			api.SendResponse(w, http.StatusUnauthorized, "Login failed", nil, "Invalid username or password")
-		case utils.ErrRetreivingAdminUsername:
-			api.SendResponse(w, http.StatusInternalServerError, "Login failed", nil, "Error while retrieving data of the given username")
 		case utils.ErrGenerateJWTTokenWithRole:
 			api.SendResponse(w, http.StatusInternalServerError, "Login failed", nil, "Error while generating JWT token")
 		default:

@@ -43,7 +43,7 @@ func (r *userRepository) CreateUserSignUpVerifcationEntry(ctx context.Context, e
 		entry.PasswordHash,
 		entry.ExpiresAt,
 		entry.IsVerified,
-		time.Now()).Scan(&entry.ID)
+		time.Now().UTC()).Scan(&entry.ID)
 
 	if err != nil {
 		log.Printf("Error creating signup verification entry: %v", err)
@@ -59,7 +59,7 @@ func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
 
 	err := r.db.QueryRowContext(ctx, query,
 		user.Name, user.Email, user.PasswordHash, user.DOB,
-		user.PhoneNumber, user.IsBlocked, user.IsEmailVerified, time.Now()).
+		user.PhoneNumber, user.IsBlocked, user.IsEmailVerified, time.Now().UTC()).
 		Scan(&user.ID, &user.CreatedAt)
 	if err != nil {
 		pqErr, ok := err.(*pq.Error)
@@ -111,7 +111,7 @@ func (r *userRepository) UpdateLastLogin(ctx context.Context, userID int64) erro
 	query := `UPDATE users SET last_login = $1 WHERE id = $2`
 
 	// Execute the update query
-	_, err := r.db.ExecContext(ctx, query, time.Now(), userID)
+	_, err := r.db.ExecContext(ctx, query, time.Now().UTC(), userID)
 	return err
 }
 
@@ -159,7 +159,7 @@ func (r *userRepository) DeleteOTP(ctx context.Context, email string) error {
 
 func (r *userRepository) UpdateEmailVerificationStatus(ctx context.Context, userID int64, status bool) error {
 	query := `UPDATE users SET is_email_verified = $1, updated_at = $2 WHERE id = $3`
-	_, err := r.db.ExecContext(ctx, query, status, time.Now(), userID)
+	_, err := r.db.ExecContext(ctx, query, status, time.Now().UTC(), userID)
 	return err
 }
 
@@ -177,7 +177,7 @@ func (r *userRepository) DeleteExpiredVerificationEntries(ctx context.Context) e
 	query := `DELETE FROM verification_entries
               WHERE expires_at < $1 AND is_verified = false`
 
-	_, err := r.db.ExecContext(ctx, query, time.Now())
+	_, err := r.db.ExecContext(ctx, query, time.Now().UTC())
 	return err
 }
 
@@ -285,7 +285,7 @@ func (r *userRepository) CreatePasswordResetEntry(ctx context.Context, entry *do
 		entry.OTPCode,
 		entry.ExpiresAt,
 		entry.IsVerified,
-		time.Now()).Scan(&entry.ID)
+		time.Now().UTC()).Scan(&entry.ID)
 
 	if err != nil {
 		log.Printf("Error creating password reset entry: %v", err)
@@ -390,6 +390,46 @@ func (r *userRepository) AddUserAddress(ctx context.Context, address *domain.Use
 
 	if err != nil {
 		log.Printf("error while adding address data into user_address table : %v", err)
+	}
+	return err
+}
+
+func (r *userRepository) GetUserAddressByID(ctx context.Context, addressID int64) (*domain.UserAddress, error) {
+	query := `
+		SELECT id, user_id, address_line1, address_line2, state, city, pincode, landmark, phone_number, created_at, updated_at
+		FROM user_address
+		WHERE id=$1 AND deleted_at IS NULL		
+		`
+	var address domain.UserAddress
+	err := r.db.QueryRowContext(ctx, query, addressID).Scan(
+		&address.ID, &address.UserID, &address.AddressLine1,
+		&address.AddressLine2, &address.State, &address.City,
+		&address.PinCode, &address.Landmark, &address.PhoneNumber,
+		&address.CreatedAt, &address.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, utils.ErrAddressNotFound
+		}
+		return nil, err
+	}
+
+	return &address, nil
+}
+
+func (r *userRepository) UpdateUserAddress(ctx context.Context, address *domain.UserAddress) error {
+	query := `
+			UPDATE user_address SET
+			address_line1= $1, address_line2 = $2, city = $3, state = $4, 
+			pincode = $5, landmark = $6, phone_number = $7, updated_at = $8
+			WHERE id= $9 AND user_id= $10 AND deleted_at IS NULL
+			  `
+	_, err := r.db.ExecContext(ctx, query,
+		address.AddressLine1, address.AddressLine2, address.City,
+		address.State, address.PinCode, address.Landmark, address.PhoneNumber,
+		time.Now().UTC(), address.ID, address.UserID)
+	if err != nil {
+		log.Printf("error while updating user address : %v", err)
 	}
 	return err
 }

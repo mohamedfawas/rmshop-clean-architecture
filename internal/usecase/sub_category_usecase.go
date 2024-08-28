@@ -11,6 +11,7 @@ import (
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/repository"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/utils"
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/validator"
 )
 
 type SubCategoryUseCase interface {
@@ -48,8 +49,8 @@ func (u *subCategoryUseCase) CreateSubCategory(ctx context.Context, categoryID i
 	subCategory.Slug = utils.GenerateSubCategorySlug(parentCategory.Slug, subCategory.Name)
 
 	// Set creation time and parent category ID
-	subCategory.CreatedAt = time.Now()
-	subCategory.UpdatedAt = time.Now()
+	subCategory.CreatedAt = time.Now().UTC()
+	subCategory.UpdatedAt = time.Now().UTC()
 	subCategory.ParentCategoryID = categoryID
 
 	// Attempt to create the subcategory
@@ -58,7 +59,7 @@ func (u *subCategoryUseCase) CreateSubCategory(ctx context.Context, categoryID i
 		if err == utils.ErrDuplicateSubCategory {
 			return utils.ErrDuplicateSubCategory
 		}
-		return utils.ErrCreateSubCategory
+		return err
 	}
 
 	return nil
@@ -90,7 +91,7 @@ func (u *subCategoryUseCase) GetSubCategoryByID(ctx context.Context, categoryID,
 		if err == utils.ErrCategoryNotFound {
 			return nil, utils.ErrCategoryNotFound
 		}
-		return nil, errors.New("failed to retrieve parent category")
+		return nil, err
 	}
 
 	// Retrieve the sub-category
@@ -99,7 +100,7 @@ func (u *subCategoryUseCase) GetSubCategoryByID(ctx context.Context, categoryID,
 		if err == utils.ErrSubCategoryNotFound {
 			return nil, utils.ErrSubCategoryNotFound
 		}
-		return nil, errors.New("failed to retrieve sub-category")
+		return nil, err
 	}
 
 	// Ensure the sub-category belongs to the specified category
@@ -117,18 +118,15 @@ func (u *subCategoryUseCase) UpdateSubCategory(ctx context.Context, categoryID i
 		if err == utils.ErrCategoryNotFound {
 			return utils.ErrCategoryNotFound
 		}
-		return errors.New("failed to retrieve parent category")
+		return err
 	}
 
 	// Trim whitespace from subcategory name
 	subCategory.Name = strings.TrimSpace(subCategory.Name)
 
-	// Validate subcategory name
-	if subCategory.Name == "" {
-		return utils.ErrInvalidSubCategoryName
-	}
-	if len(subCategory.Name) > 50 {
-		return utils.ErrSubCategoryNameTooLong
+	err = validator.ValidateSubCategoryName(subCategory.Name)
+	if err != nil {
+		return err
 	}
 
 	// Generate slug
@@ -143,7 +141,7 @@ func (u *subCategoryUseCase) UpdateSubCategory(ctx context.Context, categoryID i
 		if err == utils.ErrSubCategoryNotFound {
 			return utils.ErrSubCategoryNotFound
 		}
-		return errors.New("failed to update subcategory")
+		return err
 	}
 
 	return nil
@@ -156,7 +154,7 @@ func (u *subCategoryUseCase) SoftDeleteSubCategory(ctx context.Context, category
 		if err == utils.ErrCategoryNotFound {
 			return utils.ErrCategoryNotFound
 		}
-		return errors.New("failed to retrieve parent category")
+		return err
 	}
 
 	// Check if the sub-category exists and belongs to the specified category
@@ -165,7 +163,7 @@ func (u *subCategoryUseCase) SoftDeleteSubCategory(ctx context.Context, category
 		if err == utils.ErrSubCategoryNotFound {
 			return utils.ErrSubCategoryNotFound
 		}
-		return errors.New("failed to retrieve sub-category")
+		return err
 	}
 
 	if subCategory.ParentCategoryID != categoryID {
@@ -175,7 +173,7 @@ func (u *subCategoryUseCase) SoftDeleteSubCategory(ctx context.Context, category
 	// Perform the soft delete
 	err = u.subCategoryRepo.SoftDelete(ctx, subCategoryID)
 	if err != nil {
-		return errors.New("failed to soft delete sub-category")
+		return err
 	}
 
 	return nil

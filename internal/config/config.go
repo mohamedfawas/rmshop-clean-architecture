@@ -12,6 +12,7 @@ type Config struct {
 	Admin      AdminConfig
 	SMTP       SMTPConfig
 	Cloudinary CloudinaryConfig
+	JWT        JWTConfig
 }
 
 type ServerConfig struct {
@@ -42,6 +43,10 @@ type SMTPConfig struct {
 	Port     int
 	Username string
 	Password string
+}
+
+type JWTConfig struct {
+	Secret string
 }
 
 func Load() (*Config, error) {

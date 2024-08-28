@@ -11,6 +11,7 @@ import (
 	email "github.com/mohamedfawas/rmshop-clean-architecture/pkg/emailVerify"
 	otputil "github.com/mohamedfawas/rmshop-clean-architecture/pkg/otpUtility"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/utils"
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/validator"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -26,18 +27,21 @@ type UserUseCase interface {
 	ForgotPassword(ctx context.Context, email string) error
 	ResetPassword(ctx context.Context, email, otp, newPassword string) error   //fz
 	AddUserAddress(ctx context.Context, userAddress *domain.UserAddress) error //fz
+	UpdateUserAddress(ctx context.Context, userID, addressID int64, updatedAddressData *domain.UserAddressUpdate) (*domain.UserAddress, error)
 }
 
 // userUseCase implements the UserUseCase interface
 type userUseCase struct {
-	userRepo    repository.UserRepository
-	emailSender email.EmailSender
+	userRepo       repository.UserRepository
+	emailSender    email.EmailSender
+	tokenBlacklist *auth.TokenBlacklist
 }
 
 // NewUserUseCase creates a new instance of UserUseCase
-func NewUserUseCase(userRepo repository.UserRepository, emailSender email.EmailSender) UserUseCase {
+func NewUserUseCase(userRepo repository.UserRepository, emailSender email.EmailSender, tokenBlacklist *auth.TokenBlacklist) UserUseCase {
 	return &userUseCase{userRepo: userRepo,
-		emailSender: emailSender}
+		emailSender:    emailSender,
+		tokenBlacklist: tokenBlacklist}
 }
 
 func (u *userUseCase) Login(ctx context.Context, email, password string) (string, error) {
@@ -80,7 +84,7 @@ func (u *userUseCase) Login(ctx context.Context, email, password string) (string
 
 func (u *userUseCase) Logout(ctx context.Context, token string) error {
 	// Validate the token
-	claims, err := auth.ValidateUserToken(token)
+	_, err := auth.ValidateToken(token)
 	if err != nil {
 		return utils.ErrInvalidToken
 	}
@@ -95,6 +99,11 @@ func (u *userUseCase) Logout(ctx context.Context, token string) error {
 	}
 
 	// Get token expiration time
+	claims, err := auth.GetClaimsFromToken(token)
+	if err != nil {
+		return utils.ErrInvalidToken
+	}
+
 	exp, ok := claims["exp"].(float64)
 	if !ok {
 		return utils.ErrInvalidToken
@@ -441,4 +450,75 @@ func (u *userUseCase) AddUserAddress(ctx context.Context, userAddress *domain.Us
 	}
 
 	return nil
+}
+
+func (u *userUseCase) UpdateUserAddress(ctx context.Context, userID, addressID int64, updatedAddressData *domain.UserAddressUpdate) (*domain.UserAddress, error) {
+	// retrieve the existing address
+	userAddress, err := u.userRepo.GetUserAddressByID(ctx, addressID)
+	if err != nil {
+		return nil, utils.ErrAddressNotFound
+	}
+
+	// check if the address belongs to the user
+	if userAddress.UserID != userID {
+		return nil, utils.ErrUnauthorized
+	}
+
+	// update fields if provided
+	if updatedAddressData.AddressLine1 != nil {
+		err = validator.ValidateAddressLine(*updatedAddressData.AddressLine1)
+		if err != nil {
+			return nil, err // verify errors in address validation
+		}
+		userAddress.AddressLine1 = *updatedAddressData.AddressLine1
+	}
+
+	if updatedAddressData.AddressLine2 != nil {
+		userAddress.AddressLine2 = *updatedAddressData.AddressLine2
+	}
+
+	if updatedAddressData.City != nil {
+		err = validator.ValidateCity(*updatedAddressData.City)
+		if err != nil {
+			return nil, utils.ErrInvalidUserCityEntry
+		}
+		userAddress.City = *updatedAddressData.City
+	}
+
+	if updatedAddressData.State != nil {
+		err = validator.ValidateState(*updatedAddressData.State)
+		if err != nil {
+			return nil, utils.ErrInvalidUserStateEntry
+		}
+		userAddress.State = *updatedAddressData.State
+	}
+
+	if updatedAddressData.PinCode != nil {
+		err = validator.ValidatePinCode(*updatedAddressData.PinCode)
+		if err != nil {
+			return nil, utils.ErrInvalidPinCode
+		}
+		userAddress.PinCode = *updatedAddressData.PinCode
+	}
+
+	if updatedAddressData.Landmark != nil {
+		userAddress.Landmark = *updatedAddressData.Landmark
+	}
+	if updatedAddressData.PhoneNumber != nil {
+		if err := validator.ValidatePhoneNumber(*updatedAddressData.PhoneNumber); err != nil {
+			return nil, utils.ErrInvalidPhoneNumber
+		}
+		userAddress.PhoneNumber = *updatedAddressData.PhoneNumber
+	}
+
+	// change update time
+	userAddress.UpdatedAt = time.Now().UTC()
+
+	// update the address in the repository
+	err = u.userRepo.UpdateUserAddress(ctx, userAddress)
+	if err != nil {
+		return nil, err
+	}
+
+	return userAddress, nil
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/delivery/http/handlers"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/repository/postgres"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/auth"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/cloudinary"
 	email "github.com/mohamedfawas/rmshop-clean-architecture/pkg/emailVerify"
 )
@@ -19,14 +20,13 @@ type Server struct {
 }
 
 // NewServer creates and returns a new Server instance
-func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudinary.CloudinaryService) *Server {
+func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudinary.CloudinaryService, tokenBlacklist *auth.TokenBlacklist) *Server {
 	log.Println("Initializing server components...")
 
-	// Handler -> UseCase -> Repository.
 	// User components initialization
-	userRepo := postgres.NewUserRepository(db)                   // Create a new user repository with the database connection
-	userUseCase := usecase.NewUserUseCase(userRepo, emailSender) // Create a new user use case with the user repository and email sender
-	userHandler := handlers.NewUserHandler(userUseCase)          // Create a new user handler with the user use case
+	userRepo := postgres.NewUserRepository(db)
+	userUseCase := usecase.NewUserUseCase(userRepo, emailSender, tokenBlacklist)
+	userHandler := handlers.NewUserHandler(userUseCase)
 	log.Println("User components initialized")
 
 	// Admin components initialization
@@ -60,6 +60,7 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 		categoryHandler,
 		subCategoryHandler,
 		productHandler,
+		tokenBlacklist,
 	)
 	log.Println("Router initialized")
 

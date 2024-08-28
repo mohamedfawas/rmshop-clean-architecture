@@ -8,147 +8,97 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/delivery/http/handlers"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/delivery/http/middleware"
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/auth"
 	"golang.org/x/time/rate"
 )
 
-func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHandler, categoryHandler *handlers.CategoryHandler, subCategoryHandler *handlers.SubCategoryHandler, productHandler *handlers.ProductHandler) http.Handler {
+func loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("Incoming request: %s %s", r.Method, r.URL.Path)
+		next.ServeHTTP(w, r)
+	})
+}
+
+// chainMiddleware creates a new handler by chaining multiple middleware functions
+func chainMiddleware(middlewares ...func(http.HandlerFunc) http.HandlerFunc) func(http.HandlerFunc) http.HandlerFunc {
+	return func(final http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			last := final
+			for i := len(middlewares) - 1; i >= 0; i-- {
+				last = middlewares[i](last)
+			}
+			last(w, r)
+		}
+	}
+}
+
+func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHandler, categoryHandler *handlers.CategoryHandler, subCategoryHandler *handlers.SubCategoryHandler, productHandler *handlers.ProductHandler, tokenBlacklist *auth.TokenBlacklist) http.Handler {
 	log.Println("Setting up router...")
 	r := mux.NewRouter()
 
-	// set up a middleware that logs every incoming HTTP request
-	r.Use(func(next http.Handler) http.Handler { // This is using the Use method of the router to add middleware
+	// Set up logging middleware
+	r.Use(loggingMiddleware)
 
-		//Any request passing through this router will go through the middleware before reaching its final handler
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// This creates a new HandlerFunc, which is the actual middleware
+	// JWT middleware
+	jwtAuth := middleware.JWTAuthMiddleware(tokenBlacklist)
 
-			// Log information about the incoming request
-			log.Printf("Incoming request: %s %s", r.Method, r.URL.Path) // This line logs the HTTP method (GET, POST, etc.) and the request path
+	// Admin auth middleware
+	adminAuth := middleware.AdminAuthMiddleware
 
-			// Call the next handler in the chain
-			next.ServeHTTP(w, r)
-			// This line ensures that the request continues to be processed
-			// by passing it to the next handler in the middleware chain
-			//This is crucial; without this line, the request would not proceed to the intended route handler
-		})
-	})
+	// User auth middleware
+	userAuth := middleware.UserAuthMiddleware
 
 	// Admin routes
-	r.HandleFunc("/admin/login",
-		adminHandler.Login)
-	r.HandleFunc("/admin/logout",
-		middleware.JWTAuthMiddleware(adminHandler.Logout))
+	r.HandleFunc("/admin/login", adminHandler.Login).Methods("POST")
+	r.HandleFunc("/admin/logout", chainMiddleware(jwtAuth, adminAuth)(adminHandler.Logout)).Methods("POST")
 
-	// Admin routes : Category routes
-	r.HandleFunc("/admin/categories",
-		middleware.JWTAuthMiddleware(
-			middleware.AdminAuthMiddleware(
-				categoryHandler.CreateCategory))).Methods("POST")
-	r.HandleFunc("/admin/categories",
-		middleware.JWTAuthMiddleware(
-			middleware.AdminAuthMiddleware(
-				categoryHandler.GetAllCategories))).Methods("GET")
-	r.HandleFunc("/admin/categories/{categoryId}",
-		middleware.JWTAuthMiddleware(
-			middleware.AdminAuthMiddleware(
-				categoryHandler.GetActiveCategoryByID))).Methods("GET")
-	r.HandleFunc("/admin/categories/{categoryId}",
-		middleware.JWTAuthMiddleware(
-			middleware.AdminAuthMiddleware(
-				categoryHandler.UpdateCategory))).Methods("PUT")
-	r.HandleFunc("/admin/categories/{categoryId}",
-		middleware.JWTAuthMiddleware(
-			middleware.AdminAuthMiddleware(
-				categoryHandler.SoftDeleteCategory))).Methods("DELETE")
+	// Admin routes: Category routes
+	r.HandleFunc("/admin/categories", chainMiddleware(jwtAuth, adminAuth)(categoryHandler.CreateCategory)).Methods("POST")
+	r.HandleFunc("/admin/categories", chainMiddleware(jwtAuth, adminAuth)(categoryHandler.GetAllCategories)).Methods("GET")
+	r.HandleFunc("/admin/categories/{categoryId}", chainMiddleware(jwtAuth, adminAuth)(categoryHandler.GetActiveCategoryByID)).Methods("GET")
+	r.HandleFunc("/admin/categories/{categoryId}", chainMiddleware(jwtAuth, adminAuth)(categoryHandler.UpdateCategory)).Methods("PUT")
+	r.HandleFunc("/admin/categories/{categoryId}", chainMiddleware(jwtAuth, adminAuth)(categoryHandler.SoftDeleteCategory)).Methods("DELETE")
 
-	// Admin routes :Subcategory routes
-	r.HandleFunc("/admin/categories/{categoryId}/subcategories",
-		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
-			subCategoryHandler.CreateSubCategory))).Methods("POST")
-	r.HandleFunc("/admin/categories/{categoryId}/subcategories",
-		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
-			subCategoryHandler.GetSubCategoriesByCategory))).Methods("GET")
-	r.HandleFunc("/admin/categories/{categoryId}/subcategories/{subcategoryId}",
-		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
-			subCategoryHandler.GetSubCategoryByID))).Methods("GET")
-	r.HandleFunc("/admin/categories/{categoryId}/subcategories/{subcategoryId}",
-		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
-			subCategoryHandler.UpdateSubCategory))).Methods("PUT")
-	r.HandleFunc("/admin/categories/{categoryId}/subcategories/{subcategoryId}",
-		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
-			subCategoryHandler.SoftDeleteSubCategory))).Methods("DELETE")
+	// Admin routes: Subcategory routes
+	r.HandleFunc("/admin/categories/{categoryId}/subcategories", chainMiddleware(jwtAuth, adminAuth)(subCategoryHandler.CreateSubCategory)).Methods("POST")
+	r.HandleFunc("/admin/categories/{categoryId}/subcategories", chainMiddleware(jwtAuth, adminAuth)(subCategoryHandler.GetSubCategoriesByCategory)).Methods("GET")
+	r.HandleFunc("/admin/categories/{categoryId}/subcategories/{subcategoryId}", chainMiddleware(jwtAuth, adminAuth)(subCategoryHandler.GetSubCategoryByID)).Methods("GET")
+	r.HandleFunc("/admin/categories/{categoryId}/subcategories/{subcategoryId}", chainMiddleware(jwtAuth, adminAuth)(subCategoryHandler.UpdateSubCategory)).Methods("PUT")
+	r.HandleFunc("/admin/categories/{categoryId}/subcategories/{subcategoryId}", chainMiddleware(jwtAuth, adminAuth)(subCategoryHandler.SoftDeleteSubCategory)).Methods("DELETE")
 
-	// Admin routes :Product routes
-	r.HandleFunc("/admin/products",
-		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
-			productHandler.CreateProduct))).Methods("POST")
-	r.HandleFunc("/admin/products",
-		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
-			productHandler.GetAllProducts))).Methods("GET")
-	r.HandleFunc("/admin/products/{productId}",
-		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
-			productHandler.GetProductByID))).Methods("GET")
-	r.HandleFunc("/admin/products/{productId}",
-		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
-			productHandler.UpdateProduct))).Methods("PUT")
-	r.HandleFunc("/admin/products/{productId}",
-		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
-			productHandler.SoftDeleteProduct))).Methods("DELETE")
+	// Admin routes: Product routes
+	r.HandleFunc("/admin/products", chainMiddleware(jwtAuth, adminAuth)(productHandler.CreateProduct)).Methods("POST")
+	r.HandleFunc("/admin/products", chainMiddleware(jwtAuth, adminAuth)(productHandler.GetAllProducts)).Methods("GET")
+	r.HandleFunc("/admin/products/{productId}", chainMiddleware(jwtAuth, adminAuth)(productHandler.GetProductByID)).Methods("GET")
+	r.HandleFunc("/admin/products/{productId}", chainMiddleware(jwtAuth, adminAuth)(productHandler.UpdateProduct)).Methods("PUT")
+	r.HandleFunc("/admin/products/{productId}", chainMiddleware(jwtAuth, adminAuth)(productHandler.SoftDeleteProduct)).Methods("DELETE")
 
-	// product image management
-	r.HandleFunc("/admin/products/{productId}/images",
-		middleware.JWTAuthMiddleware(
-			middleware.AdminAuthMiddleware(
-				productHandler.AddProductImages))).Methods("POST")
-	r.HandleFunc("/admin/products/{productId}/images/{imageId}",
-		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
-			productHandler.DeleteProductImage))).Methods("DELETE")
+	// Product image management
+	r.HandleFunc("/admin/products/{productId}/images", chainMiddleware(jwtAuth, adminAuth)(productHandler.AddProductImages)).Methods("POST")
+	r.HandleFunc("/admin/products/{productId}/images/{imageId}", chainMiddleware(jwtAuth, adminAuth)(productHandler.DeleteProductImage)).Methods("DELETE")
 
 	// User routes
-	r.HandleFunc("/user/login",
-		userHandler.Login).Methods("POST")
-	r.HandleFunc("/user/logout",
-		middleware.JWTAuthMiddleware(
-			middleware.UserAuthMiddleware(
-				userHandler.Logout))).Methods("POST")
-	r.HandleFunc("/user/signup",
-		userHandler.InitiateSignUp).Methods("POST")
-	r.HandleFunc("/user/verify-otp",
-		userHandler.VerifyOTP).Methods("POST")
-	//create a new IP rate limiter
+	r.HandleFunc("/user/login", userHandler.Login).Methods("POST")
+	r.HandleFunc("/user/signup", userHandler.InitiateSignUp).Methods("POST")
+	r.HandleFunc("/user/verify-otp", userHandler.VerifyOTP).Methods("POST")
+
+	// Create a new IP rate limiter
 	otpResendLimiter := middleware.NewIPRateLimiter(rate.Every(30*time.Second), 1)
+
 	// Allow 1 request per 30 seconds for OTP resend
-	r.HandleFunc("/user/resend-otp",
-		middleware.RateLimitMiddleware(
-			userHandler.ResendOTP, otpResendLimiter)).Methods("POST")
+	r.HandleFunc("/user/resend-otp", middleware.RateLimitMiddleware(userHandler.ResendOTP, otpResendLimiter)).Methods("POST")
 
-	// user profile
-	r.HandleFunc("/user/profile",
-		middleware.JWTAuthMiddleware(middleware.UserAuthMiddleware(
-			userHandler.GetUserProfile))).Methods("GET")
-	r.HandleFunc("/user/profile",
-		middleware.JWTAuthMiddleware(middleware.UserAuthMiddleware(
-			userHandler.UpdateProfile))).Methods("PUT")
+	// Protected user routes
+	r.HandleFunc("/user/logout", chainMiddleware(jwtAuth, userAuth)(userHandler.Logout)).Methods("POST")
+	r.HandleFunc("/user/profile", chainMiddleware(jwtAuth, userAuth)(userHandler.GetUserProfile)).Methods("GET")
+	r.HandleFunc("/user/profile", chainMiddleware(jwtAuth, userAuth)(userHandler.UpdateProfile)).Methods("PUT")
+	r.HandleFunc("/user/addresses", chainMiddleware(jwtAuth, userAuth)(userHandler.AddUserAddress)).Methods("POST")
+	r.HandleFunc("/user/addresses/{addressId}", chainMiddleware(jwtAuth, userAuth)(userHandler.UpdateUserAddress)).Methods("PATCH")
 
-	// user : forgot password
-	r.HandleFunc("/user/forgot-password",
-		middleware.RateLimitMiddleware(
-			userHandler.ForgotPassword, otpResendLimiter)).Methods("POST")
-
-	// user : reset password
-	r.HandleFunc("/user/reset-password",
-		userHandler.ResetPassword).Methods("POST")
-
-	// user : add address
-	r.HandleFunc("/user/addresses",
-		middleware.JWTAuthMiddleware(
-			middleware.UserAuthMiddleware(userHandler.AddUserAddress))).Methods("POST")
-
-	//product listing on user side
-	// r.HandleFunc("/products", middleware.UserAuthMiddleware(
-	// 	productHandler.GetActiveProducts)).Methods("GET")
+	// Public routes
+	r.HandleFunc("/user/forgot-password", middleware.RateLimitMiddleware(userHandler.ForgotPassword, otpResendLimiter)).Methods("POST")
+	r.HandleFunc("/user/reset-password", userHandler.ResetPassword).Methods("POST")
 
 	log.Println("Router setup complete")
-	// Wrap the entire mux with the logging middleware
-	return middleware.LoggingMiddleware(r)
+	return r
 }

@@ -31,7 +31,7 @@ func (u *adminUseCase) Login(ctx context.Context, username, password string) (st
 			return "", utils.ErrInvalidAdminCredentials
 		}
 		// For any other error, return it as is
-		return "", utils.ErrRetreivingAdminUsername
+		return "", err
 	}
 
 	// Check if the provided password matches the stored password
@@ -49,38 +49,17 @@ func (u *adminUseCase) Login(ctx context.Context, username, password string) (st
 }
 
 func (u *adminUseCase) Logout(ctx context.Context, token string) error {
-	// Validate the token
-	_, role, err := auth.ValidateTokenWithRole(token)
+	// Since we don't have access to TokenBlacklist here, we'll need to use the repository to blacklist the token
+	claims, err := auth.GetClaimsFromToken(token)
 	if err != nil {
-		return utils.ErrInvalidAdminToken
+		return utils.ErrInvalidToken
 	}
 
-	if role != "admin" {
-		return utils.ErrInvalidAdminToken
-	}
-
-	// Check if token is already blacklisted
-	blacklisted, err := u.adminRepo.IsTokenBlacklisted(ctx, token)
-	if err != nil {
-		return utils.ErrCheckTokenBlacklisted
-	}
-	if blacklisted {
-		return utils.ErrTokenAlreadyBlacklisted
-	}
-
-	// Get token expiration time
-	claims, err := auth.GetTokenClaims(token)
-	if err != nil {
-		return utils.ErrTokenExpired
-	}
-
-	// Convert the expiration time to int64
 	expFloat, ok := claims["exp"].(float64)
 	if !ok {
 		return utils.ErrInvalidExpirationClaim
 	}
 	expiresAt := time.Unix(int64(expFloat), 0)
 
-	// Blacklist the token
 	return u.adminRepo.BlacklistToken(ctx, token, expiresAt)
 }

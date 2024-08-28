@@ -16,3 +16,13 @@ type UserAddress struct {
 	UpdatedAt    time.Time  `json:"updated_at"`
 	DeletedAt    *time.Time `json:"deleted_at,omitempty"`
 }
+
+type UserAddressUpdate struct {
+	AddressLine1 *string `json:"address_line1"`
+	AddressLine2 *string `json:"address_line2"`
+	State        *string `json:"state"`
+	City         *string `json:"city"`
+	PinCode      *string `json:"pincode"`
+	Landmark     *string `json:"landmark"`
+	PhoneNumber  *string `json:"phone_number"`
+}

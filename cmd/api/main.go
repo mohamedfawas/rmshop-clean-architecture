@@ -3,21 +3,30 @@ package main
 import (
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/config"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/server"
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/auth"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/cloudinary"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/database"
 	email "github.com/mohamedfawas/rmshop-clean-architecture/pkg/emailVerify"
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/tasks"
 )
 
 func main() {
+	// Set the default timezone for the entire application to UTC
+	time.Local = time.UTC
+
 	log.Println("Starting application...")
 	//configuration is loaded from config.yaml
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
+
+	// Initialize JWT secret
+	auth.InitJWTSecret(cfg.JWT.Secret)
 
 	//db connection is established using the loaded configuration
 	db, err := database.NewPostgresConnection(cfg.DB.Host, cfg.DB.Port, cfg.DB.User, cfg.DB.Password, cfg.DB.Name)
@@ -49,8 +58,14 @@ func main() {
 		log.Fatalf("Failed to initialize Cloudinary instance: %v", err)
 	}
 
+	// Create TokenBlacklist service
+	tokenBlacklist := auth.NewTokenBlacklist(db)
+
+	// Start token cleanup task
+	tasks.StartTokenCleanupTask(tokenBlacklist)
+
 	// Create a new server instance with the database connection and email sender
-	srv := server.NewServer(db, emailSender, cloudinaryService)
+	srv := server.NewServer(db, emailSender, cloudinaryService, tokenBlacklist)
 
 	// Start the HTTP server
 	log.Printf("Starting server on : %s", cfg.Server.Port)

@@ -97,6 +97,8 @@ var (
 	ErrInvalidUserCityEntry     = errors.New("invalid city")
 	ErrInvalidPinCode           = errors.New("invalid pin code")
 	ErrUserAddressAlreadyExists = errors.New("user address already exists")
+	ErrAddressNotFound          = errors.New("address not found")
+	ErrUnauthorized             = errors.New("unauthorized to updated this address")
 
 	//category
 	ErrInvalidCategoryName  = errors.New("invalid category name")
@@ -181,6 +183,11 @@ var (
 	ErrOTPNotRequested      = errors.New("no OTP was requested for this email")
 	ErrTooManyResetAttempts = errors.New("too many reset attempts")
 	ErrSamePassword         = errors.New("new password cannot be the same as the old password")
+
+	// token errors
+	ErrUnexpectedSigning = errors.New("unexpected signing method")
+	ErrInvalidUserID     = errors.New("invalid user id")
+	ErrInvalidRole       = errors.New("invalid role")
 
 	ErrInternalServer = errors.New("internal server error")
 )

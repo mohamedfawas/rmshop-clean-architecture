@@ -33,6 +33,8 @@ type UserRepository interface {
 	DeletePasswordResetVerificationEntry(ctx context.Context, email string) error
 	UserAddressExists(ctx context.Context, address *domain.UserAddress) (bool, error)
 	AddUserAddress(ctx context.Context, address *domain.UserAddress) error
+	GetUserAddressByID(ctx context.Context, addressID int64) (*domain.UserAddress, error)
+	UpdateUserAddress(ctx context.Context, address *domain.UserAddress) error
 }
 
 type AdminRepository interface {
@@ -45,7 +47,6 @@ type CategoryRepository interface {
 	Create(ctx context.Context, category *domain.Category) error   //fz
 	GetByID(ctx context.Context, id int) (*domain.Category, error) // fz
 	GetAll(ctx context.Context) ([]*domain.Category, error)
-	GetActiveByID(ctx context.Context, id int) (*domain.Category, error) // New method for retrieving active categories
 	Update(ctx context.Context, category *domain.Category) error
 	SoftDelete(ctx context.Context, id int) error
 	// Add other methods as needed (GetByID, Update, Delete, etc.)

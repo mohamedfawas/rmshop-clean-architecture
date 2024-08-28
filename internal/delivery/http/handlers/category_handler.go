@@ -44,9 +44,6 @@ func (h *CategoryHandler) CreateCategory(w http.ResponseWriter, r *http.Request)
 			api.SendResponse(w, http.StatusBadRequest, "Failed to create category", nil, "Category name length should not be greater than 50 characters")
 		case utils.ErrCategoryNameNumeric:
 			api.SendResponse(w, http.StatusBadRequest, "Failed to create category", nil, "Category name should not be numeric")
-		default:
-			log.Printf("Unexpected error in category name validation: %v", err)
-			api.SendResponse(w, http.StatusBadRequest, "Failed to create category", nil, "Invalid category name")
 		}
 		return
 	}
@@ -56,8 +53,6 @@ func (h *CategoryHandler) CreateCategory(w http.ResponseWriter, r *http.Request)
 		switch err {
 		case utils.ErrDuplicateCategory:
 			api.SendResponse(w, http.StatusConflict, "Failed to create category", nil, "Category already exists")
-		case utils.ErrDBCreateCategory:
-			api.SendResponse(w, http.StatusInternalServerError, "Failed to create category", nil, "Failed to create the category entry in database")
 		default:
 			api.SendResponse(w, http.StatusInternalServerError, "Failed to create category", nil, "An unexpected error occurred")
 		}
@@ -72,72 +67,54 @@ func (h *CategoryHandler) GetAllCategories(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		switch err {
 		case utils.ErrNoCategoriesFound:
-			http.Error(w, "No categories found", http.StatusNotFound)
-		case utils.ErrQueryExecution, utils.ErrRowScan:
-			http.Error(w, utils.InternalServerErrorString, http.StatusInternalServerError)
+			api.SendResponse(w, http.StatusNotFound, "Failed to get categories", nil, "categories not found")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Internal server error", nil, "An unexpected error occured")
 		}
-
-		http.Error(w, "Failed to retrieve categories", http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-
-	encodedData, err := json.Marshal(categories)
-	if err != nil {
-		log.Printf("Error marshaling categories: %v", err)
-		http.Error(w, "Failed to encode categories", http.StatusInternalServerError)
+	if len(categories) == 0 {
+		api.SendResponse(w, http.StatusOK, "No categories found", []struct{}{}, "")
 		return
 	}
 
-	log.Printf("Marshaled data: %s", string(encodedData))
-
-	_, err = w.Write(encodedData)
-	if err != nil {
-		log.Printf("Error writing response: %v", err)
-		http.Error(w, "Failed to send response", http.StatusInternalServerError)
-		return
-	}
-
-	log.Println("Successfully sent categories response")
+	api.SendResponse(w, http.StatusOK, "Categories retrieved successfully", categories, "")
 }
 
 func (h *CategoryHandler) GetActiveCategoryByID(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	categoryID, err := strconv.Atoi(vars["categoryId"])
 	if err != nil {
-		http.Error(w, "Invalid category ID", http.StatusBadRequest)
+		api.SendResponse(w, http.StatusBadRequest, "Failed to get category details", nil, "Please provide a valid category id")
 		return
 	}
 
 	category, err := h.categoryUseCase.GetActiveCategoryByID(r.Context(), categoryID)
 	if err != nil {
 		if err == utils.ErrCategoryNotFound {
-			http.Error(w, "Category not found", http.StatusNotFound)
+			api.SendResponse(w, http.StatusNotFound, "Failed to get category details", nil, "Category not found")
 		} else {
-			http.Error(w, "Failed to retrieve category", http.StatusInternalServerError)
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to get category details", nil, "An unexpected error occured")
 		}
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(category)
+	api.SendResponse(w, http.StatusOK, "category successfully retrieved", category, "")
 }
 
 func (h *CategoryHandler) UpdateCategory(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	categoryID, err := strconv.Atoi(vars["categoryId"])
 	if err != nil {
-		log.Printf("Invalid category ID: %v", err)
-		http.Error(w, "Invalid category ID", http.StatusBadRequest)
+		api.SendResponse(w, http.StatusBadRequest, "Failed to update category", nil, "Invalid category ID")
 		return
 	}
 
 	var category domain.Category
 	err = json.NewDecoder(r.Body).Decode(&category)
 	if err != nil {
-		log.Printf("Invalid request body: %v", err)
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		api.SendResponse(w, http.StatusBadRequest, "Failed to update category", nil, "Invalid request body")
 		return
 	}
 
@@ -149,36 +126,33 @@ func (h *CategoryHandler) UpdateCategory(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		switch err {
 		case utils.ErrInvalidCategoryName:
-			http.Error(w, "Invalid category name", http.StatusBadRequest)
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update category", nil, "Invalid category name")
 		case utils.ErrCategoryNameTooShort:
-			http.Error(w, "Category name should have atleast 2 characters", http.StatusBadRequest)
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update category", nil, "Category name should have at least 2 characters")
 		case utils.ErrCategoryNameTooLong:
-			http.Error(w, "Category name length should not be greater than 50 characters", http.StatusBadRequest)
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update category", nil, "Category name length should not be greater than 50 characters")
 		case utils.ErrCategoryNameNumeric:
-			http.Error(w, "Category name should not be purely numeric", http.StatusBadRequest)
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update category", nil, "Category name should not be purely numeric")
 		default:
-			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to update category", nil, "An unexpected error occured")
 		}
 		return
 	}
 
 	err = h.categoryUseCase.UpdateCategory(r.Context(), &category)
 	if err != nil {
-		//log.Printf("Error updating category: %v", err)
 		switch err {
 		case utils.ErrDuplicateCategory:
-			http.Error(w, "Category name already exists", http.StatusConflict)
+			api.SendResponse(w, http.StatusConflict, "Failed to update category", nil, "Category name already exists")
 		case utils.ErrCategoryNotFound:
-			http.Error(w, "Category not found", http.StatusNotFound)
+			api.SendResponse(w, http.StatusNotFound, "Failed to update category", nil, "Category not found")
 		default:
-			http.Error(w, "Failed to update category", http.StatusInternalServerError)
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to update category", nil, "An unexpected error occurred")
 		}
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(category)
+	api.SendResponse(w, http.StatusOK, "Category updated successfully", category, "")
 }
 
 func (h *CategoryHandler) SoftDeleteCategory(w http.ResponseWriter, r *http.Request) {
@@ -186,7 +160,7 @@ func (h *CategoryHandler) SoftDeleteCategory(w http.ResponseWriter, r *http.Requ
 	categoryID, err := strconv.Atoi(vars["categoryId"])
 	if err != nil {
 		log.Printf("Invalid category ID: %v", err)
-		http.Error(w, "Invalid category ID", http.StatusBadRequest)
+		api.SendResponse(w, http.StatusBadRequest, "Failed to delete category", nil, "Invalid category ID")
 		return
 	}
 
@@ -194,12 +168,12 @@ func (h *CategoryHandler) SoftDeleteCategory(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		log.Printf("Error soft deleting category: %v", err)
 		if err == utils.ErrCategoryNotFound {
-			http.Error(w, "Category not found", http.StatusNotFound)
+			api.SendResponse(w, http.StatusNotFound, "Failed to delete category", nil, "Category not found")
 		} else {
-			http.Error(w, "Failed to delete category", http.StatusInternalServerError)
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to delete category", nil, "An unexpected error occurred")
 		}
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	api.SendResponse(w, http.StatusOK, "Category deleted successfully", nil, "")
 }

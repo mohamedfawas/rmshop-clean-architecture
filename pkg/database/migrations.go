@@ -23,6 +23,13 @@ func (ml *migrationLogger) Verbose() bool {
 // RunMigrations executes all pending migrations
 func RunMigrations(db *sql.DB, migrationPath string) error {
 	log.Printf("Starting migrations from path: %s", migrationPath)
+
+	// Set the timezone to UTC before running migrations
+	_, err := db.Exec("SET TIME ZONE 'UTC'")
+	if err != nil {
+		log.Printf("Warning: Failed to set timezone to UTC before migrations: %v", err)
+	}
+
 	//creating a database driver for PostgreSQL to be used with a migration tool, likely the golang-migrate/migrate library.
 	driver, err := postgresMigration.WithInstance(db, &postgresMigration.Config{}) //&postgresMigration.Config{}: This is a configuration struct for the PostgreSQL driver. In this case, it's empty, meaning it's using default settings.
 	//driver: This is the created PostgreSQL driver that can be used with the migration tool.

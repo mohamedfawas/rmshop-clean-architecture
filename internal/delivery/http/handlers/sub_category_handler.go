@@ -78,7 +78,7 @@ func (h *SubCategoryHandler) GetSubCategoriesByCategory(w http.ResponseWriter, r
 	vars := mux.Vars(r)
 	categoryID, err := strconv.Atoi(vars["categoryId"])
 	if err != nil {
-		http.Error(w, "Invalid category ID", http.StatusBadRequest)
+		api.SendResponse(w, http.StatusBadRequest, "Failed to retrieve sub-categories", nil, "Invalid category ID")
 		return
 	}
 
@@ -86,28 +86,32 @@ func (h *SubCategoryHandler) GetSubCategoriesByCategory(w http.ResponseWriter, r
 	if err != nil {
 		log.Printf("Error retrieving sub-categories: %v", err)
 		if err == utils.ErrCategoryNotFound {
-			http.Error(w, "Category not found", http.StatusNotFound)
+			api.SendResponse(w, http.StatusNotFound, "Failed to retrieve sub-categories", nil, "Category not found")
 		} else {
-			http.Error(w, "Failed to retrieve sub-categories", http.StatusInternalServerError)
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to retrieve sub-categories", nil, "An unexpected error occurred")
 		}
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(subCategories)
+	if len(subCategories) == 0 {
+		api.SendResponse(w, http.StatusOK, "No sub-categories found", []struct{}{}, "")
+		return
+	}
+
+	api.SendResponse(w, http.StatusOK, "Sub-categories retrieved successfully", subCategories, "")
 }
 
 func (h *SubCategoryHandler) GetSubCategoryByID(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	categoryID, err := strconv.Atoi(vars["categoryId"])
 	if err != nil {
-		http.Error(w, "Invalid category ID", http.StatusBadRequest)
+		api.SendResponse(w, http.StatusBadRequest, "Failed to retrieve sub-category", nil, "Invalid category ID")
 		return
 	}
 
 	subCategoryID, err := strconv.Atoi(vars["subcategoryId"])
 	if err != nil {
-		http.Error(w, "Invalid sub-category ID", http.StatusBadRequest)
+		api.SendResponse(w, http.StatusBadRequest, "Failed to retrieve sub-category", nil, "Invalid sub-category ID")
 		return
 	}
 
@@ -115,37 +119,36 @@ func (h *SubCategoryHandler) GetSubCategoryByID(w http.ResponseWriter, r *http.R
 	if err != nil {
 		switch err {
 		case utils.ErrCategoryNotFound:
-			http.Error(w, "Category not found", http.StatusNotFound)
+			api.SendResponse(w, http.StatusNotFound, "Failed to retrieve sub-category", nil, "Category not found")
 		case utils.ErrSubCategoryNotFound:
-			http.Error(w, "Sub-category not found", http.StatusNotFound)
+			api.SendResponse(w, http.StatusNotFound, "Failed to retrieve sub-category", nil, "Sub-category not found")
 		default:
-			http.Error(w, "Failed to retrieve sub-category", http.StatusInternalServerError)
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to retrieve sub-category", nil, "An unexpected error occurred")
 		}
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(subCategory)
+	api.SendResponse(w, http.StatusOK, "Sub-category retrieved successfully", subCategory, "")
 }
 
 func (h *SubCategoryHandler) UpdateSubCategory(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	categoryID, err := strconv.Atoi(vars["categoryId"])
 	if err != nil {
-		http.Error(w, "Invalid category ID", http.StatusBadRequest)
+		api.SendResponse(w, http.StatusBadRequest, "Failed to update sub-category", nil, "Invalid category ID")
 		return
 	}
 
 	subCategoryID, err := strconv.Atoi(vars["subcategoryId"])
 	if err != nil {
-		http.Error(w, "Invalid sub-category ID", http.StatusBadRequest)
+		api.SendResponse(w, http.StatusBadRequest, "Failed to update sub-category", nil, "Invalid sub-category ID")
 		return
 	}
 
 	var subCategory domain.SubCategory
 	err = json.NewDecoder(r.Body).Decode(&subCategory)
 	if err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		api.SendResponse(w, http.StatusBadRequest, "Failed to update sub-category", nil, "Invalid request body")
 		return
 	}
 
@@ -155,35 +158,33 @@ func (h *SubCategoryHandler) UpdateSubCategory(w http.ResponseWriter, r *http.Re
 	if err != nil {
 		switch err {
 		case utils.ErrCategoryNotFound:
-			http.Error(w, "Category not found", http.StatusNotFound)
+			api.SendResponse(w, http.StatusNotFound, "Failed to update sub-category", nil, "Category not found")
 		case utils.ErrSubCategoryNotFound:
-			http.Error(w, "Sub-category not found", http.StatusNotFound)
+			api.SendResponse(w, http.StatusNotFound, "Failed to update sub-category", nil, "Sub-category not found")
 		case utils.ErrInvalidSubCategoryName:
-			http.Error(w, "Invalid sub-category name", http.StatusBadRequest)
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update sub-category", nil, "Invalid sub-category name")
 		case utils.ErrSubCategoryNameTooLong:
-			http.Error(w, "Sub-category name too long", http.StatusBadRequest)
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update sub-category", nil, "Sub-category name too long")
 		default:
-			http.Error(w, "Failed to update sub-category", http.StatusInternalServerError)
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to update sub-category", nil, "An unexpected error occurred")
 		}
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(subCategory)
+	api.SendResponse(w, http.StatusOK, "Sub-category updated successfully", subCategory, "")
 }
 
 func (h *SubCategoryHandler) SoftDeleteSubCategory(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	categoryID, err := strconv.Atoi(vars["categoryId"])
 	if err != nil {
-		http.Error(w, "Invalid category ID", http.StatusBadRequest)
+		api.SendResponse(w, http.StatusBadRequest, "Failed to delete sub-category", nil, "Invalid category ID")
 		return
 	}
 
 	subCategoryID, err := strconv.Atoi(vars["subcategoryId"])
 	if err != nil {
-		http.Error(w, "Invalid sub-category ID", http.StatusBadRequest)
+		api.SendResponse(w, http.StatusBadRequest, "Failed to delete sub-category", nil, "Invalid sub-category ID")
 		return
 	}
 
@@ -191,14 +192,14 @@ func (h *SubCategoryHandler) SoftDeleteSubCategory(w http.ResponseWriter, r *htt
 	if err != nil {
 		switch err {
 		case utils.ErrCategoryNotFound:
-			http.Error(w, "Category not found", http.StatusNotFound)
+			api.SendResponse(w, http.StatusNotFound, "Failed to delete sub-category", nil, "Category not found")
 		case utils.ErrSubCategoryNotFound:
-			http.Error(w, "Sub-category not found", http.StatusNotFound)
+			api.SendResponse(w, http.StatusNotFound, "Failed to delete sub-category", nil, "Sub-category not found")
 		default:
-			http.Error(w, "Failed to delete sub-category", http.StatusInternalServerError)
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to delete sub-category", nil, "An unexpected error occurred")
 		}
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	api.SendResponse(w, http.StatusOK, "Sub-category deleted successfully", nil, "")
 }

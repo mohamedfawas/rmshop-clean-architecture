@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"log"
 	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
@@ -31,7 +32,8 @@ func (r *adminRepository) GetByUsername(ctx context.Context, username string) (*
 		if err == sql.ErrNoRows {
 			return nil, utils.ErrAdminNotFound
 		}
-		return nil, utils.ErrRetreivingAdminUsername
+		log.Printf("error while retrieving admin details : %v", err)
+		return nil, err
 	}
 
 	// Return the admin struct and nil error
@@ -41,6 +43,9 @@ func (r *adminRepository) GetByUsername(ctx context.Context, username string) (*
 func (r *adminRepository) BlacklistToken(ctx context.Context, token string, expiresAt time.Time) error {
 	query := `INSERT INTO blacklisted_tokens (token, expires_at) VALUES ($1, $2)`
 	_, err := r.db.ExecContext(ctx, query, token, expiresAt)
+	if err != nil {
+		log.Printf("error while adding the token to blacklisted_tokens : %v", err)
+	}
 	return err
 }
 
@@ -48,5 +53,8 @@ func (r *adminRepository) IsTokenBlacklisted(ctx context.Context, token string) 
 	query := `SELECT EXISTS(SELECT 1 FROM blacklisted_tokens WHERE token = $1)`
 	var exists bool
 	err := r.db.QueryRowContext(ctx, query, token).Scan(&exists)
+	if err != nil {
+		log.Printf("error while checking if admin token is balcklisted : %v", err)
+	}
 	return exists, err
 }

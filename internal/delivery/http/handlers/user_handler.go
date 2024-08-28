@@ -3,9 +3,11 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/delivery/http/middleware"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
@@ -700,4 +702,57 @@ func (h *UserHandler) AddUserAddress(w http.ResponseWriter, r *http.Request) {
 	}
 
 	api.SendResponse(w, http.StatusCreated, "Address added successfully", userAddress, "")
+}
+
+func (h *UserHandler) UpdateUserAddress(w http.ResponseWriter, r *http.Request) {
+	// Extract user ID from the context (set by the JWT middleware)
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	if !ok {
+		api.SendResponse(w, http.StatusUnauthorized, "Failed to update address", nil, "Invalid user ID in token")
+		return
+	}
+
+	// extract address id from url parameters
+	vars := mux.Vars(r)
+	addressID, err := strconv.ParseInt(vars["addressId"], 10, 64)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to update address", nil, "Invalid adrress ID")
+		return
+	}
+
+	// parse the request body
+	var updatedAddressData domain.UserAddressUpdate
+	err = json.NewDecoder(r.Body).Decode(&updatedAddressData)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to update address", nil, "Invalid request body")
+		return
+	}
+
+	// call the use case method to update the address
+	updatedUserAddress, err := h.userUseCase.UpdateUserAddress(r.Context(), userID, addressID, &updatedAddressData)
+	if err != nil {
+		switch err {
+		case utils.ErrUserAddressTooShort:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update address", nil, "User address too short (should have atleast 10 characters)")
+		case utils.ErrUserAddressTooLong:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update address", nil, "User address too long (should be less than 255 characters)")
+		case utils.ErrInvalidUserStateEntry:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update address", nil, "Please provide a valid state name")
+		case utils.ErrInvalidUserCityEntry:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update address", nil, "Please provide a valid city name")
+		case utils.ErrInvalidPinCode:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update address", nil, "Please provide a valid pincode")
+		case utils.ErrInvalidPhoneNumber:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update address", nil, "Please provide a valid phone number")
+		case utils.ErrAddressNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Failed to update address", nil, "Address not found")
+		case utils.ErrUnauthorized:
+			api.SendResponse(w, http.StatusForbidden, "Failed to update address", nil, "You are not authorized to update this address")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to update address", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	api.SendResponse(w, http.StatusOK, "Address updated successfully", updatedUserAddress, "")
 }

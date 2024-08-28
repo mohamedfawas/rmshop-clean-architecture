@@ -36,12 +36,11 @@ func (r *subCategoryRepository) Create(ctx context.Context, subCategory *domain.
 		log.Printf("Error inserting subcategory: %v", err)
 		pqErr, ok := err.(*pq.Error)
 		if ok {
-			log.Printf("PostgreSQL error code: %s", pqErr.Code)
 			if pqErr.Code == "23505" { // Unique violation error code
 				return utils.ErrDuplicateSubCategory
 			}
 		}
-		log.Printf("db error : failed to create sub category")
+		log.Printf("db error : failed to create sub category : %v", err)
 		return err
 	}
 	return nil
@@ -108,7 +107,6 @@ func (r *subCategoryRepository) GetByID(ctx context.Context, id int) (*domain.Su
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			log.Printf("SubCategory not found: id=%d, error=%v", id, err)
 			return nil, utils.ErrSubCategoryNotFound
 		}
 		log.Printf("Failed to get SubCategory by id=%d: error=%v", id, err)
