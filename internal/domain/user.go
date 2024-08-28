@@ -27,13 +27,13 @@ type UserUpdatedData struct {
 	PhoneNumber string `json:"phone_number"`
 }
 
+type BlacklistedToken struct {
+	Token     string    `json:"token"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
 func (u *User) CheckPassword(password string) bool {
 	// Compare the provided password with the stored password hash
 	err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password))
 	return err == nil // Returns true if passwords match, false otherwise
-}
-
-type BlacklistedToken struct {
-	Token     string    `json:"token"`
-	ExpiresAt time.Time `json:"expires_at"`
 }

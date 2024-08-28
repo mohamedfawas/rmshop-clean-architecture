@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log"
 	"time"
 
@@ -129,11 +130,13 @@ func (r *productRepository) SoftDelete(ctx context.Context, id int64) error {
 
 	result, err := r.db.ExecContext(ctx, query, time.Now(), id)
 	if err != nil {
+		log.Printf("database error while soft deleting : %v", err)
 		return err
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
+		log.Printf("database error while calculating rows affected after soft deletion :%v", err)
 		return err
 	}
 
@@ -157,6 +160,7 @@ func (r *productRepository) NameExistsBeforeUpdate(ctx context.Context, name str
 func (r *productRepository) AddImage(ctx context.Context, productID int64, imageURL string, isPrimary bool) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
+		log.Printf("failed to begin transaction : %v", err)
 		return err
 	}
 	defer tx.Rollback()
@@ -165,6 +169,7 @@ func (r *productRepository) AddImage(ctx context.Context, productID int64, image
 	if isPrimary {
 		_, err = tx.ExecContext(ctx, "UPDATE product_images SET is_primary = false WHERE product_id = $1", productID)
 		if err != nil {
+			log.Printf("failed to update primary image status of rest of the images : %v", err)
 			return err
 		}
 	}
@@ -172,30 +177,40 @@ func (r *productRepository) AddImage(ctx context.Context, productID int64, image
 	query := `
 		INSERT INTO product_images (product_id, image_url, is_primary)
 		VALUES ($1, $2, $3)
+		RETURNING id
 	`
 
-	_, err = tx.ExecContext(ctx, query, productID, imageURL, isPrimary)
+	var imageID int64
+	err = tx.QueryRowContext(ctx, query, productID, imageURL, isPrimary).Scan(&imageID)
 	if err != nil {
 		pqErr, ok := err.(*pq.Error)
 		if ok && pqErr.Code == "23505" { // Unique violation
 			return utils.ErrDuplicateImageURL
 		}
+		log.Printf("failed to add the image entry in db : %v", err)
 		return err
 	}
+
 	// If this is a primary image, update the product's primary_image_id
 	if isPrimary {
-		_, err = tx.ExecContext(ctx, "UPDATE products SET primary_image_id = (SELECT id FROM product_images WHERE product_id = $1 AND is_primary = true) WHERE id = $1", productID)
+		_, err = tx.ExecContext(ctx, "UPDATE products SET primary_image_id = $1 WHERE id = $2", imageID, productID)
 		if err != nil {
+			log.Printf("failed to update the product's primary_image_id : %v", err)
 			return err
 		}
 	}
+
 	return tx.Commit()
 }
 
 func (r *productRepository) GetImageCount(ctx context.Context, productID int64) (int, error) {
+	query := `
+			SELECT COUNT(*) FROM product_images WHERE product_id = $1
+			`
 	var count int
-	err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM product_images WHERE product_id = $1", productID).Scan(&count)
+	err := r.db.QueryRowContext(ctx, query, productID).Scan(&count)
 	if err != nil {
+		log.Printf("failed to get image count :%v", err)
 		return 0, err
 	}
 	return count, nil
@@ -233,6 +248,7 @@ func (r *productRepository) GetProductImages(ctx context.Context, productID int6
 	`
 	rows, err := r.db.QueryContext(ctx, query, productID)
 	if err != nil {
+		log.Printf("failed to retrieve product image details from db : %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -242,11 +258,13 @@ func (r *productRepository) GetProductImages(ctx context.Context, productID int6
 		var image domain.ProductImage
 		err := rows.Scan(&image.ID, &image.ProductID, &image.ImageURL, &image.IsPrimary, &image.CreatedAt)
 		if err != nil {
+			log.Printf("failed to parse image details to struct : %v", err)
 			return nil, err
 		}
 		images = append(images, &image)
 	}
 	if err = rows.Err(); err != nil {
+		log.Printf("database error : %v", err)
 		return nil, err
 	}
 	return images, nil
@@ -255,6 +273,7 @@ func (r *productRepository) GetProductImages(ctx context.Context, productID int6
 func (r *productRepository) SetImageAsPrimary(ctx context.Context, productID int64, imageID int64) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
+		log.Printf("failed to begin transaction : %v", err)
 		return err
 	}
 	defer tx.Rollback()
@@ -262,12 +281,14 @@ func (r *productRepository) SetImageAsPrimary(ctx context.Context, productID int
 	// Set all images for this product as non-primary
 	_, err = tx.ExecContext(ctx, "UPDATE product_images SET is_primary = false WHERE product_id = $1", productID)
 	if err != nil {
+		log.Printf("failed to update primary status of rest of the images : %v", err)
 		return err
 	}
 
 	// Set the specified image as primary
 	_, err = tx.ExecContext(ctx, "UPDATE product_images SET is_primary = true WHERE id = $1 AND product_id = $2", imageID, productID)
 	if err != nil {
+		log.Printf("failed to set the specified image as primary : %v", err)
 		return err
 	}
 
@@ -282,4 +303,138 @@ func (r *productRepository) UpdateProductPrimaryImage(ctx context.Context, produ
 		_, err = r.db.ExecContext(ctx, "UPDATE products SET primary_image_id = $1 WHERE id = $2", *imageID, productID)
 	}
 	return err
+}
+
+func (r *productRepository) GetPrimaryImage(ctx context.Context, productID int64) (*domain.ProductImage, error) {
+	query := `
+		SELECT id, product_id, image_url, is_primary, created_at
+		FROM product_images
+		WHERE product_id = $1 AND is_primary = true
+	`
+	var img domain.ProductImage
+	err := r.db.QueryRowContext(ctx, query, productID).Scan(
+		&img.ID, &img.ProductID, &img.ImageURL, &img.IsPrimary, &img.CreatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil // No primary image found
+	}
+	if err != nil {
+		log.Printf("database error : %v", err)
+		return nil, err
+	}
+	return &img, nil
+}
+
+func (r *productRepository) UpdateImagePrimary(ctx context.Context, imageID int64, isPrimary bool) error {
+	query := `UPDATE product_images SET is_primary = $1 WHERE id = $2`
+	_, err := r.db.ExecContext(ctx, query, isPrimary, imageID)
+	return err
+}
+
+func (r *productRepository) GetImageByID(ctx context.Context, imageID int64) (*domain.ProductImage, error) {
+	query := `SELECT id,product_id,image_url,is_primary FROM product_images WHERE id= $1`
+	var image domain.ProductImage
+	err := r.db.QueryRowContext(ctx, query, imageID).Scan(&image.ID, &image.ProductID, &image.ImageURL, &image.IsPrimary)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, utils.ErrImageNotFound
+		}
+		log.Printf("db error while retrieving product image using id :%v", err)
+		return nil, err
+	}
+
+	return &image, nil
+}
+
+func (r *productRepository) DeleteImageByID(ctx context.Context, imageID int64) error {
+	// Start a transaction
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		log.Printf("Error starting transaction: %v", err)
+		return err
+	}
+	defer tx.Rollback()
+
+	// First, get the product ID and check if the image is primary
+	var productID int64
+	var isPrimary bool
+	query := `SELECT product_id, is_primary FROM product_images WHERE id = $1`
+	err = tx.QueryRowContext(ctx, query, imageID).Scan(&productID, &isPrimary)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return utils.ErrImageNotFound
+		}
+		log.Printf("Error getting image details: %v", err)
+		return err
+	}
+
+	// If the image is primary, we need to update the products table
+	if isPrimary {
+		// Set primary_image_id to NULL for the product
+		_, err = tx.ExecContext(ctx, `UPDATE products SET primary_image_id = NULL WHERE id = $1`, productID)
+		if err != nil {
+			log.Printf("Error updating products table: %v", err)
+			return err
+		}
+
+	}
+
+	// Now we can safely delete the image
+	result, err := tx.ExecContext(ctx, `DELETE FROM product_images WHERE id = $1`, imageID)
+	if err != nil {
+		log.Printf("Error deleting image from product_images table: %v", err)
+		return err
+	}
+
+	// Check if the image was actually deleted
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		log.Printf("Error while finding number of rows affected: %v", err)
+		return err
+	}
+	if rowsAffected == 0 {
+		return utils.ErrImageNotFound
+	}
+
+	// Commit the transaction
+	if err = tx.Commit(); err != nil {
+		log.Printf("Error committing transaction: %v", err)
+		return err
+	}
+
+	return nil
+}
+
+func (r *productRepository) GetAll(ctx context.Context) ([]*domain.Product, error) {
+	query := `
+		SELECT id, name, description, price, stock_quantity, sub_category_id, created_at, updated_at, slug
+		FROM products
+		WHERE deleted_at IS NULL
+		ORDER BY id
+	`
+
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var products []*domain.Product
+	for rows.Next() {
+		var p domain.Product
+		err := rows.Scan(
+			&p.ID, &p.Name, &p.Description, &p.Price, &p.StockQuantity,
+			&p.SubCategoryID, &p.CreatedAt, &p.UpdatedAt, &p.Slug,
+		)
+		if err != nil {
+			return nil, err
+		}
+		products = append(products, &p)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return products, nil
 }

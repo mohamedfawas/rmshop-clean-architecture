@@ -24,13 +24,13 @@ func NewUserRepository(db *sql.DB) *userRepository {
 
 //This approach follows the dependency injection principle, where the database connection is provided from outside rather than created within the repository. This makes the code more flexible and easier to test.
 
-func (r *userRepository) CreateVerificationEntry(ctx context.Context, entry *domain.VerificationEntry) error {
+func (r *userRepository) CreateUserSignUpVerifcationEntry(ctx context.Context, entry *domain.VerificationEntry) error {
 
 	query := `INSERT INTO verification_entries (email, otp_code, user_data, password_hash, expires_at, is_verified, created_at)
               VALUES ($1, $2, $3, $4, $5, $6, $7)
               RETURNING id`
 
-	userDataJSON, err := json.Marshal(entry.UserData) // convert user struct to JSON-encoded byte slice
+	userDataJSON, err := json.Marshal(entry.UserData)
 	if err != nil {
 		log.Printf("Error marshaling user data: %v", err)
 		return err
@@ -45,7 +45,11 @@ func (r *userRepository) CreateVerificationEntry(ctx context.Context, entry *dom
 		entry.IsVerified,
 		time.Now()).Scan(&entry.ID)
 
-	return err
+	if err != nil {
+		log.Printf("Error creating signup verification entry: %v", err)
+		return err
+	}
+	return nil
 }
 
 func (r *userRepository) Create(ctx context.Context, user *domain.User) error {
@@ -159,42 +163,13 @@ func (r *userRepository) UpdateEmailVerificationStatus(ctx context.Context, user
 	return err
 }
 
-func (r *userRepository) GetVerificationEntryByEmail(ctx context.Context, email string) (*domain.VerificationEntry, error) {
-	query := `SELECT id, email, otp_code, user_data, password_hash, expires_at, is_verified, created_at
-              FROM verification_entries
-              WHERE email = $1 AND is_verified = false
-              ORDER BY created_at DESC
-              LIMIT 1`
-
-	var entry domain.VerificationEntry
-	var userDataJSON []byte
-	var expiresAt time.Time //later used to verify the time is in UTC
-	err := r.db.QueryRowContext(ctx, query, email).Scan(
-		&entry.ID, &entry.Email, &entry.OTPCode, &userDataJSON,
-		&entry.PasswordHash, &expiresAt, &entry.IsVerified, &entry.CreatedAt)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, utils.ErrVerificationEntryNotFound
-		}
-		return nil, err
-	}
-	// Ensure the time is in UTC
-	entry.ExpiresAt = expiresAt.UTC()
-
-	err = json.Unmarshal(userDataJSON, &entry.UserData)
-	if err != nil {
-		return nil, err
-	}
-
-	return &entry, nil
-}
-
-func (r *userRepository) UpdateVerificationEntry(ctx context.Context, entry *domain.VerificationEntry) error {
+func (r *userRepository) UpdateSignUpVerificationEntry(ctx context.Context, entry *domain.VerificationEntry) error {
 	query := `UPDATE verification_entries
               SET is_verified = $1
               WHERE id = $2`
 
 	_, err := r.db.ExecContext(ctx, query, entry.IsVerified, entry.ID)
+	log.Printf("error while updating the verification entry table after verifying otp : %v", err)
 	return err
 }
 
@@ -206,8 +181,14 @@ func (r *userRepository) DeleteExpiredVerificationEntries(ctx context.Context) e
 	return err
 }
 
-func (r *userRepository) DeleteVerificationEntry(ctx context.Context, email string) error {
+func (r *userRepository) DeleteSignUpVerificationEntry(ctx context.Context, email string) error {
 	query := `DELETE FROM verification_entries WHERE email = $1`
+	_, err := r.db.ExecContext(ctx, query, email)
+	return err
+}
+
+func (r *userRepository) DeletePasswordResetVerificationEntry(ctx context.Context, email string) error {
+	query := `DELETE FROM password_reset_entries WHERE email = $1`
 	_, err := r.db.ExecContext(ctx, query, email)
 	return err
 }
@@ -234,7 +215,7 @@ func (r *userRepository) UpdateOTPResendInfo(ctx context.Context, email string) 
 	return err
 }
 
-func (r *userRepository) UpdateVerificationEntryAfterResendOTP(ctx context.Context, entry *domain.VerificationEntry) error {
+func (r *userRepository) UpdateSignUpVerificationEntryAfterResendOTP(ctx context.Context, entry *domain.VerificationEntry) error {
 	query := `UPDATE verification_entries
               SET is_verified = $1, otp_code = $2, expires_at = $3
               WHERE id = $4`
@@ -283,4 +264,132 @@ func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
 		return err
 	}
 	return nil
+}
+
+func (r *userRepository) UpdatePassword(ctx context.Context, userID int64, newPasswordHash string) error {
+	query := `UPDATE users SET password_hash= $1, updated_at= NOW() WHERE id= $2`
+	_, err := r.db.ExecContext(ctx, query, newPasswordHash, userID)
+	if err != nil {
+		log.Printf("error while updating the password_hash : %v", err)
+	}
+	return err
+}
+
+func (r *userRepository) CreatePasswordResetEntry(ctx context.Context, entry *domain.PasswordResetEntry) error {
+	query := `INSERT INTO password_reset_entries (email, otp_code, expires_at, is_verified, created_at)
+              VALUES ($1, $2, $3, $4, $5)
+              RETURNING id`
+
+	err := r.db.QueryRowContext(ctx, query,
+		entry.Email,
+		entry.OTPCode,
+		entry.ExpiresAt,
+		entry.IsVerified,
+		time.Now()).Scan(&entry.ID)
+
+	if err != nil {
+		log.Printf("Error creating password reset entry: %v", err)
+		return err
+	}
+	return nil
+}
+
+func (r *userRepository) FindSignUpVerificationEntryByEmail(ctx context.Context, email string) (*domain.VerificationEntry, error) {
+	query := `SELECT id, email, otp_code, user_data, password_hash, expires_at, is_verified, created_at
+              FROM verification_entries
+              WHERE email = $1 AND is_verified = false
+              ORDER BY created_at DESC
+              LIMIT 1`
+
+	var entry domain.VerificationEntry
+	var userDataJSON []byte
+	var expiresAt time.Time //later used to verify the time is in UTC
+	err := r.db.QueryRowContext(ctx, query, email).Scan(
+		&entry.ID,
+		&entry.Email,
+		&entry.OTPCode,
+		&userDataJSON,
+		&entry.PasswordHash,
+		&expiresAt,
+		&entry.IsVerified,
+		&entry.CreatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, utils.ErrVerificationEntryNotFound
+		}
+		log.Printf("error while retrieving verification entries : %v", err)
+		return nil, err
+	}
+
+	// Ensure the time is in UTC
+	entry.ExpiresAt = expiresAt.UTC()
+
+	err = json.Unmarshal(userDataJSON, &entry.UserData)
+	if err != nil {
+		return nil, err
+	}
+
+	return &entry, nil
+}
+
+func (r *userRepository) FindPasswordResetEntryByEmail(ctx context.Context, email string) (*domain.PasswordResetEntry, error) {
+	query := `SELECT id, email, otp_code , expires_at , is_verified, created_at
+				FROM password_reset_entries 
+				WHERE email=$1 AND  is_verified=false
+				ORDER BY created_at DESC
+				LIMIT 1`
+
+	var entry domain.PasswordResetEntry
+	var expiresAt time.Time
+	err := r.db.QueryRowContext(ctx, query, email).Scan(
+		&entry.ID,
+		&entry.Email,
+		&entry.OTPCode,
+		&expiresAt,
+		&entry.IsVerified,
+		&entry.CreatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, utils.ErrVerificationEntryNotFound
+		}
+		log.Printf("error while retrieving verification entries : %v", err)
+		return nil, err
+	}
+
+	// Ensure the time is in UTC
+	entry.ExpiresAt = expiresAt.UTC()
+
+	return &entry, nil
+}
+
+func (r *userRepository) UserAddressExists(ctx context.Context, address *domain.UserAddress) (bool, error) {
+	query := `SELECT EXISTS (
+	SELECT 1 FROM user_address 
+	WHERE user_id =$1 AND address_line1 = $2 AND city=$3 AND state=$4 AND pincode=$5 AND deleted_at IS NULL)`
+	var exists bool
+	err := r.db.QueryRowContext(ctx, query, address.UserID,
+		address.AddressLine1,
+		address.City,
+		address.State,
+		address.PinCode).Scan(&exists)
+	if err != nil {
+		log.Printf("error while checking user exists : %v", err)
+	}
+	return exists, err
+}
+
+func (r *userRepository) AddUserAddress(ctx context.Context, address *domain.UserAddress) error {
+	query := `
+				INSERT INTO user_address (user_id, address_line1, address_line2, state, city, pincode, landmark, phone_number)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+				RETURNING id,created_at, updated_at
+				`
+	err := r.db.QueryRowContext(ctx, query, address.UserID, address.AddressLine1, address.AddressLine2,
+		address.State, address.City, address.PinCode, address.Landmark,
+		address.PhoneNumber).Scan(&address.ID, &address.CreatedAt, &address.UpdatedAt)
+
+	if err != nil {
+		log.Printf("error while adding address data into user_address table : %v", err)
+	}
+	return err
 }

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"strconv"
 	"strings"
@@ -196,55 +197,177 @@ func (h *ProductHandler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func (h *ProductHandler) AddProductImage(w http.ResponseWriter, r *http.Request) {
-	// Parse the multipart form
-	err := r.ParseMultipartForm(10 << 20) // 10 MB max , 10 << 20 is a bitwise shift operation that calculates 10 * 2^20, which equals approximately 10 MB
+func (h *ProductHandler) SoftDeleteProduct(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	productID, err := strconv.ParseInt(vars["productId"], 10, 64) //base 10 int , converts to int64
 	if err != nil {
-		api.SendResponse(w, http.StatusBadRequest, "Failed to parse form", nil, "Invalid form data")
+		api.SendResponse(w, http.StatusBadRequest, "Invalid product ID", nil, "Product ID must be a number")
 		return
 	}
 
-	// Get the product ID from the URL
-	vars := mux.Vars(r) // extracts the variables (path parameters) from the URL
-	//The Vars function returns a map where the keys are the parameter names defined in the URL route, and the values are the corresponding segments in the actual request URL.
-	//if your route is /products/{productId}, vars["productId"] will contain the value passed in the URL for productId.
+	err = h.productUseCase.SoftDeleteProduct(r.Context(), productID)
+	if err != nil {
+		switch err {
+		case utils.ErrProductNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Failed to delete product", nil, "Product not found")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Internal server error", nil, "An unexpected error occured")
+		}
+		return
+	}
+
+	api.SendResponse(w, http.StatusNoContent, "Product deleted successfully", nil, "")
+}
+
+func (h *ProductHandler) GetProductByID(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
 	productID, err := strconv.ParseInt(vars["productId"], 10, 64)
 	if err != nil {
 		api.SendResponse(w, http.StatusBadRequest, "Invalid product ID", nil, "Product ID must be a number")
 		return
 	}
 
-	// Get the file from the form data
-	file, header, err := r.FormFile("image")
-	if err != nil {
-		api.SendResponse(w, http.StatusBadRequest, "Failed to get image", nil, "No image file provided")
-		return
-	}
-	defer file.Close()
-
-	// Check if the image should be set as primary
-	isPrimaryStr := r.FormValue("is_primary")
-	isPrimary := isPrimaryStr == "true"
-
-	// Call the use case method to add the image
-	err = h.productUseCase.AddImage(r.Context(), productID, file, header, isPrimary)
+	product, err := h.productUseCase.GetProductByID(r.Context(), productID)
 	if err != nil {
 		switch err {
 		case utils.ErrProductNotFound:
-			api.SendResponse(w, http.StatusNotFound, "Failed to add image", nil, "Product not found")
-		case utils.ErrFileTooLarge:
-			api.SendResponse(w, http.StatusBadRequest, "Failed to add image", nil, "Image file is too large")
-		case utils.ErrInvalidFileType:
-			api.SendResponse(w, http.StatusBadRequest, "Failed to add image", nil, "Invalid image file type")
-		case utils.ErrTooManyImages:
-			api.SendResponse(w, http.StatusBadRequest, "Failed to add image", nil, "Maximum number of images reached for this product")
-		case utils.ErrDuplicateImageURL:
-			api.SendResponse(w, http.StatusConflict, "Failed to add image", nil, "This image already exists for the product")
+			api.SendResponse(w, http.StatusNotFound, "Product not found", nil, "The requested product does not exist or has been deleted")
 		default:
-			api.SendResponse(w, http.StatusInternalServerError, "Failed to add image", nil, "An unexpected error occurred")
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to retrieve product", nil, "An unexpected error occurred")
 		}
 		return
 	}
 
-	api.SendResponse(w, http.StatusCreated, "Image added successfully", nil, "")
+	api.SendResponse(w, http.StatusOK, "Product retrieved successfully", product, "")
+
+}
+
+func (h *ProductHandler) AddProductImages(w http.ResponseWriter, r *http.Request) {
+	// Parse the multipart form
+	err := r.ParseMultipartForm(10 << 20) // 10 MB max
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to parse form", nil, "Invalid form data")
+		return
+	}
+
+	// Get the product ID from the URL
+	vars := mux.Vars(r)
+	productID, err := strconv.ParseInt(vars["productId"], 10, 64)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Invalid product ID", nil, "Product ID must be a number")
+		return
+	}
+
+	// Prepare slices to hold file information
+	var files []multipart.File
+	var headers []*multipart.FileHeader //holds the file's metadata, like filename and headers, and provides methods for accessing the actual file content.
+	var isPrimaryFlags []bool
+
+	// Handle primary image
+	primaryFile, primaryHeader, err := r.FormFile("image_primary")
+	if err == nil {
+		files = append(files, primaryFile)
+		headers = append(headers, primaryHeader)
+		isPrimaryFlags = append(isPrimaryFlags, true)
+	}
+
+	// Handle non-primary images
+	if multipartForm := r.MultipartForm; multipartForm != nil {
+		if fileHeaders := multipartForm.File["image"]; len(fileHeaders) > 0 {
+			for _, fileHeader := range fileHeaders {
+				file, err := fileHeader.Open()
+				if err != nil {
+					api.SendResponse(w, http.StatusInternalServerError, "Failed to process image", nil, "Error opening file")
+					return
+				}
+				defer file.Close()
+				files = append(files, file)
+				headers = append(headers, fileHeader)
+				isPrimaryFlags = append(isPrimaryFlags, false)
+			}
+		}
+	}
+
+	if len(files) == 0 {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to get images", nil, "No image files provided")
+		return
+	}
+
+	err = h.productUseCase.AddImages(r.Context(), productID, files, headers, isPrimaryFlags)
+	if err != nil {
+		handleImageUploadError(w, err)
+		return
+	}
+
+	api.SendResponse(w, http.StatusCreated, "Images added successfully", nil, "")
+}
+
+func handleImageUploadError(w http.ResponseWriter, err error) {
+	switch err {
+	case utils.ErrProductNotFound:
+		api.SendResponse(w, http.StatusNotFound, "Failed to add image", nil, "Product not found")
+	case utils.ErrFileTooLarge:
+		api.SendResponse(w, http.StatusBadRequest, "Failed to add image", nil, "Image file is too large")
+	case utils.ErrInvalidFileType:
+		api.SendResponse(w, http.StatusBadRequest, "Failed to add image", nil, "Invalid image file type")
+	case utils.ErrTooManyImages:
+		api.SendResponse(w, http.StatusBadRequest, "Failed to add image", nil, "Maximum number of images reached for this product")
+	case utils.ErrDuplicateImageURL:
+		api.SendResponse(w, http.StatusConflict, "Failed to add image", nil, "This image already exists for the product")
+	case utils.ErrEmptyFile:
+		api.SendResponse(w, http.StatusBadRequest, "Failed to add image", nil, "Empty file provided")
+	case utils.ErrMultiplePrimaryImages:
+		api.SendResponse(w, http.StatusBadRequest, "Failed to add image", nil, "Only one primary image can be uploaded at a time")
+	default:
+		api.SendResponse(w, http.StatusInternalServerError, "Failed to add image", nil, "An unexpected error occurred")
+	}
+}
+
+func (h *ProductHandler) DeleteProductImage(w http.ResponseWriter, r *http.Request) {
+	// get the product id from the url
+	vars := mux.Vars(r)
+	productID, err := strconv.ParseInt(vars["productId"], 10, 64)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Invalid product ID", nil, "Product ID must be a number")
+		return
+	}
+
+	//get the image id from the url
+	imageID, err := strconv.ParseInt(vars["imageId"], 10, 64)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Invalid image ID", nil, "Image ID must be a number")
+		return
+	}
+
+	err = h.productUseCase.DeleteProductImage(r.Context(), productID, imageID)
+	if err != nil {
+		switch err {
+		case utils.ErrProductNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Failed to delete image", nil, "Product not found")
+		case utils.ErrImageNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Failed to delete image", nil, "Image not found")
+		case utils.ErrLastImage:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to delete image", nil, "Cannot delete the last image of a product")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to delete image", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	api.SendResponse(w, http.StatusOK, "Image deleted successfully", nil, "")
+}
+
+func (h *ProductHandler) GetAllProducts(w http.ResponseWriter, r *http.Request) {
+	products, err := h.productUseCase.GetAllProducts(r.Context())
+	if err != nil {
+		api.SendResponse(w, http.StatusInternalServerError, "Failed to retrieve products", nil, "An unexpected error occurred")
+		return
+	}
+
+	if len(products) == 0 {
+		api.SendResponse(w, http.StatusOK, "No products found", []struct{}{}, "")
+		return
+	}
+
+	api.SendResponse(w, http.StatusOK, "Products retrieved successfully", products, "")
 }

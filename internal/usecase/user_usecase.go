@@ -23,17 +23,19 @@ type UserUseCase interface {
 	ResendOTP(ctx context.Context, email string) error
 	GetUserProfile(ctx context.Context, userID int64) (*domain.User, error)                                    //fz
 	UpdateProfile(ctx context.Context, userID int64, updateData *domain.UserUpdatedData) (*domain.User, error) //fz
-	ForgotPassword(ctx context.Context, email string) error                                                    //fz
+	ForgotPassword(ctx context.Context, email string) error
+	ResetPassword(ctx context.Context, email, otp, newPassword string) error   //fz
+	AddUserAddress(ctx context.Context, userAddress *domain.UserAddress) error //fz
 }
 
 // userUseCase implements the UserUseCase interface
 type userUseCase struct {
 	userRepo    repository.UserRepository
-	emailSender *email.Sender
+	emailSender email.EmailSender
 }
 
 // NewUserUseCase creates a new instance of UserUseCase
-func NewUserUseCase(userRepo repository.UserRepository, emailSender *email.Sender) UserUseCase {
+func NewUserUseCase(userRepo repository.UserRepository, emailSender email.EmailSender) UserUseCase {
 	return &userUseCase{userRepo: userRepo,
 		emailSender: emailSender}
 }
@@ -104,7 +106,8 @@ func (u *userUseCase) Logout(ctx context.Context, token string) error {
 }
 
 func (u *userUseCase) InitiateSignUp(ctx context.Context, user *domain.User) error {
-	existingUser, err := u.userRepo.GetByEmail(ctx, user.Email) // Check if a verified user (which is not soft deleted) already exists with this email
+	// check if the given email is already registered for a verified user
+	existingUser, err := u.userRepo.GetByEmail(ctx, user.Email)
 	if err == nil && existingUser.IsEmailVerified {
 		return utils.ErrDuplicateEmail
 	}
@@ -137,7 +140,7 @@ func (u *userUseCase) InitiateSignUp(ctx context.Context, user *domain.User) err
 		IsVerified:   false,
 	}
 
-	err = u.userRepo.CreateVerificationEntry(ctx, verificationEntry)
+	err = u.userRepo.CreateUserSignUpVerifcationEntry(ctx, verificationEntry)
 	if err != nil {
 		return utils.ErrCreateVericationEntry
 	}
@@ -154,12 +157,17 @@ func (u *userUseCase) InitiateSignUp(ctx context.Context, user *domain.User) err
 
 func (u *userUseCase) VerifyOTP(ctx context.Context, email, otp string) error {
 	// Get the verification entry
-	entry, err := u.userRepo.GetVerificationEntryByEmail(ctx, email)
+	entry, err := u.userRepo.FindSignUpVerificationEntryByEmail(ctx, email)
 	if err != nil {
 		if err == utils.ErrVerificationEntryNotFound {
 			return utils.ErrNonExEmail
 		}
 		return err
+	}
+
+	// Check if the email is already verified
+	if entry.IsVerified {
+		return utils.ErrEmailAlreadyVerified
 	}
 
 	// Check if OTP is expired
@@ -170,11 +178,6 @@ func (u *userUseCase) VerifyOTP(ctx context.Context, email, otp string) error {
 	// Verify OTP
 	if entry.OTPCode != otp {
 		return utils.ErrInvalidOTP
-	}
-
-	// Check if the email is already verified
-	if entry.IsVerified {
-		return utils.ErrEmailAlreadyVerified
 	}
 
 	// Create the user
@@ -189,13 +192,13 @@ func (u *userUseCase) VerifyOTP(ctx context.Context, email, otp string) error {
 
 	// Mark the verification entry as verified
 	entry.IsVerified = true
-	err = u.userRepo.UpdateVerificationEntry(ctx, entry)
+	err = u.userRepo.UpdateSignUpVerificationEntry(ctx, entry)
 	if err != nil {
 		return utils.ErrUpdateVerificationEntry
 	}
 
 	// delete the verification entry
-	err = u.userRepo.DeleteVerificationEntry(ctx, email)
+	err = u.userRepo.DeleteSignUpVerificationEntry(ctx, email) // deletes all the verifcation entries made using the given email
 	if err != nil {
 		return utils.ErrDeleteVerificationEntry
 	}
@@ -205,12 +208,17 @@ func (u *userUseCase) VerifyOTP(ctx context.Context, email, otp string) error {
 
 func (u *userUseCase) ResendOTP(ctx context.Context, email string) error {
 	// Get the verification entry
-	entry, err := u.userRepo.GetVerificationEntryByEmail(ctx, email)
+	entry, err := u.userRepo.FindSignUpVerificationEntryByEmail(ctx, email)
 	if err != nil {
 		if err == utils.ErrVerificationEntryNotFound {
 			return utils.ErrNonExEmail
 		}
 		return err
+	}
+
+	// Check if the email is already verified
+	if entry.IsVerified {
+		return utils.ErrEmailAlreadyVerified
 	}
 
 	// Check if signup process has expired
@@ -238,7 +246,7 @@ func (u *userUseCase) ResendOTP(ctx context.Context, email string) error {
 	entry.OTPCode = newOTP
 	entry.ExpiresAt = time.Now().UTC().Add(15 * time.Minute)
 
-	err = u.userRepo.UpdateVerificationEntryAfterResendOTP(ctx, entry)
+	err = u.userRepo.UpdateSignUpVerificationEntryAfterResendOTP(ctx, entry)
 	if err != nil {
 		return utils.ErrUpdateVerficationAfterResend
 	}
@@ -321,14 +329,13 @@ func (u *userUseCase) ForgotPassword(ctx context.Context, email string) error {
 
 	//create a verification entry
 	expiresAt := time.Now().UTC().Add(15 * time.Minute)
-	verificationEntry := &domain.VerificationEntry{
+	passwordResetEntry := &domain.PasswordResetEntry{
 		Email:     user.Email,
 		OTPCode:   resetToken,
 		ExpiresAt: expiresAt,
-		Type:      "password_reset",
 	}
 
-	err = u.userRepo.CreateVerificationEntry(ctx, verificationEntry)
+	err = u.userRepo.CreatePasswordResetEntry(ctx, passwordResetEntry)
 	if err != nil {
 		return utils.ErrCreateVericationEntry
 	}
@@ -337,6 +344,100 @@ func (u *userUseCase) ForgotPassword(ctx context.Context, email string) error {
 	err = u.emailSender.SendPasswordResetToken(user.Email, resetToken)
 	if err != nil {
 		return utils.ErrSendingResetToken
+	}
+
+	return nil
+}
+
+func (u *userUseCase) ResetPassword(ctx context.Context, email, otp, newPassword string) error {
+	// check if the user exists
+	user, err := u.userRepo.GetByEmail(ctx, email)
+	if err != nil {
+		if err == utils.ErrUserNotFound {
+			log.Println("User not found during password reset attempt")
+			return utils.ErrUserNotFound
+		}
+		log.Printf("Unexpected error during password reset : %v", err)
+		return err
+	}
+
+	// check if the user is blocked
+	if user.IsBlocked {
+		return utils.ErrUserBlocked
+	}
+
+	// Get the verification entry
+	entry, err := u.userRepo.FindPasswordResetEntryByEmail(ctx, email)
+	if err != nil {
+		if err == utils.ErrVerificationEntryNotFound {
+			return utils.ErrOTPNotRequested
+		}
+		return err
+	}
+
+	// Check if OTP is expired
+	if time.Now().UTC().After(entry.ExpiresAt) {
+		return utils.ErrExpiredOTP
+	}
+
+	// Verify OTP
+	if entry.OTPCode != otp {
+		return utils.ErrInvalidOTP
+	}
+
+	// Check if the new password is the same as the old one
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(newPassword)); err == nil {
+		return utils.ErrSamePassword
+	}
+
+	// Hash the new password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return utils.ErrHashingPassword
+	}
+
+	// Update the password
+	err = u.userRepo.UpdatePassword(ctx, user.ID, string(hashedPassword))
+	if err != nil {
+		return err
+	}
+
+	// Delete the verification entry
+	err = u.userRepo.DeletePasswordResetVerificationEntry(ctx, email)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (u *userUseCase) AddUserAddress(ctx context.Context, userAddress *domain.UserAddress) error {
+	// check if the user exists and is blocked
+	user, err := u.userRepo.GetByID(ctx, userAddress.UserID)
+	if err != nil {
+		if err == utils.ErrUserNotFound {
+			return utils.ErrUserNotFound
+		}
+		return err
+	}
+
+	if user.IsBlocked {
+		return utils.ErrUserBlocked
+	}
+
+	// check for duplicate address
+	exists, err := u.userRepo.UserAddressExists(ctx, userAddress)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return utils.ErrUserAddressAlreadyExists
+	}
+
+	// add the address
+	err = u.userRepo.AddUserAddress(ctx, userAddress)
+	if err != nil {
+		return err
 	}
 
 	return nil

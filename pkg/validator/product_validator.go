@@ -1,6 +1,8 @@
 package validator
 
 import (
+	"mime/multipart"
+	"path/filepath"
 	"strings"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
@@ -91,4 +93,32 @@ func ValidateProductSubCategoryID(subCategoryID int) error {
 		return utils.ErrInvalidSubCategoryID
 	}
 	return nil
+}
+
+func ValidateFile(header *multipart.FileHeader) error {
+	// Check file size
+	if header.Size > utils.MaxFileSize {
+		return utils.ErrFileTooLarge
+	}
+
+	// Check file type
+	if !IsValidImageType(header.Filename) {
+		return utils.ErrInvalidFileType
+	}
+
+	// Check for empty file
+	if header.Size == 0 {
+		return utils.ErrEmptyFile
+	}
+
+	return nil
+}
+
+func IsValidImageType(filename string) bool {
+	ext := filepath.Ext(filename)
+	switch ext {
+	case ".jpg", ".jpeg", ".png", ".gif":
+		return true
+	}
+	return false
 }

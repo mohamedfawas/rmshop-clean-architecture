@@ -341,6 +341,8 @@ func (h *UserHandler) ResendOTP(w http.ResponseWriter, r *http.Request) {
 	err = h.userUseCase.ResendOTP(r.Context(), input.Email)
 	if err != nil {
 		switch err {
+		case utils.ErrVerificationEntryType:
+			api.SendResponse(w, http.StatusNotFound, "Failed to resend OTP", nil, "Provided Email hasn't used for sign up process")
 		case utils.ErrNonExEmail:
 			api.SendResponse(w, http.StatusNotFound, "Failed to resend OTP", nil, "Provided Email hasn't initiated sign up")
 		case utils.ErrEmailAlreadyVerified:
@@ -555,4 +557,147 @@ func (h *UserHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	api.SendResponse(w, http.StatusOK, "Password reset initiated", nil, "")
+}
+
+func (h *UserHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Email       string `json:"email"`
+		OTP         string `json:"otp"`
+		NewPassword string `json:"new_password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to parse request", nil, "Invalid request body")
+		return
+	}
+
+	// Trim and validate input
+	input.Email = strings.TrimSpace(strings.ToLower(input.Email))
+	input.OTP = strings.TrimSpace(input.OTP)
+	input.NewPassword = strings.TrimSpace(input.NewPassword)
+
+	if input.Email == "" || input.OTP == "" || input.NewPassword == "" {
+		api.SendResponse(w, http.StatusBadRequest, "Missing required fields", nil, "Email, OTP, and new password are required")
+		return
+	}
+
+	if err := validator.ValidateUserEmail(input.Email); err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Invalid email", nil, "Please provide a valid email address")
+		return
+	}
+
+	if err := validator.ValidateOTP(input.OTP); err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Invalid OTP", nil, "Please provide a valid 6-digit OTP")
+		return
+	}
+
+	if err := validator.ValidatePassword(input.NewPassword); err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Invalid password", nil, "Password does not meet complexity requirements")
+		return
+	}
+
+	err := h.userUseCase.ResetPassword(r.Context(), input.Email, input.OTP, input.NewPassword)
+	if err != nil {
+		switch err {
+		case utils.ErrUserNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Failed to reset password", nil, "User not found")
+		case utils.ErrInvalidOTP:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to reset password", nil, "Invalid OTP")
+		case utils.ErrExpiredOTP:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to reset password", nil, "OTP has expired")
+		case utils.ErrOTPNotRequested:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to reset password", nil, "No OTP was requested for this email")
+		case utils.ErrTooManyResetAttempts:
+			api.SendResponse(w, http.StatusTooManyRequests, "Failed to reset password", nil, "Too many reset attempts. Please try again later")
+		case utils.ErrSamePassword:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to reset password", nil, "New password cannot be the same as the old password")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to reset password", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	api.SendResponse(w, http.StatusOK, "Password reset successfully", nil, "")
+}
+
+func (h *UserHandler) AddUserAddress(w http.ResponseWriter, r *http.Request) {
+	// extract userId from the jwt token
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	if !ok {
+		api.SendResponse(w, http.StatusUnauthorized, "Failed to add address", nil, "Invalid user ID in token")
+		return
+	}
+
+	var userAddress domain.UserAddress
+	err := json.NewDecoder(r.Body).Decode(&userAddress)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to add address", nil, "Invalid request body")
+		return
+	}
+
+	// assign the user id taken from token to user id for address entry
+	userAddress.UserID = userID
+
+	userAddress.AddressLine1 = strings.ToLower(strings.TrimSpace(userAddress.AddressLine1))
+	userAddress.AddressLine2 = strings.ToLower(strings.TrimSpace(userAddress.AddressLine2))
+	userAddress.State = strings.ToLower(strings.TrimSpace(userAddress.State))
+	userAddress.City = strings.ToLower(strings.TrimSpace(userAddress.City))
+	userAddress.PinCode = strings.ToLower(strings.TrimSpace(userAddress.PinCode))
+	userAddress.Landmark = strings.ToLower(strings.TrimSpace(userAddress.Landmark))
+	userAddress.PhoneNumber = strings.ToLower(strings.TrimSpace(userAddress.PhoneNumber))
+
+	// validate not null entries
+	if userAddress.AddressLine1 == "" || userAddress.State == "" || userAddress.City == "" || userAddress.PinCode == "" || userAddress.PhoneNumber == "" {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to add the address", nil, "Please provide a valid address with all the necessary columns filled")
+		return
+	}
+
+	// validate address line 1 , not validating address line 2 (optional value)
+	err = validator.ValidateAddressLine(userAddress.AddressLine1)
+	if err != nil {
+		if err == utils.ErrUserAddressTooLong {
+			api.SendResponse(w, http.StatusBadRequest, "Validation failed", nil, "Please provide address line with less than 255 characters")
+		}
+		if err == utils.ErrUserAddressTooShort {
+			api.SendResponse(w, http.StatusBadRequest, "Validation failed", nil, "Please provide address line with more than 10 characters")
+		}
+	}
+
+	err = validator.ValidateState(userAddress.State)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Validation failed", nil, "Please give a valid state (with less than 100 characters)")
+	}
+
+	err = validator.ValidateCity(userAddress.City)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Validation failed", nil, "Please give a valid city (with less than 150 characters)")
+	}
+
+	err = validator.ValidatePinCode(userAddress.PinCode)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Validation failed", nil, "Please provide a valid pincode")
+	}
+
+	err = validator.ValidatePhoneNumber(userAddress.PhoneNumber)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Validation failed", nil, "Please provide a valid phone number")
+	}
+
+	// call the use case to add the address
+	err = h.userUseCase.AddUserAddress(r.Context(), &userAddress)
+	if err != nil {
+		switch err {
+		case utils.ErrUserNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Failed to add user address", nil, "The given user is not a registered user")
+		case utils.ErrUserBlocked:
+			api.SendResponse(w, http.StatusForbidden, "Failed to add user address", nil, "The given user is blocked by admin")
+		case utils.ErrUserAddressAlreadyExists:
+			api.SendResponse(w, http.StatusConflict, "Failed to add user address", nil, "The given address already exists")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Internal server error", nil, "An unexpected error occured")
+		}
+		return
+	}
+
+	api.SendResponse(w, http.StatusCreated, "Address added successfully", userAddress, "")
 }

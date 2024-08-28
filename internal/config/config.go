@@ -64,10 +64,6 @@ func Load() (*Config, error) {
 		log.Printf("Error unmarshaling config: %v", err)
 		return nil, err
 	}
-	log.Printf("values of db are : %s", config.DB.Host)
-	log.Printf("values of cloudinary are : %s", config.Cloudinary.CloudName)
 
-	// Debug print Cloudinary configuration
-	log.Printf("Loaded Cloudinary config: %+v", config.Cloudinary)
 	return &config, nil
 }

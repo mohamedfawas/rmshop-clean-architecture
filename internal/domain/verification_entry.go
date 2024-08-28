@@ -13,5 +13,4 @@ type VerificationEntry struct {
 	ExpiresAt    time.Time `json:"expires_at"`
 	IsVerified   bool      `json:"is_verified"`
 	CreatedAt    time.Time `json:"created_at"`
-	Type         string    `json:"type"`
 }

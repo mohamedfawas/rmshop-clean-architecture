@@ -75,7 +75,6 @@ func (h *CategoryHandler) GetAllCategories(w http.ResponseWriter, r *http.Reques
 			http.Error(w, "No categories found", http.StatusNotFound)
 		case utils.ErrQueryExecution, utils.ErrRowScan:
 			http.Error(w, utils.InternalServerErrorString, http.StatusInternalServerError)
-
 		}
 
 		http.Error(w, "Failed to retrieve categories", http.StatusInternalServerError)

@@ -38,14 +38,13 @@ func main() {
 	emailSender := email.NewSender(cfg.SMTP.Host, cfg.SMTP.Port, cfg.SMTP.Username, cfg.SMTP.Password)
 
 	// Add debug logging for Cloudinary configuration
-	log.Printf("Cloudinary Config - CloudName: %s, APIKey: %s, APISecret: %s",
-		cfg.Cloudinary.CloudName,
-		cfg.Cloudinary.APIKey,
-		cfg.Cloudinary.APISecret)
+	// log.Printf("Cloudinary Config - CloudName: %s, APIKey: %s, APISecret: %s",
+	// 	cfg.Cloudinary.CloudName,
+	// 	cfg.Cloudinary.APIKey,
+	// 	cfg.Cloudinary.APISecret)
 
 	// // Initialize Cloudinary service
 	cloudinaryService, err := cloudinary.NewCloudinaryService(cfg.Cloudinary.CloudName, cfg.Cloudinary.APIKey, cfg.Cloudinary.APISecret)
-
 	if err != nil {
 		log.Fatalf("Failed to initialize Cloudinary instance: %v", err)
 	}

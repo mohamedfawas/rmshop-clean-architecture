@@ -82,36 +82,27 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 	r.HandleFunc("/admin/products",
 		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
 			productHandler.CreateProduct))).Methods("POST")
-	// r.HandleFunc("/admin/products",
-	// 	middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
-	// 		productHandler.GetAllProducts))).Methods("GET")
-	// r.HandleFunc("/admin/products/{productId}",
-	// 	middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
-	// 		productHandler.GetProductByID))).Methods("GET")
+	r.HandleFunc("/admin/products",
+		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
+			productHandler.GetAllProducts))).Methods("GET")
+	r.HandleFunc("/admin/products/{productId}",
+		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
+			productHandler.GetProductByID))).Methods("GET")
 	r.HandleFunc("/admin/products/{productId}",
 		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
 			productHandler.UpdateProduct))).Methods("PUT")
-	// r.HandleFunc("/admin/products/{productId}",
-	// 	middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
-	// 		productHandler.SoftDeleteProduct))).Methods("DELETE")
-	// //admin route : update primary image
-	// r.HandleFunc("/admin/products/{productId}/primary-image",
-	// 	middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
-	// 		productHandler.UpdatePrimaryImage))).Methods("PUT")
-	// //admin route : add new product images
-	// r.HandleFunc("/admin/products/{productId}/images",
-	// 	middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
-	// 		productHandler.AddProductImages))).Methods("POST")
-	// //admin route : delete a product image
-	// r.HandleFunc("/admin/products/{productId}/images/{imageId}",
-	// 	middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
-	// 		productHandler.RemoveProductImage))).Methods("DELETE")
+	r.HandleFunc("/admin/products/{productId}",
+		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
+			productHandler.SoftDeleteProduct))).Methods("DELETE")
 
 	// product image management
 	r.HandleFunc("/admin/products/{productId}/images",
 		middleware.JWTAuthMiddleware(
 			middleware.AdminAuthMiddleware(
-				productHandler.AddProductImage))).Methods("POST")
+				productHandler.AddProductImages))).Methods("POST")
+	r.HandleFunc("/admin/products/{productId}/images/{imageId}",
+		middleware.JWTAuthMiddleware(middleware.AdminAuthMiddleware(
+			productHandler.DeleteProductImage))).Methods("DELETE")
 
 	// User routes
 	r.HandleFunc("/user/login",
@@ -143,6 +134,15 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 	r.HandleFunc("/user/forgot-password",
 		middleware.RateLimitMiddleware(
 			userHandler.ForgotPassword, otpResendLimiter)).Methods("POST")
+
+	// user : reset password
+	r.HandleFunc("/user/reset-password",
+		userHandler.ResetPassword).Methods("POST")
+
+	// user : add address
+	r.HandleFunc("/user/addresses",
+		middleware.JWTAuthMiddleware(
+			middleware.UserAuthMiddleware(userHandler.AddUserAddress))).Methods("POST")
 
 	//product listing on user side
 	// r.HandleFunc("/products", middleware.UserAuthMiddleware(

@@ -69,6 +69,7 @@ var (
 	ErrDeleteVerificationEntry  = errors.New("error deleting verification entry")
 	ErrUpdateLastLogin          = errors.New("error updating last login")
 	ErrGenerateJWTTokenWithRole = errors.New("error generate jwt token with role")
+	ErrVerificationEntryType    = errors.New("wrong verification entry type")
 
 	//user : logout
 	ErrMissingAuthToken         = errors.New("missing auth token")
@@ -88,6 +89,14 @@ var (
 	ErrCheckTokenBlacklisted   = errors.New("failed to check if token is blacklisted")
 	ErrInvalidExpirationClaim  = errors.New("invalid expiration claim")
 	ErrTokenExpired            = errors.New("token expired")
+
+	// user address
+	ErrUserAddressTooLong       = errors.New("user address too long")
+	ErrUserAddressTooShort      = errors.New("user address too short")
+	ErrInvalidUserStateEntry    = errors.New("invalid state")
+	ErrInvalidUserCityEntry     = errors.New("invalid city")
+	ErrInvalidPinCode           = errors.New("invalid pin code")
+	ErrUserAddressAlreadyExists = errors.New("user address already exists")
 
 	//category
 	ErrInvalidCategoryName  = errors.New("invalid category name")
@@ -129,6 +138,7 @@ var (
 	ErrProductDescriptionRequired = errors.New("product description required")
 	ErrDuplicateProductName       = errors.New("product name already exists")
 	ErrDuplicateProductSlug       = errors.New("product slug already exists")
+	ErrInvalidQueryParameter      = errors.New("invalid query parameter")
 
 	//usecase errors
 	ErrAdminNotFound           = errors.New("admin not found")
@@ -160,14 +170,19 @@ var (
 	ErrHashingPassword         = errors.New("error hashing password")
 
 	//image
-	ErrImageNotFound = errors.New("image not found")
-
+	ErrImageNotFound   = errors.New("image not found")
+	ErrLastImage       = errors.New("last image")
 	ErrFileTooLarge    = errors.New("file size exceeds the maximum limit of 10MB")
 	ErrInvalidFileType = errors.New("invalid file type. Only .jpg, .jpeg, .png, and .gif are allowed")
 	ErrTooManyImages   = errors.New("maximum number of images (5) reached for this product")
 	ErrEmptyFile       = errors.New("file is empty")
 
-	ErrInternalServer = errors.New("Internal server error")
+	// user password change
+	ErrOTPNotRequested      = errors.New("no OTP was requested for this email")
+	ErrTooManyResetAttempts = errors.New("too many reset attempts")
+	ErrSamePassword         = errors.New("new password cannot be the same as the old password")
+
+	ErrInternalServer = errors.New("internal server error")
 )
 
 func GenerateSlug(name string) string {
