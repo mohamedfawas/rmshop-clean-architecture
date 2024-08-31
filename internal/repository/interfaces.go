@@ -89,4 +89,5 @@ type CartRepository interface {
 	AddCartItem(ctx context.Context, item *domain.CartItem) error
 	GetCartItemByProductID(ctx context.Context, userID, productID int64) (*domain.CartItem, error)
 	UpdateCartItem(ctx context.Context, item *domain.CartItem) error
+	GetCartByUserID(ctx context.Context, userID int64) ([]*domain.CartItemWithProduct, error)
 }

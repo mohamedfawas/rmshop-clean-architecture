@@ -55,7 +55,7 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 
 	// cart components
 	cartRepo := postgres.NewCartRepository(db)
-	cartUseCase := usecase.NewCartUseCase(cartRepo, productRepo)
+	cartUseCase := usecase.NewCartUseCase(cartRepo, productRepo, userRepo)
 	cartHandler := handlers.NewCartHandler(cartUseCase)
 
 	// Initialize the router with all handlers

@@ -10,17 +10,20 @@ import (
 
 type CartUseCase interface {
 	AddToCart(ctx context.Context, userID, productID int64, quantity int) (*domain.CartItem, error)
+	GetUserCart(ctx context.Context, userID int64) (*domain.Cart, error)
 }
 
 type cartUseCase struct {
 	cartRepo    repository.CartRepository
 	productRepo repository.ProductRepository
+	userRepo    repository.UserRepository
 }
 
-func NewCartUseCase(cartRepo repository.CartRepository, productRepo repository.ProductRepository) CartUseCase {
+func NewCartUseCase(cartRepo repository.CartRepository, productRepo repository.ProductRepository, userRepo repository.UserRepository) CartUseCase {
 	return &cartUseCase{
 		cartRepo:    cartRepo,
 		productRepo: productRepo,
+		userRepo:    userRepo,
 	}
 }
 
@@ -73,4 +76,35 @@ func (u *cartUseCase) AddToCart(ctx context.Context, userID, productID int64, qu
 	}
 
 	return newItem, nil
+}
+
+func (u *cartUseCase) GetUserCart(ctx context.Context, userID int64) (*domain.Cart, error) {
+	// Check if user exists and is not blocked
+	user, err := u.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		if err == utils.ErrUserNotFound {
+			return nil, utils.ErrUserNotFound
+		}
+		return nil, err
+	}
+	if user.IsBlocked {
+		return nil, utils.ErrUserBlocked
+	}
+
+	// Get cart items
+	cartItems, err := u.cartRepo.GetCartByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Calculate total value
+	var totalValue float64
+	for _, item := range cartItems {
+		totalValue += float64(item.Quantity) * item.ProductPrice
+	}
+
+	return &domain.Cart{
+		Items:      cartItems,
+		TotalValue: totalValue,
+	}, nil
 }

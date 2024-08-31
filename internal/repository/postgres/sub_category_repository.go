@@ -21,8 +21,8 @@ func NewSubCategoryRepository(db *sql.DB) *subCategoryRepository {
 
 func (r *subCategoryRepository) Create(ctx context.Context, subCategory *domain.SubCategory) error {
 	// Insert the new sub-category
-	query := `INSERT INTO sub_categories (parent_category_id, name, slug, created_at,updated_at) 
-              VALUES ($1, $2, $3, $4,$5) 
+	query := `INSERT INTO sub_categories (parent_category_id, name, slug, created_at,updated_at, is_deleted) 
+              VALUES ($1, $2, $3, $4,$5, $6) 
               RETURNING id`
 
 	err := r.db.QueryRowContext(ctx, query,
@@ -30,7 +30,8 @@ func (r *subCategoryRepository) Create(ctx context.Context, subCategory *domain.
 		subCategory.Name,
 		subCategory.Slug,
 		subCategory.CreatedAt,
-		subCategory.UpdatedAt).Scan(&subCategory.ID)
+		subCategory.UpdatedAt,
+		false).Scan(&subCategory.ID)
 
 	if err != nil {
 		log.Printf("Error inserting subcategory: %v", err)
@@ -48,9 +49,9 @@ func (r *subCategoryRepository) Create(ctx context.Context, subCategory *domain.
 
 func (r *subCategoryRepository) GetByCategoryID(ctx context.Context, categoryID int) ([]*domain.SubCategory, error) {
 	query := `
-		SELECT id, parent_category_id, name, slug, created_at, deleted_at
+		SELECT id, parent_category_id, name, slug, created_at, deleted_at, is_deleted
 		FROM sub_categories
-		WHERE parent_category_id = $1 AND deleted_at IS NULL
+		WHERE parent_category_id = $1 AND is_deleted = FALSE
 		ORDER BY id
 	`
 
@@ -71,6 +72,7 @@ func (r *subCategoryRepository) GetByCategoryID(ctx context.Context, categoryID 
 			&sc.Slug,
 			&sc.CreatedAt,
 			&sc.DeletedAt,
+			&sc.IsDeleted,
 		)
 		if err != nil {
 			log.Printf("Error scanning sub-category row: %v", err)
@@ -89,9 +91,9 @@ func (r *subCategoryRepository) GetByCategoryID(ctx context.Context, categoryID 
 
 func (r *subCategoryRepository) GetByID(ctx context.Context, id int) (*domain.SubCategory, error) {
 	query := `
-		SELECT id, parent_category_id, name, slug, created_at, updated_at, deleted_at
+		SELECT id, parent_category_id, name, slug, created_at, updated_at, deleted_at, is_deleted
 		FROM sub_categories
-		WHERE id = $1 AND deleted_at IS NULL
+		WHERE id = $1 AND is_deleted = FALSE
 	`
 
 	var subCategory domain.SubCategory
@@ -103,6 +105,7 @@ func (r *subCategoryRepository) GetByID(ctx context.Context, id int) (*domain.Su
 		&subCategory.CreatedAt,
 		&subCategory.UpdatedAt,
 		&subCategory.DeletedAt,
+		&subCategory.IsDeleted,
 	)
 
 	if err != nil {
@@ -119,14 +122,14 @@ func (r *subCategoryRepository) Update(ctx context.Context, subCategory *domain.
 	query := `
 		UPDATE sub_categories
 		SET name = $1, slug = $2, updated_at = $3
-		WHERE id = $4 AND parent_category_id = $5 AND deleted_at IS NULL
+		WHERE id = $4 AND parent_category_id = $5 AND is_deleted = FALSE
 		RETURNING updated_at
 	`
 
 	err := r.db.QueryRowContext(ctx, query,
 		subCategory.Name,
 		subCategory.Slug,
-		time.Now(),
+		time.Now().UTC(),
 		subCategory.ID,
 		subCategory.ParentCategoryID).Scan(&subCategory.UpdatedAt)
 
@@ -144,8 +147,8 @@ func (r *subCategoryRepository) Update(ctx context.Context, subCategory *domain.
 func (r *subCategoryRepository) SoftDelete(ctx context.Context, id int) error {
 	query := `
 		UPDATE sub_categories
-		SET deleted_at = NOW()
-		WHERE id = $1 AND deleted_at IS NULL
+		SET deleted_at = NOW(), is_deleted = TRUE
+		WHERE id = $1 AND is_deleted = FALSE
 	`
 
 	result, err := r.db.ExecContext(ctx, query, id)

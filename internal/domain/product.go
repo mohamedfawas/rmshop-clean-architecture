@@ -16,4 +16,5 @@ type Product struct {
 	UpdatedAt      time.Time  `json:"updated_at"`
 	DeletedAt      *time.Time `json:"deleted_at,omitempty"`
 	PrimaryImageID *int64     `json:"primary_image_id,omitempty"`
+	IsDeleted      bool       `json:"is_deleted"`
 }

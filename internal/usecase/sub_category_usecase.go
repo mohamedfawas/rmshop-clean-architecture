@@ -3,7 +3,6 @@ package usecase
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"log"
 	"strings"
 	"time"
@@ -45,6 +44,11 @@ func (u *subCategoryUseCase) CreateSubCategory(ctx context.Context, categoryID i
 		return err
 	}
 
+	// check if the parent category got deleted
+	if parentCategory.IsDeleted {
+		return utils.ErrCategoryNotFound
+	}
+
 	// Generate slug
 	subCategory.Slug = utils.GenerateSubCategorySlug(parentCategory.Slug, subCategory.Name)
 
@@ -52,6 +56,7 @@ func (u *subCategoryUseCase) CreateSubCategory(ctx context.Context, categoryID i
 	subCategory.CreatedAt = time.Now().UTC()
 	subCategory.UpdatedAt = time.Now().UTC()
 	subCategory.ParentCategoryID = categoryID
+	subCategory.IsDeleted = false
 
 	// Attempt to create the subcategory
 	err = u.subCategoryRepo.Create(ctx, subCategory)
@@ -59,6 +64,7 @@ func (u *subCategoryUseCase) CreateSubCategory(ctx context.Context, categoryID i
 		if err == utils.ErrDuplicateSubCategory {
 			return utils.ErrDuplicateSubCategory
 		}
+		log.Printf("error while creating the sub category : %v", err)
 		return err
 	}
 
@@ -72,13 +78,15 @@ func (u *subCategoryUseCase) GetSubCategoriesByCategory(ctx context.Context, cat
 		if err == utils.ErrCategoryNotFound {
 			return nil, utils.ErrCategoryNotFound
 		}
-		return nil, errors.New("failed to retrieve parent category")
+		log.Printf("error while retrieving category using ID : %v", err)
+		return nil, err
 	}
 
 	// Retrieve sub-categories
 	subCategories, err := u.subCategoryRepo.GetByCategoryID(ctx, categoryID)
 	if err != nil {
-		return nil, errors.New("failed to retrieve sub-categories")
+		log.Printf("error while retrieving sub category details using category ID : %v", err)
+		return nil, err
 	}
 
 	return subCategories, nil
@@ -91,6 +99,7 @@ func (u *subCategoryUseCase) GetSubCategoryByID(ctx context.Context, categoryID,
 		if err == utils.ErrCategoryNotFound {
 			return nil, utils.ErrCategoryNotFound
 		}
+		log.Printf("error while retrieving category details using ID : %v", err)
 		return nil, err
 	}
 
@@ -118,6 +127,7 @@ func (u *subCategoryUseCase) UpdateSubCategory(ctx context.Context, categoryID i
 		if err == utils.ErrCategoryNotFound {
 			return utils.ErrCategoryNotFound
 		}
+		log.Printf("error while retrieving category details using ID : %v", err)
 		return err
 	}
 
@@ -126,6 +136,7 @@ func (u *subCategoryUseCase) UpdateSubCategory(ctx context.Context, categoryID i
 
 	err = validator.ValidateSubCategoryName(subCategory.Name)
 	if err != nil {
+		log.Printf("error while validating the sub category name : %v", err)
 		return err
 	}
 
@@ -141,6 +152,7 @@ func (u *subCategoryUseCase) UpdateSubCategory(ctx context.Context, categoryID i
 		if err == utils.ErrSubCategoryNotFound {
 			return utils.ErrSubCategoryNotFound
 		}
+		log.Printf("error while udpating the subcategory details : %v", err)
 		return err
 	}
 
@@ -154,6 +166,7 @@ func (u *subCategoryUseCase) SoftDeleteSubCategory(ctx context.Context, category
 		if err == utils.ErrCategoryNotFound {
 			return utils.ErrCategoryNotFound
 		}
+		log.Printf("error while retrieving category details using ID : %v", err)
 		return err
 	}
 
@@ -163,6 +176,7 @@ func (u *subCategoryUseCase) SoftDeleteSubCategory(ctx context.Context, category
 		if err == utils.ErrSubCategoryNotFound {
 			return utils.ErrSubCategoryNotFound
 		}
+		log.Printf("error while retrieving sub category details using ID : %v", err)
 		return err
 	}
 
@@ -170,9 +184,14 @@ func (u *subCategoryUseCase) SoftDeleteSubCategory(ctx context.Context, category
 		return utils.ErrSubCategoryNotFound
 	}
 
+	if subCategory.IsDeleted {
+		return utils.ErrSubCategoryAlreadyDeleted
+	}
+
 	// Perform the soft delete
 	err = u.subCategoryRepo.SoftDelete(ctx, subCategoryID)
 	if err != nil {
+		log.Printf("error while soft deleting the given sub category details : %v", err)
 		return err
 	}
 

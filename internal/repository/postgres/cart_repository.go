@@ -64,3 +64,39 @@ func (r *cartRepository) UpdateCartItem(ctx context.Context, item *domain.CartIt
 	}
 	return err
 }
+
+func (r *cartRepository) GetCartByUserID(ctx context.Context, userID int64) ([]*domain.CartItemWithProduct, error) {
+	query := `
+		SELECT ci.id, ci.user_id, ci.product_id, ci.quantity, ci.created_at, ci.updated_at,
+			   p.name, p.price
+		FROM cart_items ci
+		JOIN products p ON ci.product_id = p.id
+		WHERE ci.user_id = $1 AND p.deleted_at IS NULL
+		ORDER BY ci.created_at DESC
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var cartItems []*domain.CartItemWithProduct
+	for rows.Next() {
+		var ci domain.CartItemWithProduct
+		err := rows.Scan(
+			&ci.ID, &ci.UserID, &ci.ProductID, &ci.Quantity, &ci.CreatedAt, &ci.UpdatedAt,
+			&ci.ProductName, &ci.ProductPrice,
+		)
+		if err != nil {
+			return nil, err
+		}
+		cartItems = append(cartItems, &ci)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return cartItems, nil
+}

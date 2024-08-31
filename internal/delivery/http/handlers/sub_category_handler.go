@@ -66,7 +66,7 @@ func (h *SubCategoryHandler) CreateSubCategory(w http.ResponseWriter, r *http.Re
 		case utils.ErrCategoryNotFound:
 			api.SendResponse(w, http.StatusNotFound, "Failed to create subcategory", nil, "Parent category not found")
 		default:
-			api.SendResponse(w, http.StatusInternalServerError, "Failed to create subcategory", nil, "Failed to create subcategory")
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to create subcategory", nil, "An unexpected error occured")
 		}
 		return
 	}
@@ -195,6 +195,8 @@ func (h *SubCategoryHandler) SoftDeleteSubCategory(w http.ResponseWriter, r *htt
 			api.SendResponse(w, http.StatusNotFound, "Failed to delete sub-category", nil, "Category not found")
 		case utils.ErrSubCategoryNotFound:
 			api.SendResponse(w, http.StatusNotFound, "Failed to delete sub-category", nil, "Sub-category not found")
+		case utils.ErrSubCategoryAlreadyDeleted:
+			api.SendResponse(w, http.StatusNotFound, "Failed to delete sub-category", nil, "Sub-category already deleted")
 		default:
 			api.SendResponse(w, http.StatusInternalServerError, "Failed to delete sub-category", nil, "An unexpected error occurred")
 		}

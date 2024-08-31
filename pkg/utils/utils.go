@@ -101,22 +101,24 @@ var (
 	ErrUnauthorized             = errors.New("unauthorized to updated this address")
 
 	//category
-	ErrInvalidCategoryName  = errors.New("invalid category name")
-	ErrCategoryNameTooLong  = errors.New("category name too long")
-	ErrDuplicateCategory    = errors.New("category already exists")
-	ErrCategoryNotFound     = errors.New("category not found")
-	ErrCategoryNameTooShort = errors.New("category name too short")
-	ErrCategoryNameNumeric  = errors.New("category name purely numeric")
-	ErrDBCreateCategory     = errors.New("failed to create category in db")
+	ErrInvalidCategoryName    = errors.New("invalid category name")
+	ErrCategoryNameTooLong    = errors.New("category name too long")
+	ErrDuplicateCategory      = errors.New("category already exists")
+	ErrCategoryNotFound       = errors.New("category not found")
+	ErrCategoryNameTooShort   = errors.New("category name too short")
+	ErrCategoryNameNumeric    = errors.New("category name purely numeric")
+	ErrDBCreateCategory       = errors.New("failed to create category in db")
+	ErrCategoryAlreadyDeleted = errors.New("category already deleted")
 
 	//sub category
-	ErrInvalidSubCategoryName  = errors.New("invalid subcategory name")
-	ErrSubCategoryNameTooLong  = errors.New("subcategory name too long")
-	ErrSubCategoryNotFound     = errors.New("subcategory not found")
-	ErrDuplicateSubCategory    = errors.New("subcategory already exists")
-	ErrSubCategoryNameTooShort = errors.New("sub category name too short")
-	ErrSubCategoryNameNumeric  = errors.New("sub category name purely numeric")
-	ErrCreateSubCategory       = errors.New("failed to create sub category")
+	ErrInvalidSubCategoryName    = errors.New("invalid subcategory name")
+	ErrSubCategoryNameTooLong    = errors.New("subcategory name too long")
+	ErrSubCategoryNotFound       = errors.New("subcategory not found")
+	ErrDuplicateSubCategory      = errors.New("subcategory already exists")
+	ErrSubCategoryNameTooShort   = errors.New("sub category name too short")
+	ErrSubCategoryNameNumeric    = errors.New("sub category name purely numeric")
+	ErrCreateSubCategory         = errors.New("failed to create sub category")
+	ErrSubCategoryAlreadyDeleted = errors.New("sub category already deleted")
 
 	//db errors
 	ErrQueryExecution    = errors.New("failed to execute query")

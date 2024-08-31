@@ -206,7 +206,20 @@ func (u *categoryUseCase) UpdateCategory(ctx context.Context, category *domain.C
 //   - Any other errors encountered during the soft delete operation are logged
 //     and returned.
 func (u *categoryUseCase) SoftDeleteCategory(ctx context.Context, id int) error {
-	err := u.categoryRepo.SoftDelete(ctx, id)
+	category, err := u.categoryRepo.GetByID(ctx, id)
+	if err != nil {
+		if err == utils.ErrCategoryNotFound {
+			return utils.ErrCategoryNotFound
+		}
+		log.Printf("Failed to retrieve category: %v", err)
+		return err
+	}
+
+	if category.IsDeleted {
+		return utils.ErrCategoryAlreadyDeleted
+	}
+
+	err = u.categoryRepo.SoftDelete(ctx, id)
 	if err != nil {
 		if err == utils.ErrCategoryNotFound {
 			return utils.ErrCategoryNotFound

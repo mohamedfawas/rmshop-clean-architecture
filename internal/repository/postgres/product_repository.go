@@ -22,14 +22,20 @@ func NewProductRepository(db *sql.DB) *productRepository {
 
 func (r *productRepository) Create(ctx context.Context, product *domain.Product) error {
 	query := `
-		INSERT INTO products (name, slug, description, price, stock_quantity, sub_category_id, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO products (name, slug, description, price, stock_quantity, sub_category_id, created_at, updated_at, is_deleted)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id
 	`
 
 	err := r.db.QueryRowContext(ctx, query,
-		product.Name, product.Slug, product.Description, product.Price, product.StockQuantity,
-		product.SubCategoryID, product.CreatedAt, product.UpdatedAt).Scan(&product.ID)
+		product.Name,
+		product.Slug,
+		product.Description,
+		product.Price,
+		product.StockQuantity,
+		product.SubCategoryID,
+		product.CreatedAt,
+		product.UpdatedAt, false).Scan(&product.ID)
 
 	if err != nil {
 		pqErr, ok := err.(*pq.Error)
@@ -53,7 +59,7 @@ func (r *productRepository) Create(ctx context.Context, product *domain.Product)
 
 func (r *productRepository) SlugExists(ctx context.Context, slug string) (bool, error) {
 	// this query returns a boolean value
-	query := `SELECT EXISTS(SELECT 1 FROM products WHERE slug = $1)`
+	query := `SELECT EXISTS(SELECT 1 FROM products WHERE slug = $1 AND is_deleted = false)`
 	var exists bool
 	err := r.db.QueryRowContext(ctx, query, slug).Scan(&exists)
 	if err != nil {
@@ -63,7 +69,7 @@ func (r *productRepository) SlugExists(ctx context.Context, slug string) (bool, 
 }
 
 func (r *productRepository) NameExists(ctx context.Context, name string) (bool, error) {
-	query := `SELECT EXISTS(SELECT 1 FROM products WHERE LOWER(name) = LOWER($1))`
+	query := `SELECT EXISTS(SELECT 1 FROM products WHERE LOWER(name) = LOWER($1) AND is_deleted = false)`
 	var exists bool
 	err := r.db.QueryRowContext(ctx, query, name).Scan(&exists)
 	if err != nil {
@@ -73,13 +79,22 @@ func (r *productRepository) NameExists(ctx context.Context, name string) (bool, 
 }
 
 func (r *productRepository) GetByID(ctx context.Context, id int64) (*domain.Product, error) {
-	query := `SELECT id, name, slug, description, price, stock_quantity, sub_category_id, created_at, updated_at, deleted_at
-              FROM products WHERE id = $1 AND deleted_at IS NULL`
+	query := `SELECT id, name, slug, description, price, stock_quantity, sub_category_id, created_at, updated_at, deleted_at, is_deleted
+              FROM products WHERE id = $1 AND is_deleted = false`
 
 	var product domain.Product
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
-		&product.ID, &product.Name, &product.Slug, &product.Description, &product.Price,
-		&product.StockQuantity, &product.SubCategoryID, &product.CreatedAt, &product.UpdatedAt, &product.DeletedAt)
+		&product.ID,
+		&product.Name,
+		&product.Slug,
+		&product.Description,
+		&product.Price,
+		&product.StockQuantity,
+		&product.SubCategoryID,
+		&product.CreatedAt,
+		&product.UpdatedAt,
+		&product.DeletedAt,
+		&product.IsDeleted)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -95,7 +110,7 @@ func (r *productRepository) GetByID(ctx context.Context, id int64) (*domain.Prod
 func (r *productRepository) Update(ctx context.Context, product *domain.Product) error {
 	query := `UPDATE products SET name = $1, slug = $2, description = $3, price = $4, 
               stock_quantity = $5, sub_category_id = $6, updated_at = $7
-              WHERE id = $8 AND deleted_at IS NULL`
+              WHERE id = $8 AND is_deleted = false`
 
 	result, err := r.db.ExecContext(ctx, query, product.Name, product.Slug, product.Description,
 		product.Price, product.StockQuantity, product.SubCategoryID, time.Now(), product.ID)
@@ -126,9 +141,9 @@ func (r *productRepository) Update(ctx context.Context, product *domain.Product)
 }
 
 func (r *productRepository) SoftDelete(ctx context.Context, id int64) error {
-	query := `UPDATE products SET deleted_at = $1 WHERE id = $2 AND deleted_at IS NULL`
+	query := `UPDATE products SET deleted_at = $1, is_deleted = true WHERE id = $2 AND is_deleted = false`
 
-	result, err := r.db.ExecContext(ctx, query, time.Now(), id)
+	result, err := r.db.ExecContext(ctx, query, time.Now().UTC(), id)
 	if err != nil {
 		log.Printf("database error while soft deleting : %v", err)
 		return err
@@ -148,7 +163,7 @@ func (r *productRepository) SoftDelete(ctx context.Context, id int64) error {
 }
 
 func (r *productRepository) NameExistsBeforeUpdate(ctx context.Context, name string, excludeID int64) (bool, error) {
-	query := `SELECT EXISTS(SELECT 1 FROM products WHERE LOWER(name) = LOWER($1) AND id != $2 AND deleted_at IS NULL)`
+	query := `SELECT EXISTS(SELECT 1 FROM products WHERE LOWER(name) = LOWER($1) AND id != $2 AND is_deleted = false)`
 	var exists bool
 	err := r.db.QueryRowContext(ctx, query, name, excludeID).Scan(&exists)
 	if err != nil {
@@ -407,14 +422,15 @@ func (r *productRepository) DeleteImageByID(ctx context.Context, imageID int64) 
 
 func (r *productRepository) GetAll(ctx context.Context) ([]*domain.Product, error) {
 	query := `
-		SELECT id, name, description, price, stock_quantity, sub_category_id, created_at, updated_at, slug
+		SELECT id, name, description, price, stock_quantity, sub_category_id, created_at, updated_at, slug, is_deleted
 		FROM products
-		WHERE deleted_at IS NULL
+		WHERE is_deleted = false
 		ORDER BY id
 	`
 
 	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
+		log.Printf("error while retrieving product details : %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -424,15 +440,17 @@ func (r *productRepository) GetAll(ctx context.Context) ([]*domain.Product, erro
 		var p domain.Product
 		err := rows.Scan(
 			&p.ID, &p.Name, &p.Description, &p.Price, &p.StockQuantity,
-			&p.SubCategoryID, &p.CreatedAt, &p.UpdatedAt, &p.Slug,
+			&p.SubCategoryID, &p.CreatedAt, &p.UpdatedAt, &p.Slug, &p.IsDeleted,
 		)
 		if err != nil {
+			log.Printf("error while getting product data : %v", err)
 			return nil, err
 		}
 		products = append(products, &p)
 	}
 
 	if err = rows.Err(); err != nil {
+		log.Printf("database error : %v", err)
 		return nil, err
 	}
 

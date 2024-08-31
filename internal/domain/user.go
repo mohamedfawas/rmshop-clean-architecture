@@ -19,6 +19,7 @@ type User struct {
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
 	DeletedAt       *time.Time `json:"deleted_at,omitempty"`
+	IsDeleted       bool       `json:"is_deleted"`
 	LastLogin       time.Time  `json:"last_login,omitempty"` //omitempty option in a JSON tag tells the JSON encoder to omit the field if it has an empty value
 }
 
