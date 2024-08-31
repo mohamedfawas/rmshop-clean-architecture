@@ -184,6 +184,9 @@ var (
 	ErrTooManyResetAttempts = errors.New("too many reset attempts")
 	ErrSamePassword         = errors.New("new password cannot be the same as the old password")
 
+	// user address
+	ErrLastAddress = errors.New("last address")
+
 	// token errors
 	ErrUnexpectedSigning = errors.New("unexpected signing method")
 	ErrInvalidUserID     = errors.New("invalid user id")

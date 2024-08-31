@@ -19,7 +19,17 @@ func loggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// chainMiddleware creates a new handler by chaining multiple middleware functions
+// chainMiddleware chains a series of middleware functions into a single middleware.
+// The returned middleware, when applied to an http.HandlerFunc, will execute each
+// middleware in the order provided, wrapping the final handler with all the middleware.
+//
+// Parameters:
+//   - middlewares: A variadic number of middleware functions. Each middleware should
+//     take an http.HandlerFunc and return an http.HandlerFunc.
+//
+// Returns:
+//   - A function that takes an http.HandlerFunc (final handler) as input and returns
+//     a new http.HandlerFunc that chains the provided middlewares around the final handler.
 func chainMiddleware(middlewares ...func(http.HandlerFunc) http.HandlerFunc) func(http.HandlerFunc) http.HandlerFunc {
 	return func(final http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
@@ -94,6 +104,8 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 	r.HandleFunc("/user/profile", chainMiddleware(jwtAuth, userAuth)(userHandler.UpdateProfile)).Methods("PUT")
 	r.HandleFunc("/user/addresses", chainMiddleware(jwtAuth, userAuth)(userHandler.AddUserAddress)).Methods("POST")
 	r.HandleFunc("/user/addresses/{addressId}", chainMiddleware(jwtAuth, userAuth)(userHandler.UpdateUserAddress)).Methods("PATCH")
+	r.HandleFunc("/user/addresses", chainMiddleware(jwtAuth, userAuth)(userHandler.GetUserAddresses)).Methods("GET")
+	r.HandleFunc("/user/addresses/{addressId}", chainMiddleware(jwtAuth, userAuth)(userHandler.DeleteUserAddress)).Methods("DELETE")
 
 	// Public routes
 	r.HandleFunc("/user/forgot-password", middleware.RateLimitMiddleware(userHandler.ForgotPassword, otpResendLimiter)).Methods("POST")

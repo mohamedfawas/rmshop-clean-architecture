@@ -28,6 +28,8 @@ type UserUseCase interface {
 	ResetPassword(ctx context.Context, email, otp, newPassword string) error   //fz
 	AddUserAddress(ctx context.Context, userAddress *domain.UserAddress) error //fz
 	UpdateUserAddress(ctx context.Context, userID, addressID int64, updatedAddressData *domain.UserAddressUpdate) (*domain.UserAddress, error)
+	GetUserAddresses(ctx context.Context, userID int64) ([]*domain.UserAddress, error)
+	DeleteUserAddress(ctx context.Context, userID, addressID int64) error
 }
 
 // userUseCase implements the UserUseCase interface
@@ -521,4 +523,61 @@ func (u *userUseCase) UpdateUserAddress(ctx context.Context, userID, addressID i
 	}
 
 	return userAddress, nil
+}
+
+func (u *userUseCase) GetUserAddresses(ctx context.Context, userID int64) ([]*domain.UserAddress, error) {
+	// Check if the user exists and is not blocked
+	user, err := u.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		if err == utils.ErrUserNotFound {
+			return nil, utils.ErrUserNotFound
+		}
+		return nil, err
+	}
+
+	if user.IsBlocked {
+		return nil, utils.ErrUserBlocked
+	}
+
+	// Retrieve user addresses
+	addresses, err := u.userRepo.GetUserAddresses(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	return addresses, nil
+}
+
+func (u *userUseCase) DeleteUserAddress(ctx context.Context, userID, addressID int64) error {
+	// Check if the address exists and belongs to the user
+	address, err := u.userRepo.GetUserAddressByID(ctx, addressID)
+	if err != nil {
+		return err
+	}
+
+	if address == nil {
+		return utils.ErrAddressNotFound
+	}
+
+	if address.UserID != userID {
+		return utils.ErrUnauthorized
+	}
+
+	// Check if this is the last address
+	addressCount, err := u.userRepo.GetUserAddressCount(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	if addressCount == 1 {
+		return utils.ErrLastAddress
+	}
+
+	// Delete the address
+	err = u.userRepo.DeleteUserAddress(ctx, addressID)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

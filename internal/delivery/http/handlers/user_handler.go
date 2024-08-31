@@ -659,30 +659,36 @@ func (h *UserHandler) AddUserAddress(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if err == utils.ErrUserAddressTooLong {
 			api.SendResponse(w, http.StatusBadRequest, "Validation failed", nil, "Please provide address line with less than 255 characters")
+			return
 		}
 		if err == utils.ErrUserAddressTooShort {
 			api.SendResponse(w, http.StatusBadRequest, "Validation failed", nil, "Please provide address line with more than 10 characters")
+			return
 		}
 	}
 
 	err = validator.ValidateState(userAddress.State)
 	if err != nil {
 		api.SendResponse(w, http.StatusBadRequest, "Validation failed", nil, "Please give a valid state (with less than 100 characters)")
+		return
 	}
 
 	err = validator.ValidateCity(userAddress.City)
 	if err != nil {
 		api.SendResponse(w, http.StatusBadRequest, "Validation failed", nil, "Please give a valid city (with less than 150 characters)")
+		return
 	}
 
 	err = validator.ValidatePinCode(userAddress.PinCode)
 	if err != nil {
 		api.SendResponse(w, http.StatusBadRequest, "Validation failed", nil, "Please provide a valid pincode")
+		return
 	}
 
 	err = validator.ValidatePhoneNumber(userAddress.PhoneNumber)
 	if err != nil {
 		api.SendResponse(w, http.StatusBadRequest, "Validation failed", nil, "Please provide a valid phone number")
+		return
 	}
 
 	// call the use case to add the address
@@ -755,4 +761,69 @@ func (h *UserHandler) UpdateUserAddress(w http.ResponseWriter, r *http.Request) 
 	}
 
 	api.SendResponse(w, http.StatusOK, "Address updated successfully", updatedUserAddress, "")
+}
+
+func (h *UserHandler) GetUserAddresses(w http.ResponseWriter, r *http.Request) {
+	// Extract user ID from the context (set by the JWT middleware)
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	if !ok {
+		api.SendResponse(w, http.StatusUnauthorized, "Failed to retrieve user addresses", nil, "Invalid user ID in token")
+		return
+	}
+
+	// Call the use case method to get the user addresses
+	addresses, err := h.userUseCase.GetUserAddresses(r.Context(), userID)
+	if err != nil {
+		switch err {
+		case utils.ErrUserNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Failed to retrieve user addresses", nil, "User not found")
+		case utils.ErrUserBlocked:
+			api.SendResponse(w, http.StatusForbidden, "Failed to retrieve user addresses", nil, "User is blocked")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to retrieve user addresses", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	if len(addresses) == 0 {
+		api.SendResponse(w, http.StatusOK, "No addresses found", []struct{}{}, "")
+		return
+	}
+
+	api.SendResponse(w, http.StatusOK, "User addresses retrieved successfully", addresses, "")
+}
+
+func (h *UserHandler) DeleteUserAddress(w http.ResponseWriter, r *http.Request) {
+	// Extract user ID from the context (set by the JWT middleware)
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	if !ok {
+		api.SendResponse(w, http.StatusUnauthorized, "Authentication failed", nil, "Invalid user ID in token")
+		return
+	}
+
+	// Extract address ID from URL parameters
+	vars := mux.Vars(r)
+	addressID, err := strconv.ParseInt(vars["addressId"], 10, 64)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Invalid request", nil, "Invalid address ID format")
+		return
+	}
+
+	// Call the use case method to delete the address
+	err = h.userUseCase.DeleteUserAddress(r.Context(), userID, addressID)
+	if err != nil {
+		switch err {
+		case utils.ErrAddressNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Address not found", nil, "The requested address does not exist")
+		case utils.ErrUnauthorized:
+			api.SendResponse(w, http.StatusForbidden, "Unauthorized", nil, "You are not authorized to delete this address")
+		case utils.ErrLastAddress:
+			api.SendResponse(w, http.StatusBadRequest, "Cannot delete", nil, "Cannot delete the last remaining address")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Internal server error", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	api.SendResponse(w, http.StatusOK, "Address deleted successfully", nil, "")
 }

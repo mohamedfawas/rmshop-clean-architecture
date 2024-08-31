@@ -35,6 +35,9 @@ type UserRepository interface {
 	AddUserAddress(ctx context.Context, address *domain.UserAddress) error
 	GetUserAddressByID(ctx context.Context, addressID int64) (*domain.UserAddress, error)
 	UpdateUserAddress(ctx context.Context, address *domain.UserAddress) error
+	GetUserAddresses(ctx context.Context, userID int64) ([]*domain.UserAddress, error)
+	GetUserAddressCount(ctx context.Context, userID int64) (int, error)
+	DeleteUserAddress(ctx context.Context, addressID int64) error
 }
 
 type AdminRepository interface {

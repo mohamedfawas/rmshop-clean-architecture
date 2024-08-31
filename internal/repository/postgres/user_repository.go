@@ -169,7 +169,9 @@ func (r *userRepository) UpdateSignUpVerificationEntry(ctx context.Context, entr
               WHERE id = $2`
 
 	_, err := r.db.ExecContext(ctx, query, entry.IsVerified, entry.ID)
-	log.Printf("error while updating the verification entry table after verifying otp : %v", err)
+	if err != nil {
+		log.Printf("error while updating the verification entry table after verifying otp : %v", err)
+	}
 	return err
 }
 
@@ -432,4 +434,76 @@ func (r *userRepository) UpdateUserAddress(ctx context.Context, address *domain.
 		log.Printf("error while updating user address : %v", err)
 	}
 	return err
+}
+
+func (r *userRepository) GetUserAddresses(ctx context.Context, userID int64) ([]*domain.UserAddress, error) {
+	query := `
+        SELECT id, user_id, address_line1, address_line2, state, city, pincode, landmark, phone_number, created_at, updated_at
+        FROM user_address
+        WHERE user_id = $1 AND deleted_at IS NULL
+        ORDER BY created_at DESC
+    `
+
+	rows, err := r.db.QueryContext(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var addresses []*domain.UserAddress
+	for rows.Next() {
+		var addr domain.UserAddress
+		err := rows.Scan(
+			&addr.ID, &addr.UserID, &addr.AddressLine1, &addr.AddressLine2, &addr.State,
+			&addr.City, &addr.PinCode, &addr.Landmark, &addr.PhoneNumber,
+			&addr.CreatedAt, &addr.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		addresses = append(addresses, &addr)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return addresses, nil
+}
+
+func (r *userRepository) GetUserAddressCount(ctx context.Context, userID int64) (int, error) {
+	query := `
+		SELECT COUNT(*)
+		FROM user_address
+		WHERE user_id = $1 AND deleted_at IS NULL
+	`
+	var count int
+	err := r.db.QueryRowContext(ctx, query, userID).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func (r *userRepository) DeleteUserAddress(ctx context.Context, addressID int64) error {
+	query := `
+		UPDATE user_address
+		SET deleted_at = CURRENT_TIMESTAMP
+		WHERE id = $1 AND deleted_at IS NULL
+	`
+	result, err := r.db.ExecContext(ctx, query, addressID)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return utils.ErrAddressNotFound
+	}
+
+	return nil
 }
