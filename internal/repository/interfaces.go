@@ -84,3 +84,9 @@ type ProductRepository interface {
 	DeleteImageByID(ctx context.Context, imageID int64) error                      //fz
 	GetAll(ctx context.Context) ([]*domain.Product, error)                         //fz
 }
+
+type CartRepository interface {
+	AddCartItem(ctx context.Context, item *domain.CartItem) error
+	GetCartItemByProductID(ctx context.Context, userID, productID int64) (*domain.CartItem, error)
+	UpdateCartItem(ctx context.Context, item *domain.CartItem) error
+}

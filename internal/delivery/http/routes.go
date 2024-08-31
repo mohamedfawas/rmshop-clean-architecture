@@ -42,7 +42,14 @@ func chainMiddleware(middlewares ...func(http.HandlerFunc) http.HandlerFunc) fun
 	}
 }
 
-func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHandler, categoryHandler *handlers.CategoryHandler, subCategoryHandler *handlers.SubCategoryHandler, productHandler *handlers.ProductHandler, tokenBlacklist *auth.TokenBlacklist) http.Handler {
+func NewRouter(userHandler *handlers.UserHandler,
+	adminHandler *handlers.AdminHandler,
+	categoryHandler *handlers.CategoryHandler,
+	subCategoryHandler *handlers.SubCategoryHandler,
+	productHandler *handlers.ProductHandler,
+	tokenBlacklist *auth.TokenBlacklist,
+	cartHandler *handlers.CartHandler) http.Handler {
+
 	log.Println("Setting up router...")
 	r := mux.NewRouter()
 
@@ -106,6 +113,7 @@ func NewRouter(userHandler *handlers.UserHandler, adminHandler *handlers.AdminHa
 	r.HandleFunc("/user/addresses/{addressId}", chainMiddleware(jwtAuth, userAuth)(userHandler.UpdateUserAddress)).Methods("PATCH")
 	r.HandleFunc("/user/addresses", chainMiddleware(jwtAuth, userAuth)(userHandler.GetUserAddresses)).Methods("GET")
 	r.HandleFunc("/user/addresses/{addressId}", chainMiddleware(jwtAuth, userAuth)(userHandler.DeleteUserAddress)).Methods("DELETE")
+	r.HandleFunc("/user/cart/items", chainMiddleware(jwtAuth, userAuth)(cartHandler.AddToCart)).Methods("POST")
 
 	// Public routes
 	r.HandleFunc("/user/forgot-password", middleware.RateLimitMiddleware(userHandler.ForgotPassword, otpResendLimiter)).Methods("POST")

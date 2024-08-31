@@ -53,6 +53,11 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 	productHandler := handlers.NewProductHandler(productUseCase)
 	log.Println("Product components initialized")
 
+	// cart components
+	cartRepo := postgres.NewCartRepository(db)
+	cartUseCase := usecase.NewCartUseCase(cartRepo, productRepo)
+	cartHandler := handlers.NewCartHandler(cartUseCase)
+
 	// Initialize the router with all handlers
 	router := httpDelivery.NewRouter(
 		userHandler,
@@ -61,6 +66,7 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 		subCategoryHandler,
 		productHandler,
 		tokenBlacklist,
+		cartHandler,
 	)
 	log.Println("Router initialized")
 

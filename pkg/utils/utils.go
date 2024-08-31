@@ -185,7 +185,13 @@ var (
 	ErrSamePassword         = errors.New("new password cannot be the same as the old password")
 
 	// user address
-	ErrLastAddress = errors.New("last address")
+	ErrLastAddress       = errors.New("last address")
+	ErrInsufficientStock = errors.New("insufficient stock")
+	ErrInvalidQuantity   = errors.New("invalid quantity")
+	ErrCartFull          = errors.New("cart if full")
+
+	// cart
+	ErrCartItemNotFound = errors.New("cart item not found")
 
 	// token errors
 	ErrUnexpectedSigning = errors.New("unexpected signing method")
