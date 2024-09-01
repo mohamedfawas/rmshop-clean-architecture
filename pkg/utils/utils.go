@@ -15,6 +15,7 @@ const (
 	SignupExpiration    = 1 * time.Hour
 	MaxImagesPerProduct = 5
 	MaxFileSize         = 10 * 1024 * 1024 // 10 MB
+	MaxCartItemQuantity = 10
 )
 
 const (
@@ -193,7 +194,8 @@ var (
 	ErrCartFull          = errors.New("cart if full")
 
 	// cart
-	ErrCartItemNotFound = errors.New("cart item not found")
+	ErrCartItemNotFound   = errors.New("cart item not found")
+	ErrExceedsMaxQuantity = errors.New("exceeds maximum quantity")
 
 	// token errors
 	ErrUnexpectedSigning = errors.New("unexpected signing method")

@@ -77,6 +77,7 @@ func (r *cartRepository) GetCartByUserID(ctx context.Context, userID int64) ([]*
 
 	rows, err := r.db.QueryContext(ctx, query, userID)
 	if err != nil {
+		log.Printf("error while retrieving cart using userID : %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -89,14 +90,83 @@ func (r *cartRepository) GetCartByUserID(ctx context.Context, userID int64) ([]*
 			&ci.ProductName, &ci.ProductPrice,
 		)
 		if err != nil {
+			log.Printf("db error : %v", err)
 			return nil, err
 		}
 		cartItems = append(cartItems, &ci)
 	}
 
 	if err = rows.Err(); err != nil {
+		log.Printf("db error : %v", err)
 		return nil, err
 	}
 
 	return cartItems, nil
+}
+
+func (r *cartRepository) UpdateCartItemQuantity(ctx context.Context, userID, itemID int64, quantity int) error {
+	query := `UPDATE cart_items
+				SET quantity=$1, updated_at = NOW()
+				WHERE id=$2 AND user_id=$3`
+	result, err := r.db.ExecContext(ctx, query, quantity, itemID, userID)
+	if err != nil {
+		log.Printf("error while updating the cart_items : %v", err)
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		log.Printf("erorr while checking the rows affected : %v", err)
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return utils.ErrCartItemNotFound
+	}
+
+	return nil
+}
+
+func (r *cartRepository) DeleteCartItem(ctx context.Context, itemID int64) error {
+	query := `
+        DELETE FROM cart_items
+        WHERE id = $1
+    `
+	result, err := r.db.ExecContext(ctx, query, itemID)
+	if err != nil {
+		log.Printf("error while deleting the cart item : %v", err)
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		log.Printf("error while checking the rows affected : %v", err)
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return utils.ErrCartItemNotFound
+	}
+
+	return nil
+}
+
+func (r *cartRepository) GetCartItemByID(ctx context.Context, itemID int64) (*domain.CartItem, error) {
+	query := `
+        SELECT id, user_id, product_id, quantity, created_at, updated_at
+        FROM cart_items
+        WHERE id = $1
+    `
+	var item domain.CartItem
+	err := r.db.QueryRowContext(ctx, query, itemID).Scan(
+		&item.ID, &item.UserID, &item.ProductID, &item.Quantity, &item.CreatedAt, &item.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, utils.ErrCartItemNotFound
+	}
+	if err != nil {
+		log.Printf("error while retrieiving cart item details : %v", err)
+		return nil, err
+	}
+	return &item, nil
 }

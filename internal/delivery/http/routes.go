@@ -115,6 +115,8 @@ func NewRouter(userHandler *handlers.UserHandler,
 	r.HandleFunc("/user/addresses/{addressId}", chainMiddleware(jwtAuth, userAuth)(userHandler.DeleteUserAddress)).Methods("DELETE")
 	r.HandleFunc("/user/cart/items", chainMiddleware(jwtAuth, userAuth)(cartHandler.AddToCart)).Methods("POST")
 	r.HandleFunc("/user/cart", chainMiddleware(jwtAuth, userAuth)(cartHandler.GetUserCart)).Methods("GET")
+	r.HandleFunc("/user/cart/items/{itemId}", chainMiddleware(jwtAuth, userAuth)(cartHandler.UpdateCartItemQuantity)).Methods("PATCH")
+	r.HandleFunc("/user/cart/items/{itemId}", chainMiddleware(jwtAuth, userAuth)(cartHandler.DeleteCartItem)).Methods("DELETE")
 
 	// Public routes
 	r.HandleFunc("/user/forgot-password", middleware.RateLimitMiddleware(userHandler.ForgotPassword, otpResendLimiter)).Methods("POST")
