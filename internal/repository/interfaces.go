@@ -93,9 +93,19 @@ type CartRepository interface {
 	UpdateCartItemQuantity(ctx context.Context, userID, itemID int64, quantity int) error
 	GetCartItemByID(ctx context.Context, itemID int64) (*domain.CartItem, error)
 	DeleteCartItem(ctx context.Context, itemID int64) error
+	GetCartTotal(ctx context.Context, userID int64) (float64, error)
+	ApplyCoupon(ctx context.Context, userID int64, coupon *domain.Coupon) error
+	RemoveCoupon(ctx context.Context, userID int64) error
+	GetAppliedCoupon(ctx context.Context, userID int64) (*domain.Coupon, error)
 }
 
 type CouponRepository interface {
 	Create(ctx context.Context, coupon *domain.Coupon) error
 	GetByCode(ctx context.Context, code string) (*domain.Coupon, error)
+}
+
+type CheckoutRepository interface {
+	CreateCheckoutSession(ctx context.Context, userID int64) (*domain.CheckoutSession, error)
+	AddCheckoutItems(ctx context.Context, sessionID int64, items []*domain.CheckoutItem) error
+	GetCartItems(ctx context.Context, userID int64) ([]*domain.CartItemWithProduct, error)
 }

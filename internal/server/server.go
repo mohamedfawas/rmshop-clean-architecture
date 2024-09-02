@@ -61,9 +61,13 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 
 	// coupon components
 	couponRepo := postgres.NewCouponRepository(db)
-	couponUseCase := usecase.NewCouponUseCase(couponRepo)
+	couponUseCase := usecase.NewCouponUseCase(couponRepo, cartRepo)
 	couponHandler := handlers.NewCouponHandler(couponUseCase)
 	log.Println("Coupon components initialized")
+
+	checkoutRepo := postgres.NewCheckoutRepository(db)
+	checkoutUseCase := usecase.NewCheckoutUseCase(checkoutRepo, productRepo)
+	checkoutHandler := handlers.NewCheckoutHandler(checkoutUseCase)
 
 	// Initialize the router with all handlers
 	router := httpDelivery.NewRouter(
@@ -75,6 +79,7 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 		tokenBlacklist,
 		cartHandler,
 		couponHandler,
+		checkoutHandler,
 	)
 	log.Println("Router initialized")
 

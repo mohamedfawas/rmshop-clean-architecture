@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/mohamedfawas/rmshop-clean-architecture/internal/delivery/http/middleware"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/api"
@@ -50,4 +51,47 @@ func (h *CouponHandler) CreateCoupon(w http.ResponseWriter, r *http.Request) {
 	}
 
 	api.SendResponse(w, http.StatusCreated, "Coupon created successfully", coupon, "")
+}
+
+func (h *CouponHandler) ApplyCoupon(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	if !ok {
+		api.SendResponse(w, http.StatusUnauthorized, "Failed to apply coupon", nil, "User not authenticated")
+		return
+	}
+
+	var input domain.ApplyCouponInput
+	err := json.NewDecoder(r.Body).Decode(&input)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to apply coupon", nil, "Invalid request body")
+		return
+	}
+
+	if input.CouponCode == "" {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to apply coupon", nil, "Coupon code is required")
+		return
+	}
+
+	response, err := h.couponUseCase.ApplyCoupon(r.Context(), userID, input)
+	if err != nil {
+		switch err {
+		case utils.ErrInvalidCouponCode:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to apply coupon", nil, "Invalid coupon code")
+		case utils.ErrCouponExpired:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to apply coupon", nil, "Coupon has expired")
+		case utils.ErrCouponInactive:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to apply coupon", nil, "This coupon is no longer active")
+		case utils.ErrOrderTotalBelowMinimum:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to apply coupon", nil, "Minimum order amount not met for this coupon")
+		case utils.ErrCouponAlreadyApplied:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to apply coupon", nil, "A coupon is already applied to this cart")
+		case utils.ErrEmptyCart:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to apply coupon", nil, "Cannot apply coupon to an empty cart")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to apply coupon", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	api.SendResponse(w, http.StatusOK, "Coupon applied successfully", response, "")
 }

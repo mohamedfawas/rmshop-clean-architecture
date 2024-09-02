@@ -19,3 +19,13 @@ type CreateCouponInput struct {
 	MinOrderAmount     float64 `json:"min_order_amount"`
 	ExpiresAt          string  `json:"expires_at,omitempty"`
 }
+
+type ApplyCouponInput struct {
+	CouponCode string `json:"coupon_code"`
+}
+
+type ApplyCouponResponse struct {
+	DiscountAmount     float64 `json:"discount_amount"`
+	TotalAfterDiscount float64 `json:"total_after_discount"`
+	Note               string  `json:"note,omitempty"`
+}

@@ -18,6 +18,7 @@ const (
 	MaxImagesPerProduct = 5
 	MaxFileSize         = 10 * 1024 * 1024 // 10 MB
 	MaxCartItemQuantity = 10
+	MaxDiscountAmount   = 5000
 )
 
 const (
@@ -198,6 +199,7 @@ var (
 	// cart
 	ErrCartItemNotFound   = errors.New("cart item not found")
 	ErrExceedsMaxQuantity = errors.New("exceeds maximum quantity")
+	ErrEmptyCart          = errors.New("empty cart")
 
 	// token errors
 	ErrUnexpectedSigning = errors.New("unexpected signing method")
@@ -214,6 +216,7 @@ var (
 	ErrInvalidDiscountPercentage = errors.New("invalid discount percentage")
 	ErrInvalidMinOrderAmount     = errors.New("invalid minimum order amount")
 	ErrInvalidExpiryDate         = errors.New("invalid expiry date")
+	ErrCouponAlreadyApplied      = errors.New("coupon already applied")
 
 	ErrInternalServer = errors.New("internal server error")
 )

@@ -170,3 +170,54 @@ func (r *cartRepository) GetCartItemByID(ctx context.Context, itemID int64) (*do
 	}
 	return &item, nil
 }
+
+func (r *cartRepository) GetCartTotal(ctx context.Context, userID int64) (float64, error) {
+	query := `SELECT COALESCE(SUM(ci.quantity * p.price), 0) 
+              FROM cart_items ci 
+              JOIN products p ON ci.product_id = p.id 
+              WHERE ci.user_id = $1`
+
+	var total float64
+	err := r.db.QueryRowContext(ctx, query, userID).Scan(&total)
+	if err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
+func (r *cartRepository) ApplyCoupon(ctx context.Context, userID int64, coupon *domain.Coupon) error {
+	query := `INSERT INTO applied_coupons (user_id, coupon_id) VALUES ($1, $2)
+              ON CONFLICT (user_id) DO UPDATE SET coupon_id = $2`
+
+	_, err := r.db.ExecContext(ctx, query, userID, coupon.ID)
+	return err
+}
+
+func (r *cartRepository) RemoveCoupon(ctx context.Context, userID int64) error {
+	query := `DELETE FROM applied_coupons WHERE user_id = $1`
+
+	_, err := r.db.ExecContext(ctx, query, userID)
+	return err
+}
+
+func (r *cartRepository) GetAppliedCoupon(ctx context.Context, userID int64) (*domain.Coupon, error) {
+	query := `SELECT c.id, c.code, c.discount_percentage, c.min_order_amount, c.is_active, c.created_at, c.updated_at, c.expires_at
+              FROM applied_coupons ac
+              JOIN coupons c ON ac.coupon_id = c.id
+              WHERE ac.user_id = $1`
+
+	var coupon domain.Coupon
+	err := r.db.QueryRowContext(ctx, query, userID).Scan(
+		&coupon.ID, &coupon.Code, &coupon.DiscountPercentage, &coupon.MinOrderAmount,
+		&coupon.IsActive, &coupon.CreatedAt, &coupon.UpdatedAt, &coupon.ExpiresAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &coupon, nil
+}

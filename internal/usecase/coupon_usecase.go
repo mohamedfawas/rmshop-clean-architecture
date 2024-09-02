@@ -13,14 +13,19 @@ import (
 
 type CouponUseCase interface {
 	CreateCoupon(ctx context.Context, input domain.CreateCouponInput) (*domain.Coupon, error)
+	ApplyCoupon(ctx context.Context, userID int64, input domain.ApplyCouponInput) (*domain.ApplyCouponResponse, error)
 }
 
 type couponUseCase struct {
 	couponRepo repository.CouponRepository
+	cartRepo   repository.CartRepository
 }
 
-func NewCouponUseCase(couponRepo repository.CouponRepository) CouponUseCase {
-	return &couponUseCase{couponRepo: couponRepo}
+func NewCouponUseCase(couponRepo repository.CouponRepository, cartRepo repository.CartRepository) CouponUseCase {
+	return &couponUseCase{
+		couponRepo: couponRepo,
+		cartRepo:   cartRepo,
+	}
 }
 
 func (u *couponUseCase) CreateCoupon(ctx context.Context, input domain.CreateCouponInput) (*domain.Coupon, error) {
@@ -70,4 +75,74 @@ func (u *couponUseCase) CreateCoupon(ctx context.Context, input domain.CreateCou
 	}
 
 	return coupon, nil
+}
+
+func (u *couponUseCase) ApplyCoupon(ctx context.Context, userID int64, input domain.ApplyCouponInput) (*domain.ApplyCouponResponse, error) {
+	// Check if a coupon is already applied
+	appliedCoupon, err := u.cartRepo.GetAppliedCoupon(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if appliedCoupon != nil {
+		return nil, utils.ErrCouponAlreadyApplied
+	}
+
+	// Get the coupon
+	coupon, err := u.couponRepo.GetByCode(ctx, input.CouponCode)
+	if err != nil {
+		if err == utils.ErrCouponNotFound {
+			return nil, utils.ErrInvalidCouponCode
+		}
+		return nil, err
+	}
+
+	// Check if the coupon is active
+	if !coupon.IsActive {
+		return nil, utils.ErrCouponInactive
+	}
+
+	// Check if the coupon has expired
+	if coupon.ExpiresAt.Before(time.Now()) {
+		return nil, utils.ErrCouponExpired
+	}
+
+	// Get the cart total
+	cartTotal, err := u.cartRepo.GetCartTotal(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if the cart is empty
+	if cartTotal == 0 {
+		return nil, utils.ErrEmptyCart
+	}
+
+	// Check if the minimum order amount is met
+	if cartTotal < coupon.MinOrderAmount {
+		return nil, utils.ErrOrderTotalBelowMinimum
+	}
+
+	// Calculate the discount
+	discountAmount := cartTotal * (coupon.DiscountPercentage / 100)
+	totalAfterDiscount := cartTotal - discountAmount
+
+	// Apply maximum discount cap if necessary
+	note := ""
+	if discountAmount > utils.MaxDiscountAmount {
+		discountAmount = utils.MaxDiscountAmount
+		totalAfterDiscount = cartTotal - discountAmount
+		note = "Maximum discount cap applied"
+	}
+
+	// Apply the coupon
+	err = u.cartRepo.ApplyCoupon(ctx, userID, coupon)
+	if err != nil {
+		return nil, err
+	}
+
+	return &domain.ApplyCouponResponse{
+		DiscountAmount:     discountAmount,
+		TotalAfterDiscount: totalAfterDiscount,
+		Note:               note,
+	}, nil
 }
