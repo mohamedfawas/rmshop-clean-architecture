@@ -94,3 +94,8 @@ type CartRepository interface {
 	GetCartItemByID(ctx context.Context, itemID int64) (*domain.CartItem, error)
 	DeleteCartItem(ctx context.Context, itemID int64) error
 }
+
+type CouponRepository interface {
+	Create(ctx context.Context, coupon *domain.Coupon) error
+	GetByCode(ctx context.Context, code string) (*domain.Coupon, error)
+}

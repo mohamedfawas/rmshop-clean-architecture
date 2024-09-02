@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 // usecase constants
@@ -202,6 +204,17 @@ var (
 	ErrInvalidUserID     = errors.New("invalid user id")
 	ErrInvalidRole       = errors.New("invalid role")
 
+	// coupon
+	ErrCouponNotFound            = errors.New("coupon not found")
+	ErrCouponInactive            = errors.New("coupon inactive")
+	ErrCouponExpired             = errors.New("coupon expired")
+	ErrOrderTotalBelowMinimum    = errors.New("order total below minimum")
+	ErrDuplicateCouponCode       = errors.New("duplicate coupon code")
+	ErrInvalidCouponCode         = errors.New("invalid coupon code")
+	ErrInvalidDiscountPercentage = errors.New("invalid discount percentage")
+	ErrInvalidMinOrderAmount     = errors.New("invalid minimum order amount")
+	ErrInvalidExpiryDate         = errors.New("invalid expiry date")
+
 	ErrInternalServer = errors.New("internal server error")
 )
 
@@ -238,4 +251,16 @@ func GenerateSubCategorySlug(categorySlug, subCategoryName string) string {
 
 	// Combine category slug with sub-category slug
 	return fmt.Sprintf("%s/%s", categorySlug, subCategorySlug)
+}
+
+// IsDuplicateKeyError checks if the given error is a database error
+// indicating a duplicate key violation (usually due to a unique constraint).
+func IsDuplicateKeyError(err error) bool {
+	// Implementation for lib/pq
+	if pqErr, ok := err.(*pq.Error); ok {
+		return pqErr.Code == "23505" // 23505 is the PostgreSQL error code for unique_violation
+	}
+
+	// Generic check (less reliable, but can work as a fallback)
+	return strings.Contains(err.Error(), "duplicate key value violates unique constraint")
 }

@@ -48,7 +48,8 @@ func NewRouter(userHandler *handlers.UserHandler,
 	subCategoryHandler *handlers.SubCategoryHandler,
 	productHandler *handlers.ProductHandler,
 	tokenBlacklist *auth.TokenBlacklist,
-	cartHandler *handlers.CartHandler) http.Handler {
+	cartHandler *handlers.CartHandler,
+	couponHandler *handlers.CouponHandler) http.Handler {
 
 	log.Println("Setting up router...")
 	r := mux.NewRouter()
@@ -93,6 +94,9 @@ func NewRouter(userHandler *handlers.UserHandler,
 	// Product image management
 	r.HandleFunc("/admin/products/{productId}/images", chainMiddleware(jwtAuth, adminAuth)(productHandler.AddProductImages)).Methods("POST")
 	r.HandleFunc("/admin/products/{productId}/images/{imageId}", chainMiddleware(jwtAuth, adminAuth)(productHandler.DeleteProductImage)).Methods("DELETE")
+
+	// Admin routes: coupon routes
+	r.HandleFunc("/admin/coupons", chainMiddleware(jwtAuth, adminAuth)(couponHandler.CreateCoupon)).Methods("POST")
 
 	// User routes
 	r.HandleFunc("/user/login", userHandler.Login).Methods("POST")
