@@ -59,15 +59,19 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 	cartHandler := handlers.NewCartHandler(cartUseCase)
 	log.Println("Cart components initialized")
 
+	// checkour repo initialized
+	checkoutRepo := postgres.NewCheckoutRepository(db)
+	log.Println("Checkout repository initialized")
+
 	// coupon components
 	couponRepo := postgres.NewCouponRepository(db)
-	couponUseCase := usecase.NewCouponUseCase(couponRepo, cartRepo)
+	couponUseCase := usecase.NewCouponUseCase(couponRepo, checkoutRepo)
 	couponHandler := handlers.NewCouponHandler(couponUseCase)
 	log.Println("Coupon components initialized")
 
-	checkoutRepo := postgres.NewCheckoutRepository(db)
-	checkoutUseCase := usecase.NewCheckoutUseCase(checkoutRepo, productRepo)
-	checkoutHandler := handlers.NewCheckoutHandler(checkoutUseCase)
+	checkoutUseCase := usecase.NewCheckoutUseCase(checkoutRepo, productRepo, cartRepo, couponRepo)
+	checkoutHandler := handlers.NewCheckoutHandler(checkoutUseCase, couponUseCase)
+	log.Println("Checkout components initialized")
 
 	// Initialize the router with all handlers
 	router := httpDelivery.NewRouter(

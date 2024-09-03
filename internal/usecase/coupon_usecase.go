@@ -13,18 +13,18 @@ import (
 
 type CouponUseCase interface {
 	CreateCoupon(ctx context.Context, input domain.CreateCouponInput) (*domain.Coupon, error)
-	ApplyCoupon(ctx context.Context, userID int64, input domain.ApplyCouponInput) (*domain.ApplyCouponResponse, error)
+	ApplyCoupon(ctx context.Context, userID int64, checkoutID int64, couponCode string) (*domain.ApplyCouponResponse, error)
 }
 
 type couponUseCase struct {
-	couponRepo repository.CouponRepository
-	cartRepo   repository.CartRepository
+	couponRepo   repository.CouponRepository
+	checkoutRepo repository.CheckoutRepository
 }
 
-func NewCouponUseCase(couponRepo repository.CouponRepository, cartRepo repository.CartRepository) CouponUseCase {
+func NewCouponUseCase(couponRepo repository.CouponRepository, checkoutRepo repository.CheckoutRepository) CouponUseCase {
 	return &couponUseCase{
-		couponRepo: couponRepo,
-		cartRepo:   cartRepo,
+		couponRepo:   couponRepo,
+		checkoutRepo: checkoutRepo,
 	}
 }
 
@@ -77,18 +77,30 @@ func (u *couponUseCase) CreateCoupon(ctx context.Context, input domain.CreateCou
 	return coupon, nil
 }
 
-func (u *couponUseCase) ApplyCoupon(ctx context.Context, userID int64, input domain.ApplyCouponInput) (*domain.ApplyCouponResponse, error) {
-	// Check if a coupon is already applied
-	appliedCoupon, err := u.cartRepo.GetAppliedCoupon(ctx, userID)
+func (u *couponUseCase) ApplyCoupon(ctx context.Context, userID int64, checkoutID int64, couponCode string) (*domain.ApplyCouponResponse, error) {
+	// Get the checkout session
+	checkout, err := u.checkoutRepo.GetCheckoutByID(ctx, checkoutID)
 	if err != nil {
 		return nil, err
 	}
-	if appliedCoupon != nil {
+
+	// Verify the checkout belongs to the user
+	if checkout.UserID != userID {
+		return nil, utils.ErrUnauthorized
+	}
+
+	// Check if the checkout is empty
+	if checkout.ItemCount == 0 {
+		return nil, utils.ErrEmptyCheckout
+	}
+
+	// Check if a coupon is already applied
+	if checkout.CouponApplied {
 		return nil, utils.ErrCouponAlreadyApplied
 	}
 
 	// Get the coupon
-	coupon, err := u.couponRepo.GetByCode(ctx, input.CouponCode)
+	coupon, err := u.couponRepo.GetByCode(ctx, couponCode)
 	if err != nil {
 		if err == utils.ErrCouponNotFound {
 			return nil, utils.ErrInvalidCouponCode
@@ -102,47 +114,41 @@ func (u *couponUseCase) ApplyCoupon(ctx context.Context, userID int64, input dom
 	}
 
 	// Check if the coupon has expired
-	if coupon.ExpiresAt.Before(time.Now()) {
+	if coupon.ExpiresAt != nil && coupon.ExpiresAt.Before(time.Now()) {
 		return nil, utils.ErrCouponExpired
 	}
 
-	// Get the cart total
-	cartTotal, err := u.cartRepo.GetCartTotal(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Check if the cart is empty
-	if cartTotal == 0 {
-		return nil, utils.ErrEmptyCart
-	}
-
+	log.Printf("min order amount : %v", coupon.MinOrderAmount)
+	log.Printf("total amount : %v", checkout.TotalAmount)
 	// Check if the minimum order amount is met
-	if cartTotal < coupon.MinOrderAmount {
+	if checkout.TotalAmount < coupon.MinOrderAmount {
 		return nil, utils.ErrOrderTotalBelowMinimum
 	}
 
 	// Calculate the discount
-	discountAmount := cartTotal * (coupon.DiscountPercentage / 100)
-	totalAfterDiscount := cartTotal - discountAmount
+	discountAmount := checkout.TotalAmount * (coupon.DiscountPercentage / 100)
 
 	// Apply maximum discount cap if necessary
-	note := ""
+	message := ""
 	if discountAmount > utils.MaxDiscountAmount {
 		discountAmount = utils.MaxDiscountAmount
-		totalAfterDiscount = cartTotal - discountAmount
-		note = "Maximum discount cap applied"
+		message = "Maximum discount cap applied"
 	}
 
-	// Apply the coupon
-	err = u.cartRepo.ApplyCoupon(ctx, userID, coupon)
+	// Update the checkout
+	checkout.DiscountAmount = discountAmount
+	checkout.FinalAmount = checkout.TotalAmount - discountAmount
+	checkout.CouponCode = couponCode
+	checkout.CouponApplied = true
+
+	// Save the updated checkout
+	err = u.checkoutRepo.UpdateCheckout(ctx, checkout)
 	if err != nil {
 		return nil, err
 	}
 
 	return &domain.ApplyCouponResponse{
-		DiscountAmount:     discountAmount,
-		TotalAfterDiscount: totalAfterDiscount,
-		Note:               note,
+		CheckoutSession: *checkout,
+		Message:         message,
 	}, nil
 }

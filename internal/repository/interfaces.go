@@ -102,10 +102,14 @@ type CartRepository interface {
 type CouponRepository interface {
 	Create(ctx context.Context, coupon *domain.Coupon) error
 	GetByCode(ctx context.Context, code string) (*domain.Coupon, error)
+	IsApplied(ctx context.Context, checkoutID int64) (bool, error)
 }
 
 type CheckoutRepository interface {
 	CreateCheckoutSession(ctx context.Context, userID int64) (*domain.CheckoutSession, error)
 	AddCheckoutItems(ctx context.Context, sessionID int64, items []*domain.CheckoutItem) error
 	GetCartItems(ctx context.Context, userID int64) ([]*domain.CartItemWithProduct, error)
+	GetCheckoutByID(ctx context.Context, checkoutID int64) (*domain.CheckoutSession, error)
+	UpdateCheckout(ctx context.Context, checkout *domain.CheckoutSession) error
+	GetCheckoutItems(ctx context.Context, checkoutID int64) ([]*domain.CheckoutItem, error)
 }

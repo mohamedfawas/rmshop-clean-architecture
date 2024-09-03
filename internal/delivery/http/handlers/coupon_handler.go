@@ -3,8 +3,10 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 
+	"github.com/gorilla/mux"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/delivery/http/middleware"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
@@ -54,39 +56,55 @@ func (h *CouponHandler) CreateCoupon(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CouponHandler) ApplyCoupon(w http.ResponseWriter, r *http.Request) {
+	// Get user ID from context
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok {
 		api.SendResponse(w, http.StatusUnauthorized, "Failed to apply coupon", nil, "User not authenticated")
 		return
 	}
 
+	// Get checkout ID from URL
+	vars := mux.Vars(r)
+	checkoutID, err := strconv.ParseInt(vars["checkout_id"], 10, 64)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to apply coupon", nil, "Invalid checkout ID")
+		return
+	}
+
+	// Parse request body
 	var input domain.ApplyCouponInput
-	err := json.NewDecoder(r.Body).Decode(&input)
+	err = json.NewDecoder(r.Body).Decode(&input)
 	if err != nil {
 		api.SendResponse(w, http.StatusBadRequest, "Failed to apply coupon", nil, "Invalid request body")
 		return
 	}
 
+	// Validate coupon code
 	if input.CouponCode == "" {
 		api.SendResponse(w, http.StatusBadRequest, "Failed to apply coupon", nil, "Coupon code is required")
 		return
 	}
 
-	response, err := h.couponUseCase.ApplyCoupon(r.Context(), userID, input)
+	// Apply coupon
+	response, err := h.couponUseCase.ApplyCoupon(r.Context(), userID, checkoutID, input.CouponCode)
 	if err != nil {
 		switch err {
+		case utils.ErrCheckoutNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Failed to apply coupon", nil, "Checkout not found")
+		case utils.ErrUnauthorized:
+			api.SendResponse(w, http.StatusForbidden, "Failed to apply coupon", nil, "Unauthorized access to this checkout")
+		case utils.ErrEmptyCheckout:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to apply coupon", nil, "Cannot apply coupon to an empty checkout")
+		case utils.ErrCouponAlreadyApplied:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to apply coupon", nil, "A coupon is already applied to this checkout")
 		case utils.ErrInvalidCouponCode:
 			api.SendResponse(w, http.StatusBadRequest, "Failed to apply coupon", nil, "Invalid coupon code")
-		case utils.ErrCouponExpired:
-			api.SendResponse(w, http.StatusBadRequest, "Failed to apply coupon", nil, "Coupon has expired")
 		case utils.ErrCouponInactive:
 			api.SendResponse(w, http.StatusBadRequest, "Failed to apply coupon", nil, "This coupon is no longer active")
+		case utils.ErrCouponExpired:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to apply coupon", nil, "This coupon has expired")
 		case utils.ErrOrderTotalBelowMinimum:
-			api.SendResponse(w, http.StatusBadRequest, "Failed to apply coupon", nil, "Minimum order amount not met for this coupon")
-		case utils.ErrCouponAlreadyApplied:
-			api.SendResponse(w, http.StatusBadRequest, "Failed to apply coupon", nil, "A coupon is already applied to this cart")
-		case utils.ErrEmptyCart:
-			api.SendResponse(w, http.StatusBadRequest, "Failed to apply coupon", nil, "Cannot apply coupon to an empty cart")
+			api.SendResponse(w, http.StatusBadRequest, "Failed to apply coupon", nil, "Order total does not meet the minimum amount for this coupon")
 		default:
 			api.SendResponse(w, http.StatusInternalServerError, "Failed to apply coupon", nil, "An unexpected error occurred")
 		}

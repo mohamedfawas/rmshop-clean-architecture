@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"log"
+	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/utils"
 )
 
 type checkoutRepository struct {
@@ -71,6 +73,97 @@ func (r *checkoutRepository) GetCartItems(ctx context.Context, userID int64) ([]
 	for rows.Next() {
 		var item domain.CartItemWithProduct
 		err := rows.Scan(&item.ID, &item.ProductID, &item.Quantity, &item.ProductName, &item.ProductPrice)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, &item)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+func (r *checkoutRepository) GetCheckoutByID(ctx context.Context, checkoutID int64) (*domain.CheckoutSession, error) {
+	query := `
+        SELECT id, user_id, total_amount, discount_amount, final_amount, item_count, created_at, updated_at, status, coupon_code, coupon_applied
+        FROM checkout_sessions
+        WHERE id = $1
+    `
+	var checkout domain.CheckoutSession
+	var couponCode sql.NullString
+	err := r.db.QueryRowContext(ctx, query, checkoutID).Scan(
+		&checkout.ID, &checkout.UserID, &checkout.TotalAmount, &checkout.DiscountAmount, &checkout.FinalAmount,
+		&checkout.ItemCount, &checkout.CreatedAt, &checkout.UpdatedAt, &checkout.Status,
+		&couponCode, &checkout.CouponApplied,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, utils.ErrCheckoutNotFound
+		}
+		log.Printf("error while retrieving checkout sessions : %v", err)
+		return nil, err
+	}
+
+	// Assign the coupon code only if it's not NULL
+	if couponCode.Valid {
+		checkout.CouponCode = couponCode.String
+	} else {
+		checkout.CouponCode = "" // or however you want to represent a missing coupon code
+	}
+
+	return &checkout, nil
+}
+
+func (r *checkoutRepository) UpdateCheckout(ctx context.Context, checkout *domain.CheckoutSession) error {
+	query := `
+        UPDATE checkout_sessions
+        SET total_amount = $1, discount_amount = $2, final_amount = $3, updated_at = $4, 
+            coupon_code = $5, coupon_applied = $6
+        WHERE id = $7
+    `
+	_, err := r.db.ExecContext(ctx, query,
+		checkout.TotalAmount, checkout.DiscountAmount, checkout.FinalAmount, time.Now(),
+		checkout.CouponCode, checkout.CouponApplied, checkout.ID,
+	)
+	if err != nil {
+		log.Printf("error while updating checkout session : %v", err)
+	}
+	return err
+}
+
+func (r *couponRepository) IsApplied(ctx context.Context, checkoutID int64) (bool, error) {
+	query := `SELECT coupon_applied FROM checkout_sessions WHERE id = $1`
+	var isApplied bool
+	err := r.db.QueryRowContext(ctx, query, checkoutID).Scan(&isApplied)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, utils.ErrCheckoutNotFound
+		}
+		log.Printf("error while retrieving applied coupon details : %v", err)
+		return false, err
+	}
+	return isApplied, nil
+}
+
+func (r *checkoutRepository) GetCheckoutItems(ctx context.Context, checkoutID int64) ([]*domain.CheckoutItem, error) {
+	query := `
+        SELECT id, product_id, quantity, price, subtotal
+        FROM checkout_items
+        WHERE session_id = $1
+    `
+	rows, err := r.db.QueryContext(ctx, query, checkoutID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []*domain.CheckoutItem
+	for rows.Next() {
+		var item domain.CheckoutItem
+		err := rows.Scan(&item.ID, &item.ProductID, &item.Quantity, &item.Price, &item.Subtotal)
 		if err != nil {
 			return nil, err
 		}

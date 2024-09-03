@@ -218,6 +218,10 @@ var (
 	ErrInvalidExpiryDate         = errors.New("invalid expiry date")
 	ErrCouponAlreadyApplied      = errors.New("coupon already applied")
 
+	// checkout
+	ErrCheckoutNotFound = errors.New("checkout session not found")
+	ErrEmptyCheckout    = errors.New("empty checkout")
+
 	ErrInternalServer = errors.New("internal server error")
 )
 
