@@ -100,6 +100,10 @@ func NewRouter(userHandler *handlers.UserHandler,
 	// Admin routes: coupon routes
 	r.HandleFunc("/admin/coupons", chainMiddleware(jwtAuth, adminAuth)(couponHandler.CreateCoupon)).Methods("POST")
 
+	// admin : order management
+	r.HandleFunc("/admin/orders", chainMiddleware(jwtAuth, adminAuth)(orderHandler.GetOrders)).Methods("GET")
+	r.HandleFunc("/admin/orders/{orderId}/status", chainMiddleware(jwtAuth, adminAuth)(orderHandler.UpdateOrderStatus)).Methods("PATCH")
+
 	// User routes
 	r.HandleFunc("/user/login", userHandler.Login).Methods("POST")
 	r.HandleFunc("/user/signup", userHandler.InitiateSignUp).Methods("POST")

@@ -233,6 +233,7 @@ var (
 	ErrOrderAlreadyCancelled     = errors.New("order is already cancelled")
 	ErrOrderNotCancellable       = errors.New("order cannot be cancelled in its current state")
 	ErrCancellationPeriodExpired = errors.New("cancellation period has expired for this order")
+	ErrInvalidOrderStatus        = errors.New("invalid order status")
 
 	ErrInternalServer = errors.New("internal server error")
 )

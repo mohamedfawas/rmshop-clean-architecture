@@ -1,12 +1,16 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/delivery/http/middleware"
+	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/api"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/utils"
@@ -144,4 +148,106 @@ func (h *OrderHandler) CancelOrder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	api.SendResponse(w, http.StatusOK, "Order cancelled successfully", result, "")
+}
+
+func (h *OrderHandler) GetOrders(w http.ResponseWriter, r *http.Request) {
+	// Extract query parameters
+	params := domain.OrderQueryParams{
+		Page:      1,
+		Limit:     10,
+		SortBy:    "created_at",
+		SortOrder: "desc",
+	}
+
+	if page, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && page > 0 {
+		params.Page = page
+	}
+
+	if limit, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && limit > 0 {
+		params.Limit = limit
+	}
+
+	params.SortBy = r.URL.Query().Get("sort")
+	params.SortOrder = r.URL.Query().Get("order")
+	params.Status = r.URL.Query().Get("status")
+
+	if customerID, err := strconv.ParseInt(r.URL.Query().Get("customer_id"), 10, 64); err == nil {
+		params.CustomerID = customerID
+	}
+
+	if startDate, err := time.Parse("2006-01-02", r.URL.Query().Get("start_date")); err == nil {
+		params.StartDate = &startDate
+	}
+
+	if endDate, err := time.Parse("2006-01-02", r.URL.Query().Get("end_date")); err == nil {
+		params.EndDate = &endDate
+	}
+
+	if fields := r.URL.Query().Get("fields"); fields != "" {
+		params.Fields = strings.Split(fields, ",")
+	}
+
+	// Call use case
+	orders, total, err := h.orderUseCase.GetOrders(r.Context(), params)
+	if err != nil {
+		switch err {
+		case utils.ErrInvalidPaginationParams:
+			api.SendResponse(w, http.StatusBadRequest, "Invalid pagination parameters", nil, err.Error())
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to retrieve orders", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	response := map[string]interface{}{
+		"orders":      orders,
+		"total_count": total,
+		"page":        params.Page,
+		"limit":       params.Limit,
+		"total_pages": (total + int64(params.Limit) - 1) / int64(params.Limit),
+	}
+
+	api.SendResponse(w, http.StatusOK, "Orders retrieved successfully", response, "")
+}
+
+func (h *OrderHandler) UpdateOrderStatus(w http.ResponseWriter, r *http.Request) {
+	// Extract admin ID from context (set by auth middleware)
+	_, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	if !ok {
+		api.SendResponse(w, http.StatusUnauthorized, "Failed to update order status", nil, "User not authenticated")
+		return
+	}
+
+	// Extract order ID from URL
+	vars := mux.Vars(r)
+	orderID, err := strconv.ParseInt(vars["orderId"], 10, 64)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to update order status", nil, "Invalid order ID")
+		return
+	}
+
+	// Parse request body
+	var input struct {
+		OrderStatus string `json:"order_status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to update order status", nil, "Invalid request body")
+		return
+	}
+
+	// Call use case method to update order status
+	updatedOrder, err := h.orderUseCase.UpdateOrderStatus(r.Context(), orderID, input.OrderStatus)
+	if err != nil {
+		switch err {
+		case utils.ErrOrderNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Failed to update order status", nil, "Order not found")
+		case utils.ErrInvalidOrderStatus:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update order status", nil, "Invalid order status")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to update order status", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	api.SendResponse(w, http.StatusOK, "Order status updated successfully", updatedOrder, "")
 }

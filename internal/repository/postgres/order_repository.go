@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strconv"
+	"strings"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/utils"
@@ -173,10 +175,20 @@ func (r *orderRepository) UpdateOrderStatus(ctx context.Context, orderID int64, 
         SET order_status = $1, updated_at = NOW()
         WHERE id = $2
     `
-	_, err := r.db.ExecContext(ctx, query, status, orderID)
+	result, err := r.db.ExecContext(ctx, query, status, orderID)
 	if err != nil {
 		log.Printf("Error updating order status: %v", err)
 		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		log.Printf("Error getting rows affected: %v", err)
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return utils.ErrOrderNotFound
 	}
 	return nil
 }
@@ -193,4 +205,81 @@ func (r *orderRepository) UpdateRefundStatus(ctx context.Context, orderID int64,
 		return err
 	}
 	return nil
+}
+
+func (r *orderRepository) GetOrders(ctx context.Context, params domain.OrderQueryParams) ([]*domain.Order, int64, error) {
+	query := `SELECT `
+	if len(params.Fields) > 0 {
+		query += strings.Join(params.Fields, ", ")
+	} else {
+		query += `o.id, o.user_id, o.total_amount, o.payment_method, o.payment_status, o.delivery_status, 
+                  o.order_status, o.refund_status, o.address_id, o.created_at, o.updated_at`
+	}
+	query += ` FROM orders o WHERE 1=1`
+
+	var args []interface{}
+	var conditions []string
+
+	if params.Status != "" {
+		conditions = append(conditions, "o.order_status = $"+strconv.Itoa(len(args)+1))
+		args = append(args, params.Status)
+	}
+
+	if params.CustomerID != 0 {
+		conditions = append(conditions, "o.user_id = $"+strconv.Itoa(len(args)+1))
+		args = append(args, params.CustomerID)
+	}
+
+	if params.StartDate != nil {
+		conditions = append(conditions, "o.created_at >= $"+strconv.Itoa(len(args)+1))
+		args = append(args, params.StartDate)
+	}
+
+	if params.EndDate != nil {
+		conditions = append(conditions, "o.created_at <= $"+strconv.Itoa(len(args)+1))
+		args = append(args, params.EndDate)
+	}
+
+	if len(conditions) > 0 {
+		query += " AND " + strings.Join(conditions, " AND ")
+	}
+
+	// Count total before applying pagination
+	countQuery := "SELECT COUNT(*) FROM (" + query + ") AS count_query"
+	var total int64
+	err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Apply sorting
+	if params.SortBy != "" {
+		query += " ORDER BY o." + params.SortBy
+		if params.SortOrder != "" {
+			query += " " + params.SortOrder
+		}
+	}
+
+	// Apply pagination
+	query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", len(args)+1, len(args)+2)
+	args = append(args, params.Limit, (params.Page-1)*params.Limit)
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var orders []*domain.Order
+	for rows.Next() {
+		var o domain.Order
+		err := rows.Scan(&o.ID, &o.UserID, &o.TotalAmount, &o.PaymentMethod, &o.PaymentStatus,
+			&o.DeliveryStatus, &o.OrderStatus, &o.RefundStatus, &o.AddressID, &o.CreatedAt, &o.UpdatedAt)
+		if err != nil {
+			return nil, 0, err
+		}
+		orders = append(orders, &o)
+	}
+
+	return orders, total, nil
 }

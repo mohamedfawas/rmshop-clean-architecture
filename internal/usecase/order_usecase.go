@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
@@ -14,6 +15,8 @@ type OrderUseCase interface {
 	GetOrderByID(ctx context.Context, userID, orderID int64) (*domain.Order, error)
 	GetUserOrders(ctx context.Context, userID int64, page, limit int, sortBy, order, status string) ([]*domain.Order, int64, error)
 	CancelOrder(ctx context.Context, userID, orderID int64) (*domain.OrderCancellationResult, error)
+	GetOrders(ctx context.Context, params domain.OrderQueryParams) ([]*domain.Order, int64, error)
+	UpdateOrderStatus(ctx context.Context, orderID int64, status string) (*domain.Order, error)
 }
 
 type orderUseCase struct {
@@ -128,4 +131,63 @@ func isCancellable(status string) bool {
 		"processing": true,
 	}
 	return cancellableStatuses[status]
+}
+
+func (u *orderUseCase) GetOrders(ctx context.Context, params domain.OrderQueryParams) ([]*domain.Order, int64, error) {
+	// Validate and set default values
+	if params.Page < 1 {
+		params.Page = 1
+	}
+	if params.Limit < 1 {
+		params.Limit = 10
+	} else if params.Limit > 100 {
+		params.Limit = 100
+	}
+
+	validSortFields := map[string]bool{"created_at": true, "total_amount": true, "order_status": true}
+	if params.SortBy != "" && !validSortFields[params.SortBy] {
+		return nil, 0, errors.New("invalid sort field")
+	}
+
+	if params.SortOrder != "" && params.SortOrder != "asc" && params.SortOrder != "desc" {
+		params.SortOrder = "desc"
+	}
+
+	// Call repository method
+	return u.orderRepo.GetOrders(ctx, params)
+}
+
+func (u *orderUseCase) UpdateOrderStatus(ctx context.Context, orderID int64, status string) (*domain.Order, error) {
+	// Validate the new status
+	if !isValidOrderStatus(status) {
+		return nil, utils.ErrInvalidOrderStatus
+	}
+
+	// Get the current order
+	order, err := u.orderRepo.GetByID(ctx, orderID)
+	if err != nil {
+		if err == utils.ErrOrderNotFound {
+			return nil, utils.ErrOrderNotFound
+		}
+		return nil, err
+	}
+
+	// Update the order status
+	order.OrderStatus = status
+	err = u.orderRepo.UpdateOrderStatus(ctx, orderID, status)
+	if err != nil {
+		return nil, err
+	}
+
+	return order, nil
+}
+
+func isValidOrderStatus(status string) bool {
+	validStatuses := []string{"pending", "processing", "shipped", "delivered", "cancelled"}
+	for _, s := range validStatuses {
+		if status == s {
+			return true
+		}
+	}
+	return false
 }
