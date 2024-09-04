@@ -51,7 +51,8 @@ func NewRouter(userHandler *handlers.UserHandler,
 	cartHandler *handlers.CartHandler,
 	couponHandler *handlers.CouponHandler,
 	checkoutHandler *handlers.CheckoutHandler,
-	orderHandler *handlers.OrderHandler) http.Handler {
+	orderHandler *handlers.OrderHandler,
+	inventoryHandler *handlers.InventoryHandler) http.Handler {
 
 	log.Println("Setting up router...")
 	r := mux.NewRouter()
@@ -103,6 +104,9 @@ func NewRouter(userHandler *handlers.UserHandler,
 	// admin : order management
 	r.HandleFunc("/admin/orders", chainMiddleware(jwtAuth, adminAuth)(orderHandler.GetOrders)).Methods("GET")
 	r.HandleFunc("/admin/orders/{orderId}/status", chainMiddleware(jwtAuth, adminAuth)(orderHandler.UpdateOrderStatus)).Methods("PATCH")
+
+	// admin : inventory management
+	r.HandleFunc("/admin/inventory", chainMiddleware(jwtAuth, adminAuth)(inventoryHandler.GetInventory)).Methods("GET")
 
 	// User routes
 	r.HandleFunc("/user/login", userHandler.Login).Methods("POST")

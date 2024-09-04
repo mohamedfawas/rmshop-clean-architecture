@@ -32,3 +32,9 @@ type OrderCancellationResult struct {
 	OrderID      int64  `json:"order_id"`
 	RefundStatus string `json:"refund_status"`
 }
+
+type OrderStatusUpdateResult struct {
+	OrderID      int64  `json:"order_id"`
+	NewStatus    string `json:"new_status"`
+	RefundStatus string `json:"refund_status,omitempty"`
+}

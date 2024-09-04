@@ -16,7 +16,7 @@ type OrderUseCase interface {
 	GetUserOrders(ctx context.Context, userID int64, page, limit int, sortBy, order, status string) ([]*domain.Order, int64, error)
 	CancelOrder(ctx context.Context, userID, orderID int64) (*domain.OrderCancellationResult, error)
 	GetOrders(ctx context.Context, params domain.OrderQueryParams) ([]*domain.Order, int64, error)
-	UpdateOrderStatus(ctx context.Context, orderID int64, status string) (*domain.Order, error)
+	UpdateOrderStatus(ctx context.Context, orderID int64, newStatus string) (*domain.OrderStatusUpdateResult, error)
 }
 
 type orderUseCase struct {
@@ -157,11 +157,7 @@ func (u *orderUseCase) GetOrders(ctx context.Context, params domain.OrderQueryPa
 	return u.orderRepo.GetOrders(ctx, params)
 }
 
-func (u *orderUseCase) UpdateOrderStatus(ctx context.Context, orderID int64, status string) (*domain.Order, error) {
-	// Validate the new status
-	if !isValidOrderStatus(status) {
-		return nil, utils.ErrInvalidOrderStatus
-	}
+func (u *orderUseCase) UpdateOrderStatus(ctx context.Context, orderID int64, newStatus string) (*domain.OrderStatusUpdateResult, error) {
 
 	// Get the current order
 	order, err := u.orderRepo.GetByID(ctx, orderID)
@@ -172,14 +168,43 @@ func (u *orderUseCase) UpdateOrderStatus(ctx context.Context, orderID int64, sta
 		return nil, err
 	}
 
+	// Validate the new status
+	if !isValidOrderStatus(newStatus) {
+		return nil, utils.ErrInvalidOrderStatus
+	}
+
+	// If status is being set to cancelled, perform cancellation logic
+	var refundStatus string
+	if newStatus == "cancelled" {
+		if order.OrderStatus == "cancelled" {
+			return nil, utils.ErrOrderAlreadyCancelled
+		}
+		if !isCancellable(order.OrderStatus) {
+			return nil, utils.ErrOrderNotCancellable
+		}
+		// Perform cancellation-specific logic (e.g., initiate refund)
+		refundStatus = "not_applicable"
+		if order.PaymentStatus == "paid" {
+			refundStatus = "initiated"
+			err = u.orderRepo.UpdateRefundStatus(ctx, orderID, sql.NullString{String: refundStatus, Valid: true})
+			if err != nil {
+				// Handle refund initiation error
+				return nil, err
+			}
+		}
+	}
+
 	// Update the order status
-	order.OrderStatus = status
-	err = u.orderRepo.UpdateOrderStatus(ctx, orderID, status)
+	err = u.orderRepo.UpdateOrderStatus(ctx, orderID, newStatus)
 	if err != nil {
 		return nil, err
 	}
 
-	return order, nil
+	return &domain.OrderStatusUpdateResult{
+		OrderID:      orderID,
+		NewStatus:    newStatus,
+		RefundStatus: refundStatus,
+	}, nil
 }
 
 func isValidOrderStatus(status string) bool {

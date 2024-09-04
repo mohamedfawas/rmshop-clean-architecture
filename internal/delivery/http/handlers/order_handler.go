@@ -211,14 +211,7 @@ func (h *OrderHandler) GetOrders(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *OrderHandler) UpdateOrderStatus(w http.ResponseWriter, r *http.Request) {
-	// Extract admin ID from context (set by auth middleware)
-	_, ok := r.Context().Value(middleware.UserIDKey).(int64)
-	if !ok {
-		api.SendResponse(w, http.StatusUnauthorized, "Failed to update order status", nil, "User not authenticated")
-		return
-	}
 
-	// Extract order ID from URL
 	vars := mux.Vars(r)
 	orderID, err := strconv.ParseInt(vars["orderId"], 10, 64)
 	if err != nil {
@@ -226,28 +219,32 @@ func (h *OrderHandler) UpdateOrderStatus(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Parse request body
 	var input struct {
-		OrderStatus string `json:"order_status"`
+		Status string `json:"order_status"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		api.SendResponse(w, http.StatusBadRequest, "Failed to update order status", nil, "Invalid request body")
 		return
 	}
 
-	// Call use case method to update order status
-	updatedOrder, err := h.orderUseCase.UpdateOrderStatus(r.Context(), orderID, input.OrderStatus)
+	result, err := h.orderUseCase.UpdateOrderStatus(r.Context(), orderID, input.Status)
 	if err != nil {
 		switch err {
 		case utils.ErrOrderNotFound:
 			api.SendResponse(w, http.StatusNotFound, "Failed to update order status", nil, "Order not found")
+		case utils.ErrUnauthorized:
+			api.SendResponse(w, http.StatusForbidden, "Failed to update order status", nil, "Unauthorized action")
 		case utils.ErrInvalidOrderStatus:
 			api.SendResponse(w, http.StatusBadRequest, "Failed to update order status", nil, "Invalid order status")
+		case utils.ErrOrderNotCancellable:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to cancel order", nil, "Order cannot be cancelled in its current state")
+		case utils.ErrOrderAlreadyCancelled:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to cancel order", nil, "Order is already cancelled")
 		default:
 			api.SendResponse(w, http.StatusInternalServerError, "Failed to update order status", nil, "An unexpected error occurred")
 		}
 		return
 	}
 
-	api.SendResponse(w, http.StatusOK, "Order status updated successfully", updatedOrder, "")
+	api.SendResponse(w, http.StatusOK, "Order status updated successfully", result, "")
 }

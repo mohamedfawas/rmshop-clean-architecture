@@ -130,3 +130,7 @@ type OrderRepository interface {
 	UpdateRefundStatus(ctx context.Context, orderID int64, refundStatus sql.NullString) error
 	GetOrders(ctx context.Context, params domain.OrderQueryParams) ([]*domain.Order, int64, error)
 }
+
+type InventoryRepository interface {
+	GetInventory(ctx context.Context, params domain.InventoryQueryParams) ([]*domain.InventoryItem, int64, error)
+}

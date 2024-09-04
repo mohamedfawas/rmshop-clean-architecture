@@ -80,6 +80,11 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 	orderHandler := handlers.NewOrderHandler(orderUseCase)
 	log.Println("Order components initialized")
 
+	inventoryRepo := postgres.NewInventoryRepository(db)
+	inventoryUseCase := usecase.NewInventoryUseCase(inventoryRepo)
+	inventoryHandler := handlers.NewInventoryHandler(inventoryUseCase)
+	log.Println("Inventory components initialized")
+
 	// Initialize the router with all handlers
 	router := httpDelivery.NewRouter(
 		userHandler,
@@ -92,6 +97,7 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 		couponHandler,
 		checkoutHandler,
 		orderHandler,
+		inventoryHandler,
 	)
 	log.Println("Router initialized")
 
