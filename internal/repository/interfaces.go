@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
@@ -83,6 +84,7 @@ type ProductRepository interface {
 	GetImageByID(ctx context.Context, imageID int64) (*domain.ProductImage, error) //fz
 	DeleteImageByID(ctx context.Context, imageID int64) error                      //fz
 	GetAll(ctx context.Context) ([]*domain.Product, error)                         //fz
+	UpdateStock(ctx context.Context, tx *sql.Tx, productID int64, quantityChange int) error
 }
 
 type CartRepository interface {
@@ -110,9 +112,16 @@ type CheckoutRepository interface {
 	AddCheckoutItems(ctx context.Context, sessionID int64, items []*domain.CheckoutItem) error
 	GetCartItems(ctx context.Context, userID int64) ([]*domain.CartItemWithProduct, error)
 	GetCheckoutByID(ctx context.Context, checkoutID int64) (*domain.CheckoutSession, error)
-	UpdateCheckout(ctx context.Context, checkout *domain.CheckoutSession) error
 	GetCheckoutItems(ctx context.Context, checkoutID int64) ([]*domain.CheckoutItem, error)
 	UpdateCheckoutAddress(ctx context.Context, checkoutID int64, addressID int64) error
 	AddNewAddressToCheckout(ctx context.Context, checkoutID int64, address *domain.UserAddress) error
 	GetCheckoutWithItems(ctx context.Context, checkoutID int64) (*domain.CheckoutSummary, error)
+	UpdateCheckoutDetails(ctx context.Context, checkout *domain.CheckoutSession) error
+	UpdateCheckoutStatus(ctx context.Context, tx *sql.Tx, checkout *domain.CheckoutSession) error
+	BeginTx(ctx context.Context) (*sql.Tx, error)
+}
+
+type OrderRepository interface {
+	CreateOrder(ctx context.Context, tx *sql.Tx, order *domain.Order) error
+	AddOrderItem(ctx context.Context, tx *sql.Tx, item *domain.OrderItem) error
 }

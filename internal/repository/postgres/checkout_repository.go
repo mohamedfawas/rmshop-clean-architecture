@@ -121,23 +121,6 @@ func (r *checkoutRepository) GetCheckoutByID(ctx context.Context, checkoutID int
 	return &checkout, nil
 }
 
-func (r *checkoutRepository) UpdateCheckout(ctx context.Context, checkout *domain.CheckoutSession) error {
-	query := `
-        UPDATE checkout_sessions
-        SET total_amount = $1, discount_amount = $2, final_amount = $3, updated_at = $4, 
-            coupon_code = $5, coupon_applied = $6
-        WHERE id = $7
-    `
-	_, err := r.db.ExecContext(ctx, query,
-		checkout.TotalAmount, checkout.DiscountAmount, checkout.FinalAmount, time.Now(),
-		checkout.CouponCode, checkout.CouponApplied, checkout.ID,
-	)
-	if err != nil {
-		log.Printf("error while updating checkout session : %v", err)
-	}
-	return err
-}
-
 func (r *couponRepository) IsApplied(ctx context.Context, checkoutID int64) (bool, error) {
 	query := `SELECT coupon_applied FROM checkout_sessions WHERE id = $1`
 	var isApplied bool
@@ -288,5 +271,53 @@ func (r *checkoutRepository) GetCheckoutWithItems(ctx context.Context, checkoutI
 		summary.Address = &address
 	}
 
+	var itemCount int
+	for _, item := range items {
+		itemCount += item.Quantity
+	}
+	summary.ItemCount = itemCount
+	// Update the checkout session with the correct item count
+	updateQuery := `UPDATE checkout_sessions SET item_count = $1 WHERE id = $2`
+	_, err = r.db.ExecContext(ctx, updateQuery, itemCount, checkoutID)
+	if err != nil {
+		log.Printf("error updating item count: %v", err)
+		return nil, err
+	}
+
 	return &summary, nil
+}
+
+func (r *checkoutRepository) UpdateCheckoutDetails(ctx context.Context, checkout *domain.CheckoutSession) error {
+	query := `
+        UPDATE checkout_sessions
+        SET total_amount = $1, discount_amount = $2, final_amount = $3, updated_at = $4, 
+            coupon_code = $5, coupon_applied = $6
+        WHERE id = $7
+    `
+	_, err := r.db.ExecContext(ctx, query,
+		checkout.TotalAmount, checkout.DiscountAmount, checkout.FinalAmount, time.Now(),
+		checkout.CouponCode, checkout.CouponApplied, checkout.ID,
+	)
+	if err != nil {
+		log.Printf("error while updating checkout session details: %v", err)
+	}
+	return err
+}
+
+// Add a new method for updating checkout status within a transaction
+func (r *checkoutRepository) UpdateCheckoutStatus(ctx context.Context, tx *sql.Tx, checkout *domain.CheckoutSession) error {
+	query := `
+		UPDATE checkout_sessions
+		SET status = $1, updated_at = NOW()
+		WHERE id = $2
+	`
+	_, err := tx.ExecContext(ctx, query, checkout.Status, checkout.ID)
+	if err != nil {
+		log.Printf("error while updating checkout session status: %v", err)
+	}
+	return err
+}
+
+func (r *checkoutRepository) BeginTx(ctx context.Context) (*sql.Tx, error) {
+	return r.db.BeginTx(ctx, nil)
 }

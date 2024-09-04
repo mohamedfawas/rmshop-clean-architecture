@@ -456,3 +456,16 @@ func (r *productRepository) GetAll(ctx context.Context) ([]*domain.Product, erro
 
 	return products, nil
 }
+
+func (r *productRepository) UpdateStock(ctx context.Context, tx *sql.Tx, productID int64, quantityChange int) error {
+	query := `
+		UPDATE products
+		SET stock_quantity = stock_quantity + $1
+		WHERE id = $2
+	`
+	_, err := tx.ExecContext(ctx, query, quantityChange, productID)
+	if err != nil {
+		log.Printf("error while updating product data : %v", err)
+	}
+	return err
+}

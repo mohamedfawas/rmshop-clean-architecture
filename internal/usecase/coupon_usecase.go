@@ -142,7 +142,7 @@ func (u *couponUseCase) ApplyCoupon(ctx context.Context, userID int64, checkoutI
 	checkout.CouponApplied = true
 
 	// Save the updated checkout
-	err = u.checkoutRepo.UpdateCheckout(ctx, checkout)
+	err = u.checkoutRepo.UpdateCheckoutDetails(ctx, checkout)
 	if err != nil {
 		return nil, err
 	}

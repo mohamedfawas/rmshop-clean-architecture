@@ -127,6 +127,7 @@ func NewRouter(userHandler *handlers.UserHandler,
 	r.HandleFunc("/user/checkout/{checkout_id}/apply-coupon", chainMiddleware(jwtAuth, userAuth)(checkoutHandler.ApplyCoupon)).Methods("POST")
 	r.HandleFunc("/user/checkout/{checkout_id}/address", chainMiddleware(jwtAuth, userAuth)(checkoutHandler.UpdateCheckoutAddress)).Methods("PATCH")
 	r.HandleFunc("/user/checkout/{checkout_id}/summary", chainMiddleware(jwtAuth, userAuth)(checkoutHandler.GetCheckoutSummary)).Methods("GET")
+	r.HandleFunc("/user/checkout/{checkout_id}/place-order", chainMiddleware(jwtAuth, userAuth)(checkoutHandler.PlaceOrder)).Methods("POST")
 
 	// Public routes
 	r.HandleFunc("/user/forgot-password", middleware.RateLimitMiddleware(userHandler.ForgotPassword, otpResendLimiter)).Methods("POST")

@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"database/sql"
+	"log"
 	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
@@ -15,6 +16,7 @@ type CheckoutUseCase interface {
 	ApplyCoupon(ctx context.Context, userID int64, checkoutID int64, couponCode string) (*domain.ApplyCouponResponse, error)
 	UpdateCheckoutAddress(ctx context.Context, userID, checkoutID int64, addressInput domain.AddressInput) (*domain.CheckoutSession, error)
 	GetCheckoutSummary(ctx context.Context, userID, checkoutID int64) (*domain.CheckoutSummary, error)
+	PlaceOrder(ctx context.Context, userID, checkoutID int64, paymentMethod string) (*domain.Order, error)
 }
 
 type checkoutUseCase struct {
@@ -23,15 +25,17 @@ type checkoutUseCase struct {
 	couponRepo   repository.CouponRepository
 	cartRepo     repository.CartRepository
 	userRepo     repository.UserRepository
+	orderRepo    repository.OrderRepository
 }
 
-func NewCheckoutUseCase(checkoutRepo repository.CheckoutRepository, productRepo repository.ProductRepository, cartRepo repository.CartRepository, couponRepo repository.CouponRepository, userRepo repository.UserRepository) CheckoutUseCase {
+func NewCheckoutUseCase(checkoutRepo repository.CheckoutRepository, productRepo repository.ProductRepository, cartRepo repository.CartRepository, couponRepo repository.CouponRepository, userRepo repository.UserRepository, orderRepo repository.OrderRepository) CheckoutUseCase {
 	return &checkoutUseCase{
 		checkoutRepo: checkoutRepo,
 		productRepo:  productRepo,
 		couponRepo:   couponRepo,
 		cartRepo:     cartRepo,
 		userRepo:     userRepo,
+		orderRepo:    orderRepo,
 	}
 }
 
@@ -89,7 +93,7 @@ func (u *checkoutUseCase) CreateCheckout(ctx context.Context, userID int64) (*do
 	session.FinalAmount = totalAmount
 
 	// Update the checkout session in the database
-	err = u.checkoutRepo.UpdateCheckout(ctx, session)
+	err = u.checkoutRepo.UpdateCheckoutDetails(ctx, session)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +175,7 @@ func (u *checkoutUseCase) ApplyCoupon(ctx context.Context, userID int64, checkou
 	checkout.CouponApplied = true
 
 	// Save the updated checkout
-	err = u.checkoutRepo.UpdateCheckout(ctx, checkout)
+	err = u.checkoutRepo.UpdateCheckoutDetails(ctx, checkout)
 	if err != nil {
 		return nil, err
 	}
@@ -257,4 +261,118 @@ func (u *checkoutUseCase) GetCheckoutSummary(ctx context.Context, userID, checko
 	}
 
 	return summary, nil
+}
+
+func (u *checkoutUseCase) PlaceOrder(ctx context.Context, userID, checkoutID int64, paymentMethod string) (*domain.Order, error) {
+	// Get the checkout session
+	checkout, err := u.checkoutRepo.GetCheckoutByID(ctx, checkoutID)
+	if err != nil {
+		log.Printf("Error getting checkout: %v", err)
+		return nil, err
+	}
+
+	// Verify the checkout belongs to the user
+	if checkout.UserID != userID {
+		return nil, utils.ErrUnauthorized
+	}
+
+	// Check if the checkout is in a valid state to place an order
+	if checkout.Status != "pending" {
+		return nil, utils.ErrOrderAlreadyPlaced
+	}
+
+	// Get checkout items
+	items, err := u.checkoutRepo.GetCheckoutItems(ctx, checkoutID)
+	if err != nil {
+		log.Printf("Error getting checkout items: %v", err)
+		return nil, err
+	}
+
+	// Log the state for debugging
+	log.Printf("Placing order for checkout %d: Items count: %d, Checkout item count: %d",
+		checkoutID, len(items), checkout.ItemCount)
+
+	if len(items) == 0 {
+		return nil, utils.ErrEmptyCart
+	}
+
+	// Verify that all items have sufficient stock
+	for _, item := range items {
+		product, err := u.productRepo.GetByID(ctx, item.ProductID)
+		if err != nil {
+			log.Printf("Error getting product %d: %v", item.ProductID, err)
+			return nil, err
+		}
+		if product.StockQuantity < item.Quantity {
+			return nil, utils.ErrInsufficientStock
+		}
+	}
+
+	// Verify that a valid address is associated with the checkout
+	if checkout.AddressID == 0 {
+		return nil, utils.ErrInvalidAddress
+	}
+
+	// Create the order
+	order := &domain.Order{
+		UserID:         userID,
+		TotalAmount:    checkout.FinalAmount,
+		PaymentMethod:  paymentMethod,
+		PaymentStatus:  "pending",
+		DeliveryStatus: "processing",
+		AddressID:      checkout.AddressID,
+	}
+
+	// Start a database transaction
+	tx, err := u.checkoutRepo.BeginTx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	// Create the order in the database
+	err = u.orderRepo.CreateOrder(ctx, tx, order)
+	if err != nil {
+		log.Printf("Error creating order: %v", err)
+		return nil, err
+	}
+
+	// Add order items
+	for _, item := range items {
+		orderItem := &domain.OrderItem{
+			OrderID:   order.ID,
+			ProductID: item.ProductID,
+			Quantity:  item.Quantity,
+			Price:     item.Price,
+		}
+		err = u.orderRepo.AddOrderItem(ctx, tx, orderItem)
+		if err != nil {
+			log.Printf("Error adding order item: %v", err)
+			return nil, err
+		}
+
+		// Update product stock
+		err = u.productRepo.UpdateStock(ctx, tx, item.ProductID, -item.Quantity)
+		if err != nil {
+			log.Printf("Error updating product stock: %v", err)
+			return nil, err
+		}
+	}
+
+	// Update checkout status
+	checkout.Status = "completed"
+	err = u.checkoutRepo.UpdateCheckoutStatus(ctx, tx, checkout)
+	if err != nil {
+		log.Printf("Error updating checkout status: %v", err)
+		return nil, err
+	}
+
+	// Commit the transaction
+	err = tx.Commit()
+	if err != nil {
+		log.Printf("Error committing transaction: %v", err)
+		return nil, err
+	}
+
+	return order, nil
 }

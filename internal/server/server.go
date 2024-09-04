@@ -63,13 +63,16 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 	checkoutRepo := postgres.NewCheckoutRepository(db)
 	log.Println("Checkout repository initialized")
 
+	orderRepo := postgres.NewOrderRepository(db)
+	log.Println("Order repository initialized")
+
 	// coupon components
 	couponRepo := postgres.NewCouponRepository(db)
 	couponUseCase := usecase.NewCouponUseCase(couponRepo, checkoutRepo)
 	couponHandler := handlers.NewCouponHandler(couponUseCase)
 	log.Println("Coupon components initialized")
 
-	checkoutUseCase := usecase.NewCheckoutUseCase(checkoutRepo, productRepo, cartRepo, couponRepo, userRepo)
+	checkoutUseCase := usecase.NewCheckoutUseCase(checkoutRepo, productRepo, cartRepo, couponRepo, userRepo, orderRepo)
 	checkoutHandler := handlers.NewCheckoutHandler(checkoutUseCase, couponUseCase)
 	log.Println("Checkout components initialized")
 

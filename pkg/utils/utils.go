@@ -224,6 +224,8 @@ var (
 	ErrInvalidCheckoutState  = errors.New("invalid checkout state")
 	ErrInvalidAddressInput   = errors.New("invalid address input")
 	ErrMissingRequiredFields = errors.New("missing required fields")
+	ErrOrderAlreadyPlaced    = errors.New("order already placed")
+	ErrInvalidAddress        = errors.New("invalid address")
 
 	ErrInternalServer = errors.New("internal server error")
 )
