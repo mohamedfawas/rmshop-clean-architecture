@@ -38,3 +38,15 @@ type OrderStatusUpdateResult struct {
 	NewStatus    string `json:"new_status"`
 	RefundStatus string `json:"refund_status,omitempty"`
 }
+
+type OrderQueryParams struct {
+	Page       int
+	Limit      int
+	SortBy     string
+	SortOrder  string
+	Status     string
+	CustomerID int64
+	StartDate  *time.Time
+	EndDate    *time.Time
+	Fields     []string
+}

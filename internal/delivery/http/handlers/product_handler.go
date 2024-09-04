@@ -371,3 +371,60 @@ func (h *ProductHandler) GetAllProducts(w http.ResponseWriter, r *http.Request) 
 
 	api.SendResponse(w, http.StatusOK, "Products retrieved successfully", products, "")
 }
+
+func (h *ProductHandler) GetProducts(w http.ResponseWriter, r *http.Request) {
+	// Parse query parameters
+	params := parseQueryParams(r)
+
+	// Call use case
+	products, totalCount, err := h.productUseCase.GetProducts(r.Context(), params)
+	if err != nil {
+		api.SendResponse(w, http.StatusInternalServerError, "Failed to retrieve products", nil, err.Error())
+		return
+	}
+
+	response := map[string]interface{}{
+		"products":    products,
+		"total_count": totalCount,
+		"page":        params.Page,
+		"limit":       params.Limit,
+		"total_pages": (totalCount + int64(params.Limit) - 1) / int64(params.Limit),
+	}
+
+	api.SendResponse(w, http.StatusOK, "Products retrieved successfully", response, "")
+}
+
+func parseQueryParams(r *http.Request) domain.ProductQueryParams {
+	params := domain.ProductQueryParams{
+		Page:  1,
+		Limit: 10,
+	}
+
+	if page, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && page > 0 {
+		params.Page = page
+	}
+
+	if limit, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && limit > 0 {
+		params.Limit = limit
+	}
+
+	params.Sort = r.URL.Query().Get("sort")
+	params.Order = r.URL.Query().Get("order")
+	params.Category = r.URL.Query().Get("category")
+	params.Subcategory = r.URL.Query().Get("subcategory")
+	params.Search = r.URL.Query().Get("search")
+
+	params.MinPrice, _ = strconv.ParseFloat(r.URL.Query().Get("min_price"), 64)
+	params.MaxPrice, _ = strconv.ParseFloat(r.URL.Query().Get("max_price"), 64)
+
+	params.InStock, _ = strconv.ParseBool(r.URL.Query().Get("in_stock"))
+
+	params.CreatedAfter = r.URL.Query().Get("created_after")
+	params.CreatedBefore = r.URL.Query().Get("created_before")
+	params.UpdatedAfter = r.URL.Query().Get("updated_after")
+	params.UpdatedBefore = r.URL.Query().Get("updated_before")
+
+	params.Categories = r.URL.Query()["category"]
+
+	return params
+}

@@ -235,6 +235,9 @@ var (
 	ErrCancellationPeriodExpired = errors.New("cancellation period has expired for this order")
 	ErrInvalidOrderStatus        = errors.New("invalid order status")
 
+	// inventory
+	ErrStockQuantityTooLarge = errors.New("stock quantity too large")
+
 	ErrInternalServer = errors.New("internal server error")
 )
 

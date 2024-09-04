@@ -81,7 +81,7 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 	log.Println("Order components initialized")
 
 	inventoryRepo := postgres.NewInventoryRepository(db)
-	inventoryUseCase := usecase.NewInventoryUseCase(inventoryRepo)
+	inventoryUseCase := usecase.NewInventoryUseCase(inventoryRepo, productRepo)
 	inventoryHandler := handlers.NewInventoryHandler(inventoryUseCase)
 	log.Println("Inventory components initialized")
 

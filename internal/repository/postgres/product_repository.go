@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/lib/pq"
@@ -468,4 +470,99 @@ func (r *productRepository) UpdateStock(ctx context.Context, tx *sql.Tx, product
 		log.Printf("error while updating product data : %v", err)
 	}
 	return err
+}
+
+func (r *productRepository) UpdateStockQuantity(ctx context.Context, productID int64, quantity int) error {
+	query := `UPDATE products SET stock_quantity = $1, updated_at = NOW() WHERE id = $2 AND is_deleted = false`
+	result, err := r.db.ExecContext(ctx, query, quantity, productID)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return utils.ErrProductNotFound
+	}
+
+	return nil
+}
+
+func (r *productRepository) GetProducts(ctx context.Context, params domain.ProductQueryParams) ([]*domain.Product, int64, error) {
+	query := `
+        SELECT p.id, p.name, p.slug, p.description, p.price, p.stock_quantity, p.sub_category_id,
+               p.created_at, p.updated_at, p.deleted_at, p.primary_image_id, p.is_deleted,
+               c.name AS category_name, sc.name AS subcategory_name
+        FROM products p
+        JOIN sub_categories sc ON p.sub_category_id = sc.id
+        JOIN categories c ON sc.parent_category_id = c.id
+        WHERE p.is_deleted = false
+    `
+
+	countQuery := `
+        SELECT COUNT(*)
+        FROM products p
+        JOIN sub_categories sc ON p.sub_category_id = sc.id
+        JOIN categories c ON sc.parent_category_id = c.id
+        WHERE p.is_deleted = false
+    `
+
+	var conditions []string
+	var args []interface{}
+
+	// ... [Keep the existing condition checks]
+
+	if len(conditions) > 0 {
+		query += " AND " + strings.Join(conditions, " AND ")
+		countQuery += " AND " + strings.Join(conditions, " AND ")
+	}
+
+	// Add sorting
+	if params.Sort != "" {
+		query += fmt.Sprintf(" ORDER BY p.%s %s", params.Sort, params.Order)
+	} else {
+		query += " ORDER BY p.created_at DESC" // Default sorting
+	}
+
+	// Count total before applying pagination
+	var totalCount int64
+	err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&totalCount)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Add pagination
+	query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", len(args)+1, len(args)+2)
+	args = append(args, params.Limit, (params.Page-1)*params.Limit)
+
+	// Execute main query
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var products []*domain.Product
+	for rows.Next() {
+		var p domain.Product
+		var categoryName, subcategoryName string
+		err := rows.Scan(
+			&p.ID, &p.Name, &p.Slug, &p.Description, &p.Price, &p.StockQuantity, &p.SubCategoryID,
+			&p.CreatedAt, &p.UpdatedAt, &p.DeletedAt, &p.PrimaryImageID, &p.IsDeleted,
+			&categoryName, &subcategoryName,
+		)
+		if err != nil {
+			return nil, 0, err
+		}
+		products = append(products, &p)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, 0, err
+	}
+
+	return products, totalCount, nil
 }

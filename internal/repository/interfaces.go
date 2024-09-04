@@ -85,6 +85,8 @@ type ProductRepository interface {
 	DeleteImageByID(ctx context.Context, imageID int64) error                      //fz
 	GetAll(ctx context.Context) ([]*domain.Product, error)                         //fz
 	UpdateStock(ctx context.Context, tx *sql.Tx, productID int64, quantityChange int) error
+	UpdateStockQuantity(ctx context.Context, productID int64, quantity int) error
+	GetProducts(ctx context.Context, params domain.ProductQueryParams) ([]*domain.Product, int64, error)
 }
 
 type CartRepository interface {

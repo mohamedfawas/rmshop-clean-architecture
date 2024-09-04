@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"mime/multipart"
+	"strings"
 	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
@@ -24,6 +25,7 @@ type ProductUseCase interface {
 	AddImages(ctx context.Context, productID int64, files []multipart.File, headers []*multipart.FileHeader, isPrimaryFlags []bool) error
 	DeleteProductImage(ctx context.Context, productID, imageID int64) error
 	GetAllProducts(ctx context.Context) ([]*domain.Product, error)
+	GetProducts(ctx context.Context, params domain.ProductQueryParams) ([]*domain.Product, int64, error)
 }
 
 type productUseCase struct {
@@ -429,4 +431,37 @@ func (u *productUseCase) setNewPrimaryImage(ctx context.Context, productID int64
 
 func (u *productUseCase) GetAllProducts(ctx context.Context) ([]*domain.Product, error) {
 	return u.productRepo.GetAll(ctx)
+}
+
+func (u *productUseCase) GetProducts(ctx context.Context, params domain.ProductQueryParams) ([]*domain.Product, int64, error) {
+	// Validate and set default values
+	if params.Page < 1 {
+		params.Page = 1
+	}
+	if params.Limit < 1 {
+		params.Limit = 10
+	} else if params.Limit > 100 {
+		params.Limit = 100
+	}
+
+	// Validate sorting parameters
+	validSortFields := map[string]bool{"price": true, "name": true, "created_at": true, "updated_at": true}
+	if params.Sort != "" && !validSortFields[params.Sort] {
+		params.Sort = "created_at"
+	}
+	if params.Order != "asc" && params.Order != "desc" {
+		params.Order = "desc"
+	}
+
+	// Convert all string parameters to lowercase for case-insensitive search
+	params.Category = strings.ToLower(params.Category)
+	params.Subcategory = strings.ToLower(params.Subcategory)
+	params.Search = strings.ToLower(params.Search)
+
+	for i, category := range params.Categories {
+		params.Categories[i] = strings.ToLower(category)
+	}
+
+	// Call repository method
+	return u.productRepo.GetProducts(ctx, params)
 }

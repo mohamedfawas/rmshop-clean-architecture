@@ -107,6 +107,7 @@ func NewRouter(userHandler *handlers.UserHandler,
 
 	// admin : inventory management
 	r.HandleFunc("/admin/inventory", chainMiddleware(jwtAuth, adminAuth)(inventoryHandler.GetInventory)).Methods("GET")
+	r.HandleFunc("/admin/inventory/{productId}", chainMiddleware(jwtAuth, adminAuth)(inventoryHandler.UpdateProductStock)).Methods("PATCH")
 
 	// User routes
 	r.HandleFunc("/user/login", userHandler.Login).Methods("POST")
@@ -144,6 +145,7 @@ func NewRouter(userHandler *handlers.UserHandler,
 	// Public routes
 	r.HandleFunc("/user/forgot-password", middleware.RateLimitMiddleware(userHandler.ForgotPassword, otpResendLimiter)).Methods("POST")
 	r.HandleFunc("/user/reset-password", userHandler.ResetPassword).Methods("POST")
+	r.HandleFunc("/products", productHandler.GetProducts).Methods("GET")
 
 	log.Println("Router setup complete")
 	return r

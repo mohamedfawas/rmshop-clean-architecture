@@ -1,13 +1,16 @@
 package handlers
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
 
+	"github.com/gorilla/mux"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/api"
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/utils"
 )
 
 type InventoryHandler struct {
@@ -71,4 +74,41 @@ func (h *InventoryHandler) GetInventory(w http.ResponseWriter, r *http.Request) 
 	}
 
 	api.SendResponse(w, http.StatusOK, "Inventory retrieved successfully", response, "")
+}
+
+func (h *InventoryHandler) UpdateProductStock(w http.ResponseWriter, r *http.Request) {
+	// Extract product ID from URL
+	vars := mux.Vars(r)
+	productID, err := strconv.ParseInt(vars["productId"], 10, 64)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to update stock", nil, "Invalid product ID")
+		return
+	}
+
+	// Parse request body
+	var input struct {
+		StockQuantity int `json:"stock_quantity"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to update stock", nil, "Invalid request body")
+		return
+	}
+
+	// Call use case method
+	err = h.inventoryUseCase.UpdateProductStock(r.Context(), productID, input.StockQuantity)
+	if err != nil {
+		switch err {
+		case utils.ErrProductNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Failed to update stock", nil, "Product not found")
+		case utils.ErrInvalidStockQuantity:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update stock", nil, "Invalid stock quantity")
+		case utils.ErrStockQuantityTooLarge:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update stock", nil, "Stock quantity exceeds maximum allowed value")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to update stock", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	api.SendResponse(w, http.StatusOK, "Stock updated successfully", nil, "")
 }

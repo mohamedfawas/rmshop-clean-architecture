@@ -18,3 +18,27 @@ type Product struct {
 	PrimaryImageID *int64     `json:"primary_image_id,omitempty"`
 	IsDeleted      bool       `json:"is_deleted"`
 }
+
+type ProductQueryParams struct {
+	Page          int
+	Limit         int
+	Sort          string
+	Order         string
+	Category      string
+	Subcategory   string
+	Search        string
+	MinPrice      float64
+	MaxPrice      float64
+	InStock       bool
+	Brand         string
+	Color         string
+	Size          string
+	MinRating     float64
+	MinDiscount   float64
+	MaxDiscount   float64
+	CreatedAfter  string
+	CreatedBefore string
+	UpdatedAfter  string
+	UpdatedBefore string
+	Categories    []string
+}
