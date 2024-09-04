@@ -14,6 +14,7 @@ type CheckoutSession struct {
 	Status         string    `json:"status"`
 	CouponCode     string    `json:"coupon_code,omitempty"`
 	CouponApplied  bool      `json:"coupon_applied"`
+	AddressID      int64     `json:"address_id,omitempty"`
 }
 
 type CheckoutItem struct {
@@ -32,4 +33,9 @@ type ApplyCouponInput struct {
 type ApplyCouponResponse struct {
 	CheckoutSession
 	Message string `json:"message,omitempty"`
+}
+
+type AddressInput struct {
+	AddressID  int64        `json:"address_id,omitempty"`
+	NewAddress *UserAddress `json:"new_address,omitempty"`
 }

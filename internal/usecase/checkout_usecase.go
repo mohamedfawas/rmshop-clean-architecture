@@ -12,6 +12,7 @@ import (
 type CheckoutUseCase interface {
 	CreateCheckout(ctx context.Context, userID int64) (*domain.CheckoutSession, error)
 	ApplyCoupon(ctx context.Context, userID int64, checkoutID int64, couponCode string) (*domain.ApplyCouponResponse, error)
+	UpdateCheckoutAddress(ctx context.Context, userID, checkoutID int64, addressInput domain.AddressInput) (*domain.CheckoutSession, error)
 }
 
 type checkoutUseCase struct {
@@ -19,14 +20,16 @@ type checkoutUseCase struct {
 	productRepo  repository.ProductRepository
 	couponRepo   repository.CouponRepository
 	cartRepo     repository.CartRepository
+	userRepo     repository.UserRepository
 }
 
-func NewCheckoutUseCase(checkoutRepo repository.CheckoutRepository, productRepo repository.ProductRepository, cartRepo repository.CartRepository, couponRepo repository.CouponRepository) CheckoutUseCase {
+func NewCheckoutUseCase(checkoutRepo repository.CheckoutRepository, productRepo repository.ProductRepository, cartRepo repository.CartRepository, couponRepo repository.CouponRepository, userRepo repository.UserRepository) CheckoutUseCase {
 	return &checkoutUseCase{
 		checkoutRepo: checkoutRepo,
 		productRepo:  productRepo,
 		couponRepo:   couponRepo,
 		cartRepo:     cartRepo,
+		userRepo:     userRepo,
 	}
 }
 
@@ -175,4 +178,65 @@ func (u *checkoutUseCase) ApplyCoupon(ctx context.Context, userID int64, checkou
 		CheckoutSession: *checkout,
 		Message:         message,
 	}, nil
+}
+
+func (u *checkoutUseCase) UpdateCheckoutAddress(ctx context.Context, userID, checkoutID int64, addressInput domain.AddressInput) (*domain.CheckoutSession, error) {
+	// Get the checkout session
+	checkout, err := u.checkoutRepo.GetCheckoutByID(ctx, checkoutID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if the checkout belongs to the user
+	if checkout.UserID != userID {
+		return nil, utils.ErrUnauthorized
+	}
+
+	// Check if the checkout is in a valid state to update the address
+	if checkout.Status != "pending" {
+		return nil, utils.ErrInvalidCheckoutState
+	}
+
+	if addressInput.AddressID != 0 {
+		// Update with existing address
+		address, err := u.userRepo.GetUserAddressByID(ctx, addressInput.AddressID)
+		if err != nil {
+			return nil, err
+		}
+		if address.UserID != userID {
+			return nil, utils.ErrUnauthorized
+		}
+		err = u.checkoutRepo.UpdateCheckoutAddress(ctx, checkoutID, addressInput.AddressID)
+		if err != nil {
+			return nil, err
+		}
+	} else if addressInput.NewAddress != nil {
+		// Validate new address
+		if err := validateAddress(addressInput.NewAddress); err != nil {
+			return nil, err
+		}
+		// Add new address and update checkout
+		err = u.checkoutRepo.AddNewAddressToCheckout(ctx, checkoutID, addressInput.NewAddress)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		return nil, utils.ErrInvalidAddressInput
+	}
+
+	// Fetch the updated checkout session
+	updatedCheckout, err := u.checkoutRepo.GetCheckoutByID(ctx, checkoutID)
+	if err != nil {
+		return nil, err
+	}
+
+	return updatedCheckout, nil
+}
+
+func validateAddress(address *domain.UserAddress) error {
+	if address.AddressLine1 == "" || address.City == "" || address.State == "" || address.PinCode == "" || address.PhoneNumber == "" {
+		return utils.ErrMissingRequiredFields
+	}
+	// Add more validation as needed
+	return nil
 }

@@ -88,16 +88,17 @@ func (r *checkoutRepository) GetCartItems(ctx context.Context, userID int64) ([]
 
 func (r *checkoutRepository) GetCheckoutByID(ctx context.Context, checkoutID int64) (*domain.CheckoutSession, error) {
 	query := `
-        SELECT id, user_id, total_amount, discount_amount, final_amount, item_count, created_at, updated_at, status, coupon_code, coupon_applied
+        SELECT id, user_id, total_amount, discount_amount, final_amount, item_count, created_at, updated_at, status, coupon_code, coupon_applied, address_id
         FROM checkout_sessions
         WHERE id = $1
     `
 	var checkout domain.CheckoutSession
 	var couponCode sql.NullString
+	var addressID sql.NullInt64
 	err := r.db.QueryRowContext(ctx, query, checkoutID).Scan(
 		&checkout.ID, &checkout.UserID, &checkout.TotalAmount, &checkout.DiscountAmount, &checkout.FinalAmount,
 		&checkout.ItemCount, &checkout.CreatedAt, &checkout.UpdatedAt, &checkout.Status,
-		&couponCode, &checkout.CouponApplied,
+		&couponCode, &checkout.CouponApplied, &addressID,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -112,6 +113,9 @@ func (r *checkoutRepository) GetCheckoutByID(ctx context.Context, checkoutID int
 		checkout.CouponCode = couponCode.String
 	} else {
 		checkout.CouponCode = "" // or however you want to represent a missing coupon code
+	}
+	if addressID.Valid {
+		checkout.AddressID = addressID.Int64
 	}
 
 	return &checkout, nil
@@ -175,4 +179,43 @@ func (r *checkoutRepository) GetCheckoutItems(ctx context.Context, checkoutID in
 	}
 
 	return items, nil
+}
+
+func (r *checkoutRepository) UpdateCheckoutAddress(ctx context.Context, checkoutID int64, addressID int64) error {
+	query := `UPDATE checkout_sessions SET address_id = $1, updated_at = NOW() WHERE id = $2`
+	_, err := r.db.ExecContext(ctx, query, addressID, checkoutID)
+	if err != nil {
+		log.Printf("error while updating checkout address : %v", err)
+	}
+	return err
+}
+
+func (r *checkoutRepository) AddNewAddressToCheckout(ctx context.Context, checkoutID int64, address *domain.UserAddress) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		log.Printf("error : %v", err)
+		return err
+	}
+	defer tx.Rollback()
+
+	// Insert new address
+	addressQuery := `INSERT INTO user_address (user_id, address_line1, address_line2, city, state, pincode, phone_number) 
+                     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`
+	var newAddressID int64
+	err = tx.QueryRowContext(ctx, addressQuery, address.UserID, address.AddressLine1, address.AddressLine2,
+		address.City, address.State, address.PinCode, address.PhoneNumber).Scan(&newAddressID)
+	if err != nil {
+		log.Printf("error while adding new address : %v", err)
+		return err
+	}
+
+	// Update checkout with new address
+	checkoutQuery := `UPDATE checkout_sessions SET address_id = $1 WHERE id = $2`
+	_, err = tx.ExecContext(ctx, checkoutQuery, newAddressID, checkoutID)
+	if err != nil {
+		log.Printf("error while updating the address id in checkout_sessions table : %v", err)
+		return err
+	}
+
+	return tx.Commit()
 }

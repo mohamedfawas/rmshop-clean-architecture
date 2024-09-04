@@ -219,8 +219,11 @@ var (
 	ErrCouponAlreadyApplied      = errors.New("coupon already applied")
 
 	// checkout
-	ErrCheckoutNotFound = errors.New("checkout session not found")
-	ErrEmptyCheckout    = errors.New("empty checkout")
+	ErrCheckoutNotFound      = errors.New("checkout session not found")
+	ErrEmptyCheckout         = errors.New("empty checkout")
+	ErrInvalidCheckoutState  = errors.New("invalid checkout state")
+	ErrInvalidAddressInput   = errors.New("invalid address input")
+	ErrMissingRequiredFields = errors.New("missing required fields")
 
 	ErrInternalServer = errors.New("internal server error")
 )

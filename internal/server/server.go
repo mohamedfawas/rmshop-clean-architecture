@@ -69,7 +69,7 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 	couponHandler := handlers.NewCouponHandler(couponUseCase)
 	log.Println("Coupon components initialized")
 
-	checkoutUseCase := usecase.NewCheckoutUseCase(checkoutRepo, productRepo, cartRepo, couponRepo)
+	checkoutUseCase := usecase.NewCheckoutUseCase(checkoutRepo, productRepo, cartRepo, couponRepo, userRepo)
 	checkoutHandler := handlers.NewCheckoutHandler(checkoutUseCase, couponUseCase)
 	log.Println("Checkout components initialized")
 

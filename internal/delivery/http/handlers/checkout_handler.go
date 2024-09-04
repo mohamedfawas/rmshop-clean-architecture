@@ -104,3 +104,50 @@ func (h *CheckoutHandler) ApplyCoupon(w http.ResponseWriter, r *http.Request) {
 
 	api.SendResponse(w, http.StatusOK, "Coupon applied successfully", response, "")
 }
+
+func (h *CheckoutHandler) UpdateCheckoutAddress(w http.ResponseWriter, r *http.Request) {
+	// Get user ID from context (set by auth middleware)
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	if !ok {
+		api.SendResponse(w, http.StatusUnauthorized, "Unauthorized", nil, "Invalid user ID")
+		return
+	}
+
+	// Get checkout ID from URL
+	vars := mux.Vars(r)
+	checkoutID, err := strconv.ParseInt(vars["checkout_id"], 10, 64)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Invalid checkout ID", nil, "Checkout ID must be a number")
+		return
+	}
+
+	// Parse request body
+	var addressInput domain.AddressInput
+	err = json.NewDecoder(r.Body).Decode(&addressInput)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Invalid request body", nil, "Failed to parse request body")
+		return
+	}
+
+	// Call use case method
+	updatedCheckout, err := h.checkoutUseCase.UpdateCheckoutAddress(r.Context(), userID, checkoutID, addressInput)
+	if err != nil {
+		switch err {
+		case utils.ErrCheckoutNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Checkout not found", nil, "The specified checkout does not exist")
+		case utils.ErrUnauthorized:
+			api.SendResponse(w, http.StatusForbidden, "Unauthorized", nil, "You don't have permission to update this checkout")
+		case utils.ErrInvalidCheckoutState:
+			api.SendResponse(w, http.StatusBadRequest, "Invalid checkout state", nil, "The checkout is not in a valid state for address update")
+		case utils.ErrInvalidAddressInput:
+			api.SendResponse(w, http.StatusBadRequest, "Invalid address input", nil, "Please provide either an address ID or a new address")
+		case utils.ErrMissingRequiredFields:
+			api.SendResponse(w, http.StatusBadRequest, "Missing required fields", nil, "Please fill all required address fields")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Internal server error", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	api.SendResponse(w, http.StatusOK, "Address updated successfully", updatedCheckout, "")
+}
