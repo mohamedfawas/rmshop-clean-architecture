@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -50,4 +51,58 @@ func (h *OrderHandler) GetOrderConfirmation(w http.ResponseWriter, r *http.Reque
 	}
 
 	api.SendResponse(w, http.StatusOK, "Order retrieved successfully", order, "")
+}
+
+func (h *OrderHandler) GetUserOrders(w http.ResponseWriter, r *http.Request) {
+	// Extract user ID from context (set by auth middleware)
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	if !ok {
+		api.SendResponse(w, http.StatusUnauthorized, "Failed to get orders", nil, "User not authenticated")
+		return
+	}
+
+	// Parse query parameters
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	sortBy := r.URL.Query().Get("sort")
+	order := r.URL.Query().Get("order")
+	status := r.URL.Query().Get("status")
+
+	// Set default values if not provided
+	if page == 0 {
+		page = 1
+	}
+	if limit == 0 {
+		limit = 10
+	}
+
+	// Call use case method to get the orders
+	orders, totalCount, err := h.orderUseCase.GetUserOrders(r.Context(), userID, page, limit, sortBy, order, status)
+	if err != nil {
+		switch err {
+		case utils.ErrInvalidPaginationParams:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to get orders", nil, "Invalid pagination parameters")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to get orders", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	// Prepare pagination metadata
+	totalPages := (totalCount + int64(limit) - 1) / int64(limit)
+	nextPage := ""
+	if int64(page) < totalPages {
+		nextPage = fmt.Sprintf("/user/orders?page=%d&limit=%d", page+1, limit)
+	}
+
+	response := map[string]interface{}{
+		"orders":      orders,
+		"total_count": totalCount,
+		"page":        page,
+		"limit":       limit,
+		"total_pages": totalPages,
+		"next_page":   nextPage,
+	}
+
+	api.SendResponse(w, http.StatusOK, "Orders retrieved successfully", response, "")
 }

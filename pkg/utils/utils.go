@@ -228,7 +228,8 @@ var (
 	ErrInvalidAddress        = errors.New("invalid address")
 
 	// order
-	ErrOrderNotFound = errors.New("order not found")
+	ErrOrderNotFound           = errors.New("order not found")
+	ErrInvalidPaginationParams = errors.New("invalid pagination parameters")
 
 	ErrInternalServer = errors.New("internal server error")
 )

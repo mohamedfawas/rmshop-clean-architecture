@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
@@ -99,4 +100,65 @@ func (r *orderRepository) GetByID(ctx context.Context, id int64) (*domain.Order,
 
 	order.Items = items
 	return &order, nil
+}
+
+func (r *orderRepository) GetUserOrders(ctx context.Context, userID int64, page, limit int, sortBy, order, status string) ([]*domain.Order, int64, error) {
+	offset := (page - 1) * limit
+
+	// Build the base query
+	query := `
+		SELECT o.id, o.total_amount, o.payment_method, o.payment_status, o.delivery_status, o.address_id, o.created_at
+		FROM orders o
+		WHERE o.user_id = $1
+	`
+	countQuery := `SELECT COUNT(*) FROM orders o WHERE o.user_id = $1`
+	args := []interface{}{userID}
+
+	// Add status filter if provided
+	if status != "" {
+		query += " AND o.delivery_status = $2"
+		countQuery += " AND o.delivery_status = $2"
+		args = append(args, status)
+	}
+
+	// Add sorting
+	query += fmt.Sprintf(" ORDER BY o.%s %s", sortBy, order)
+
+	// Add pagination
+	query += " LIMIT $2 OFFSET $3"
+	args = append(args, limit, offset)
+
+	// Execute the count query
+	var totalCount int64
+	err := r.db.QueryRowContext(ctx, countQuery, args[:len(args)-2]...).Scan(&totalCount)
+	if err != nil {
+		log.Printf("Error counting orders: %v", err)
+		return nil, 0, err
+	}
+
+	// Execute the main query
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		log.Printf("Error querying orders: %v", err)
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var orders []*domain.Order
+	for rows.Next() {
+		var o domain.Order
+		err := rows.Scan(&o.ID, &o.TotalAmount, &o.PaymentMethod, &o.PaymentStatus, &o.DeliveryStatus, &o.AddressID, &o.CreatedAt)
+		if err != nil {
+			log.Printf("Error scanning order row: %v", err)
+			return nil, 0, err
+		}
+		orders = append(orders, &o)
+	}
+
+	if err = rows.Err(); err != nil {
+		log.Printf("Error iterating order rows: %v", err)
+		return nil, 0, err
+	}
+
+	return orders, totalCount, nil
 }

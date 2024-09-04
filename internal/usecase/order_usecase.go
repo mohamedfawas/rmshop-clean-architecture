@@ -10,6 +10,7 @@ import (
 
 type OrderUseCase interface {
 	GetOrderByID(ctx context.Context, userID, orderID int64) (*domain.Order, error)
+	GetUserOrders(ctx context.Context, userID int64, page, limit int, sortBy, order, status string) ([]*domain.Order, int64, error)
 }
 
 type orderUseCase struct {
@@ -35,4 +36,30 @@ func (u *orderUseCase) GetOrderByID(ctx context.Context, userID, orderID int64) 
 	}
 
 	return order, nil
+}
+
+func (u *orderUseCase) GetUserOrders(ctx context.Context, userID int64, page, limit int, sortBy, order, status string) ([]*domain.Order, int64, error) {
+	// Validate pagination parameters
+	if page < 1 || limit < 1 {
+		return nil, 0, utils.ErrInvalidPaginationParams
+	}
+
+	// Validate and set default values for sorting
+	if sortBy == "" {
+		sortBy = "created_at"
+	}
+	if order == "" {
+		order = "desc"
+	}
+	if order != "asc" && order != "desc" {
+		order = "desc"
+	}
+
+	// Call repository method to get orders
+	orders, totalCount, err := u.orderRepo.GetUserOrders(ctx, userID, page, limit, sortBy, order, status)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return orders, totalCount, nil
 }
