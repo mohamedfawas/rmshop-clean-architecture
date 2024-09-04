@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
@@ -13,6 +14,7 @@ type CheckoutUseCase interface {
 	CreateCheckout(ctx context.Context, userID int64) (*domain.CheckoutSession, error)
 	ApplyCoupon(ctx context.Context, userID int64, checkoutID int64, couponCode string) (*domain.ApplyCouponResponse, error)
 	UpdateCheckoutAddress(ctx context.Context, userID, checkoutID int64, addressInput domain.AddressInput) (*domain.CheckoutSession, error)
+	GetCheckoutSummary(ctx context.Context, userID, checkoutID int64) (*domain.CheckoutSummary, error)
 }
 
 type checkoutUseCase struct {
@@ -239,4 +241,20 @@ func validateAddress(address *domain.UserAddress) error {
 	}
 	// Add more validation as needed
 	return nil
+}
+
+func (u *checkoutUseCase) GetCheckoutSummary(ctx context.Context, userID, checkoutID int64) (*domain.CheckoutSummary, error) {
+	summary, err := u.checkoutRepo.GetCheckoutWithItems(ctx, checkoutID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, utils.ErrCheckoutNotFound
+		}
+		return nil, err
+	}
+
+	if summary.UserID != userID {
+		return nil, utils.ErrUnauthorized
+	}
+
+	return summary, nil
 }

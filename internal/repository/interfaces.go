@@ -114,4 +114,5 @@ type CheckoutRepository interface {
 	GetCheckoutItems(ctx context.Context, checkoutID int64) ([]*domain.CheckoutItem, error)
 	UpdateCheckoutAddress(ctx context.Context, checkoutID int64, addressID int64) error
 	AddNewAddressToCheckout(ctx context.Context, checkoutID int64, address *domain.UserAddress) error
+	GetCheckoutWithItems(ctx context.Context, checkoutID int64) (*domain.CheckoutSummary, error)
 }

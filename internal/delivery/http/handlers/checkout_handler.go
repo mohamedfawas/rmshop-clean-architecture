@@ -151,3 +151,33 @@ func (h *CheckoutHandler) UpdateCheckoutAddress(w http.ResponseWriter, r *http.R
 
 	api.SendResponse(w, http.StatusOK, "Address updated successfully", updatedCheckout, "")
 }
+
+func (h *CheckoutHandler) GetCheckoutSummary(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	if !ok {
+		api.SendResponse(w, http.StatusUnauthorized, "Failed to get checkout summary", nil, "User not authenticated")
+		return
+	}
+
+	vars := mux.Vars(r)
+	checkoutID, err := strconv.ParseInt(vars["checkout_id"], 10, 64)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to get checkout summary", nil, "Invalid checkout ID")
+		return
+	}
+
+	summary, err := h.checkoutUseCase.GetCheckoutSummary(r.Context(), userID, checkoutID)
+	if err != nil {
+		switch err {
+		case utils.ErrCheckoutNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Failed to get checkout summary", nil, "Checkout not found")
+		case utils.ErrUnauthorized:
+			api.SendResponse(w, http.StatusForbidden, "Failed to get checkout summary", nil, "You don't have permission to access this checkout")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to get checkout summary", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	api.SendResponse(w, http.StatusOK, "Checkout summary retrieved successfully", summary, "")
+}

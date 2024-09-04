@@ -219,3 +219,74 @@ func (r *checkoutRepository) AddNewAddressToCheckout(ctx context.Context, checko
 
 	return tx.Commit()
 }
+
+func (r *checkoutRepository) GetCheckoutWithItems(ctx context.Context, checkoutID int64) (*domain.CheckoutSummary, error) {
+	query := `
+        SELECT cs.id, cs.user_id, cs.total_amount, cs.discount_amount, cs.final_amount, 
+               cs.item_count, cs.status, cs.coupon_code, cs.coupon_applied, cs.address_id,
+               ci.id, ci.product_id, p.name, ci.quantity, ci.price, ci.subtotal,
+               ua.address_line1, ua.address_line2, ua.city, ua.state, ua.pincode, ua.phone_number
+        FROM checkout_sessions cs
+        LEFT JOIN checkout_items ci ON cs.id = ci.session_id
+        LEFT JOIN products p ON ci.product_id = p.id
+        LEFT JOIN user_address ua ON cs.address_id = ua.id
+        WHERE cs.id = $1
+    `
+
+	rows, err := r.db.QueryContext(ctx, query, checkoutID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var summary domain.CheckoutSummary
+	var items []*domain.CheckoutItemDetail
+	var address domain.UserAddress
+	addressSet := false
+
+	for rows.Next() {
+		var item domain.CheckoutItemDetail
+		var couponCode, addressLine1, addressLine2, city, state, pincode, phoneNumber sql.NullString
+		var addressID sql.NullInt64
+
+		err := rows.Scan(
+			&summary.ID, &summary.UserID, &summary.TotalAmount, &summary.DiscountAmount, &summary.FinalAmount,
+			&summary.ItemCount, &summary.Status, &couponCode, &summary.CouponApplied, &addressID,
+			&item.ID, &item.ProductID, &item.Name, &item.Quantity, &item.Price, &item.Subtotal,
+			&addressLine1, &addressLine2, &city, &state, &pincode, &phoneNumber,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if couponCode.Valid {
+			summary.CouponCode = couponCode.String
+		}
+
+		items = append(items, &item)
+
+		if !addressSet && addressID.Valid {
+			address = domain.UserAddress{
+				ID:           addressID.Int64,
+				AddressLine1: addressLine1.String,
+				AddressLine2: addressLine2.String,
+				City:         city.String,
+				State:        state.String,
+				PinCode:      pincode.String,
+				PhoneNumber:  phoneNumber.String,
+			}
+			addressSet = true
+		}
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	summary.Items = items
+	if addressSet {
+		summary.Address = &address
+	}
+
+	return &summary, nil
+}
