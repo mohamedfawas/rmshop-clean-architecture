@@ -124,4 +124,5 @@ type CheckoutRepository interface {
 type OrderRepository interface {
 	CreateOrder(ctx context.Context, tx *sql.Tx, order *domain.Order) error
 	AddOrderItem(ctx context.Context, tx *sql.Tx, item *domain.OrderItem) error
+	GetByID(ctx context.Context, id int64) (*domain.Order, error)
 }

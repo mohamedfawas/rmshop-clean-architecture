@@ -3,14 +3,15 @@ package domain
 import "time"
 
 type Order struct {
-	ID             int64     `json:"id"`
-	UserID         int64     `json:"user_id"`
-	TotalAmount    float64   `json:"total_amount"`
-	PaymentMethod  string    `json:"payment_method"`
-	PaymentStatus  string    `json:"payment_status"`
-	DeliveryStatus string    `json:"delivery_status"`
-	AddressID      int64     `json:"address_id"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID             int64       `json:"id"`
+	UserID         int64       `json:"user_id"`
+	TotalAmount    float64     `json:"total_amount"`
+	PaymentMethod  string      `json:"payment_method"`
+	PaymentStatus  string      `json:"payment_status"`
+	DeliveryStatus string      `json:"delivery_status"`
+	AddressID      int64       `json:"address_id"`
+	CreatedAt      time.Time   `json:"created_at"`
+	Items          []OrderItem `json:"items"`
 }
 
 type OrderItem struct {

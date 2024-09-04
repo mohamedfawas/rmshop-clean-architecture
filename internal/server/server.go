@@ -76,6 +76,10 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 	checkoutHandler := handlers.NewCheckoutHandler(checkoutUseCase, couponUseCase)
 	log.Println("Checkout components initialized")
 
+	orderUseCase := usecase.NewOrderUseCase(orderRepo)
+	orderHandler := handlers.NewOrderHandler(orderUseCase)
+	log.Println("Order components initialized")
+
 	// Initialize the router with all handlers
 	router := httpDelivery.NewRouter(
 		userHandler,
@@ -87,6 +91,7 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 		cartHandler,
 		couponHandler,
 		checkoutHandler,
+		orderHandler,
 	)
 	log.Println("Router initialized")
 

@@ -227,6 +227,9 @@ var (
 	ErrOrderAlreadyPlaced    = errors.New("order already placed")
 	ErrInvalidAddress        = errors.New("invalid address")
 
+	// order
+	ErrOrderNotFound = errors.New("order not found")
+
 	ErrInternalServer = errors.New("internal server error")
 )
 

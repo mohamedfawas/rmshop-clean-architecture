@@ -6,6 +6,7 @@ import (
 	"log"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/utils"
 )
 
 type orderRepository struct {
@@ -41,4 +42,61 @@ func (r *orderRepository) AddOrderItem(ctx context.Context, tx *sql.Tx, item *do
 		log.Printf("error while adding order item entry : %v", err)
 	}
 	return err
+}
+
+func (r *orderRepository) GetByID(ctx context.Context, id int64) (*domain.Order, error) {
+	query := `
+        SELECT id, user_id, total_amount, payment_method, payment_status, delivery_status, address_id, created_at
+        FROM orders
+        WHERE id = $1
+    `
+	var order domain.Order
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&order.ID,
+		&order.UserID,
+		&order.TotalAmount,
+		&order.PaymentMethod,
+		&order.PaymentStatus,
+		&order.DeliveryStatus,
+		&order.AddressID,
+		&order.CreatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, utils.ErrOrderNotFound
+		}
+		log.Printf("Error retrieving order: %v", err)
+		return nil, err
+	}
+
+	// Fetch order items
+	itemsQuery := `
+        SELECT id, product_id, quantity, price
+        FROM order_items
+        WHERE order_id = $1
+    `
+	rows, err := r.db.QueryContext(ctx, itemsQuery, id)
+	if err != nil {
+		log.Printf("Error retrieving order items: %v", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []domain.OrderItem
+	for rows.Next() {
+		var item domain.OrderItem
+		err := rows.Scan(&item.ID, &item.ProductID, &item.Quantity, &item.Price)
+		if err != nil {
+			log.Printf("Error scanning order item: %v", err)
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err = rows.Err(); err != nil {
+		log.Printf("Error iterating order items: %v", err)
+		return nil, err
+	}
+
+	order.Items = items
+	return &order, nil
 }

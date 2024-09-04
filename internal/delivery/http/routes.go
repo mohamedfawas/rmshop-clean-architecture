@@ -50,7 +50,8 @@ func NewRouter(userHandler *handlers.UserHandler,
 	tokenBlacklist *auth.TokenBlacklist,
 	cartHandler *handlers.CartHandler,
 	couponHandler *handlers.CouponHandler,
-	checkoutHandler *handlers.CheckoutHandler) http.Handler {
+	checkoutHandler *handlers.CheckoutHandler,
+	orderHandler *handlers.OrderHandler) http.Handler {
 
 	log.Println("Setting up router...")
 	r := mux.NewRouter()
@@ -128,6 +129,7 @@ func NewRouter(userHandler *handlers.UserHandler,
 	r.HandleFunc("/user/checkout/{checkout_id}/address", chainMiddleware(jwtAuth, userAuth)(checkoutHandler.UpdateCheckoutAddress)).Methods("PATCH")
 	r.HandleFunc("/user/checkout/{checkout_id}/summary", chainMiddleware(jwtAuth, userAuth)(checkoutHandler.GetCheckoutSummary)).Methods("GET")
 	r.HandleFunc("/user/checkout/{checkout_id}/place-order", chainMiddleware(jwtAuth, userAuth)(checkoutHandler.PlaceOrder)).Methods("POST")
+	r.HandleFunc("/user/orders/{order_id}", chainMiddleware(jwtAuth, userAuth)(orderHandler.GetOrderConfirmation)).Methods("GET")
 
 	// Public routes
 	r.HandleFunc("/user/forgot-password", middleware.RateLimitMiddleware(userHandler.ForgotPassword, otpResendLimiter)).Methods("POST")
