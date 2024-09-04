@@ -126,4 +126,6 @@ type OrderRepository interface {
 	AddOrderItem(ctx context.Context, tx *sql.Tx, item *domain.OrderItem) error
 	GetByID(ctx context.Context, id int64) (*domain.Order, error)
 	GetUserOrders(ctx context.Context, userID int64, page, limit int, sortBy, order, status string) ([]*domain.Order, int64, error)
+	UpdateOrderStatus(ctx context.Context, orderID int64, status string) error
+	UpdateRefundStatus(ctx context.Context, orderID int64, refundStatus sql.NullString) error
 }

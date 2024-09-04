@@ -228,8 +228,11 @@ var (
 	ErrInvalidAddress        = errors.New("invalid address")
 
 	// order
-	ErrOrderNotFound           = errors.New("order not found")
-	ErrInvalidPaginationParams = errors.New("invalid pagination parameters")
+	ErrOrderNotFound             = errors.New("order not found")
+	ErrInvalidPaginationParams   = errors.New("invalid pagination parameters")
+	ErrOrderAlreadyCancelled     = errors.New("order is already cancelled")
+	ErrOrderNotCancellable       = errors.New("order cannot be cancelled in its current state")
+	ErrCancellationPeriodExpired = errors.New("cancellation period has expired for this order")
 
 	ErrInternalServer = errors.New("internal server error")
 )

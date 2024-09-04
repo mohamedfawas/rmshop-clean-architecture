@@ -106,3 +106,42 @@ func (h *OrderHandler) GetUserOrders(w http.ResponseWriter, r *http.Request) {
 
 	api.SendResponse(w, http.StatusOK, "Orders retrieved successfully", response, "")
 }
+
+func (h *OrderHandler) CancelOrder(w http.ResponseWriter, r *http.Request) {
+	// Extract user ID from context (set by auth middleware)
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	if !ok {
+		api.SendResponse(w, http.StatusUnauthorized, "Failed to cancel order", nil, "User not authenticated")
+		return
+	}
+
+	// Extract order ID from URL
+	vars := mux.Vars(r)
+	orderID, err := strconv.ParseInt(vars["orderId"], 10, 64)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to cancel order", nil, "Invalid order ID format")
+		return
+	}
+
+	// Call use case method to cancel the order
+	result, err := h.orderUseCase.CancelOrder(r.Context(), userID, orderID)
+	if err != nil {
+		switch err {
+		case utils.ErrOrderNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Failed to cancel order", nil, "Order not found")
+		case utils.ErrUnauthorized:
+			api.SendResponse(w, http.StatusForbidden, "Failed to cancel order", nil, "You are not authorized to cancel this order")
+		case utils.ErrOrderAlreadyCancelled:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to cancel order", nil, "Order is already cancelled")
+		case utils.ErrOrderNotCancellable:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to cancel order", nil, "Order cannot be cancelled in its current state")
+		case utils.ErrCancellationPeriodExpired:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to cancel order", nil, "Cancellation period has expired for this order")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to cancel order", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	api.SendResponse(w, http.StatusOK, "Order cancelled successfully", result, "")
+}

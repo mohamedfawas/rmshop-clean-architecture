@@ -47,7 +47,8 @@ func (r *orderRepository) AddOrderItem(ctx context.Context, tx *sql.Tx, item *do
 
 func (r *orderRepository) GetByID(ctx context.Context, id int64) (*domain.Order, error) {
 	query := `
-        SELECT id, user_id, total_amount, payment_method, payment_status, delivery_status, address_id, created_at
+        SELECT id, user_id, total_amount, payment_method, payment_status, delivery_status, 
+               order_status, refund_status, address_id, created_at, updated_at
         FROM orders
         WHERE id = $1
     `
@@ -59,8 +60,11 @@ func (r *orderRepository) GetByID(ctx context.Context, id int64) (*domain.Order,
 		&order.PaymentMethod,
 		&order.PaymentStatus,
 		&order.DeliveryStatus,
+		&order.OrderStatus,
+		&order.RefundStatus,
 		&order.AddressID,
 		&order.CreatedAt,
+		&order.UpdatedAt,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -161,4 +165,32 @@ func (r *orderRepository) GetUserOrders(ctx context.Context, userID int64, page,
 	}
 
 	return orders, totalCount, nil
+}
+
+func (r *orderRepository) UpdateOrderStatus(ctx context.Context, orderID int64, status string) error {
+	query := `
+        UPDATE orders
+        SET order_status = $1, updated_at = NOW()
+        WHERE id = $2
+    `
+	_, err := r.db.ExecContext(ctx, query, status, orderID)
+	if err != nil {
+		log.Printf("Error updating order status: %v", err)
+		return err
+	}
+	return nil
+}
+
+func (r *orderRepository) UpdateRefundStatus(ctx context.Context, orderID int64, refundStatus sql.NullString) error {
+	query := `
+		UPDATE orders
+		SET refund_status = $1, updated_at = NOW()
+		WHERE id = $2
+	`
+	_, err := r.db.ExecContext(ctx, query, refundStatus, orderID)
+	if err != nil {
+		log.Printf("Error updating refund status: %v", err)
+		return err
+	}
+	return nil
 }
