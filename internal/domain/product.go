@@ -42,3 +42,17 @@ type ProductQueryParams struct {
 	UpdatedBefore string
 	Categories    []string
 }
+
+type PublicProduct struct {
+	ID              int64     `json:"id"`
+	Name            string    `json:"name"`
+	Slug            string    `json:"slug"`
+	Description     string    `json:"description"`
+	Price           float64   `json:"price"`
+	StockQuantity   int       `json:"stock_quantity"`
+	CategoryName    string    `json:"category_name"`
+	SubcategoryName string    `json:"subcategory_name"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+	Images          []string  `json:"images"`
+}

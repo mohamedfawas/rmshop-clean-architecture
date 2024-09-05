@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -112,4 +113,128 @@ func (h *CouponHandler) ApplyCoupon(w http.ResponseWriter, r *http.Request) {
 	}
 
 	api.SendResponse(w, http.StatusOK, "Coupon applied successfully", response, "")
+}
+
+func (h *CouponHandler) GetAllCoupons(w http.ResponseWriter, r *http.Request) {
+	// Check if the user is an admin
+	userRole, ok := r.Context().Value(middleware.UserRoleKey).(string)
+	if !ok || userRole != "admin" {
+		api.SendResponse(w, http.StatusForbidden, "Access denied", nil, "Admin privileges required")
+		return
+	}
+
+	// Parse query parameters
+	params := parseGetCouponsQueryParams(r)
+
+	// Call use case method
+	coupons, totalCount, err := h.couponUseCase.GetAllCoupons(r.Context(), params)
+	if err != nil {
+		api.SendResponse(w, http.StatusInternalServerError, "Failed to retrieve coupons", nil, err.Error())
+		return
+	}
+
+	// Prepare response
+	response := map[string]interface{}{
+		"coupons":     coupons,
+		"total_count": totalCount,
+		"page":        params.Page,
+		"limit":       params.Limit,
+		"total_pages": (totalCount + int64(params.Limit) - 1) / int64(params.Limit),
+	}
+
+	api.SendResponse(w, http.StatusOK, "Coupons retrieved successfully", response, "")
+}
+
+func parseGetCouponsQueryParams(r *http.Request) domain.CouponQueryParams {
+	params := domain.CouponQueryParams{
+		Page:  1,
+		Limit: 10,
+	}
+
+	if page, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && page > 0 {
+		params.Page = page
+	}
+
+	if limit, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && limit > 0 {
+		params.Limit = limit
+	}
+
+	params.Sort = r.URL.Query().Get("sort")
+	params.Order = r.URL.Query().Get("order")
+	params.Status = r.URL.Query().Get("status")
+	params.Search = r.URL.Query().Get("search")
+
+	if minDiscount, err := strconv.ParseFloat(r.URL.Query().Get("min_discount"), 64); err == nil {
+		params.MinDiscount = &minDiscount
+	}
+
+	if maxDiscount, err := strconv.ParseFloat(r.URL.Query().Get("max_discount"), 64); err == nil {
+		params.MaxDiscount = &maxDiscount
+	}
+
+	return params
+}
+
+func (h *CouponHandler) UpdateCoupon(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	couponID, err := strconv.ParseInt(vars["coupon_id"], 10, 64)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to update coupon", nil, "Invalid coupon ID")
+		return
+	}
+
+	var updateInput domain.CouponUpdateInput
+	err = json.NewDecoder(r.Body).Decode(&updateInput)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to update coupon", nil, "Invalid request body")
+		return
+	}
+
+	updatedCoupon, err := h.couponUseCase.UpdateCoupon(r.Context(), couponID, updateInput)
+	if err != nil {
+		switch err {
+		case utils.ErrCouponNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Failed to update coupon", nil, "Coupon not found")
+		case utils.ErrInvalidCouponCode:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update coupon", nil, "Invalid coupon code format")
+		case utils.ErrInvalidDiscountPercentage:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update coupon", nil, "Invalid discount percentage")
+		case utils.ErrInvalidMinOrderAmount:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update coupon", nil, "Invalid minimum order amount")
+		case utils.ErrInvalidExpiryDate:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update coupon", nil, "Invalid expiry date")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to update coupon", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	api.SendResponse(w, http.StatusOK, "Coupon updated successfully", updatedCoupon, "")
+}
+
+func (h *CouponHandler) SoftDeleteCoupon(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	couponID, err := strconv.ParseInt(vars["coupon_id"], 10, 64)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to delete coupon", nil, "Invalid coupon ID format")
+		return
+	}
+
+	err = h.couponUseCase.SoftDeleteCoupon(r.Context(), couponID)
+	if err != nil {
+		switch err {
+		case utils.ErrCouponNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Failed to delete coupon", nil, "Coupon not found")
+		case utils.ErrCouponAlreadyDeleted:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to delete coupon", nil, "Coupon is already soft deleted")
+		case utils.ErrCouponInUse:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to delete coupon", nil, "Cannot delete coupon as it is currently in use")
+		default:
+			log.Printf("error : %v", err)
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to delete coupon", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	api.SendResponse(w, http.StatusOK, "Coupon successfully soft deleted", nil, "")
 }

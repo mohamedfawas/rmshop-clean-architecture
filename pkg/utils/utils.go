@@ -217,6 +217,8 @@ var (
 	ErrInvalidMinOrderAmount     = errors.New("invalid minimum order amount")
 	ErrInvalidExpiryDate         = errors.New("invalid expiry date")
 	ErrCouponAlreadyApplied      = errors.New("coupon already applied")
+	ErrCouponAlreadyDeleted      = errors.New("coupon is already soft deleted")
+	ErrCouponInUse               = errors.New("coupon is currently in use")
 
 	// checkout
 	ErrCheckoutNotFound      = errors.New("checkout session not found")

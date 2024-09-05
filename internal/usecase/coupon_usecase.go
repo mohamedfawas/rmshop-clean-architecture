@@ -14,6 +14,9 @@ import (
 type CouponUseCase interface {
 	CreateCoupon(ctx context.Context, input domain.CreateCouponInput) (*domain.Coupon, error)
 	ApplyCoupon(ctx context.Context, userID int64, checkoutID int64, couponCode string) (*domain.ApplyCouponResponse, error)
+	GetAllCoupons(ctx context.Context, params domain.CouponQueryParams) ([]*domain.Coupon, int64, error)
+	UpdateCoupon(ctx context.Context, couponID int64, input domain.CouponUpdateInput) (*domain.Coupon, error)
+	SoftDeleteCoupon(ctx context.Context, couponID int64) error
 }
 
 type couponUseCase struct {
@@ -151,4 +154,114 @@ func (u *couponUseCase) ApplyCoupon(ctx context.Context, userID int64, checkoutI
 		CheckoutSession: *checkout,
 		Message:         message,
 	}, nil
+}
+
+func (u *couponUseCase) GetAllCoupons(ctx context.Context, params domain.CouponQueryParams) ([]*domain.Coupon, int64, error) {
+	// Validate and set default values
+	if params.Page < 1 {
+		params.Page = 1
+	}
+	if params.Limit < 1 {
+		params.Limit = 10
+	} else if params.Limit > 100 {
+		params.Limit = 100
+	}
+
+	// Validate sorting parameters
+	validSortFields := map[string]bool{"created_at": true, "discount_percentage": true, "min_order_amount": true}
+	if params.Sort != "" && !validSortFields[params.Sort] {
+		params.Sort = "created_at"
+	}
+	if params.Order != "asc" && params.Order != "desc" {
+		params.Order = "desc"
+	}
+
+	// Set the current time for filtering out expired coupons
+	params.CurrentTime = time.Now()
+
+	// Call repository method
+	return u.couponRepo.GetAllCoupons(ctx, params)
+}
+
+func (u *couponUseCase) UpdateCoupon(ctx context.Context, couponID int64, input domain.CouponUpdateInput) (*domain.Coupon, error) {
+	coupon, err := u.couponRepo.GetByID(ctx, couponID)
+	if err != nil {
+		return nil, utils.ErrCouponNotFound
+	}
+
+	if input.Code != nil {
+		if err := validator.ValidateCouponCode(*input.Code); err != nil {
+			return nil, utils.ErrInvalidCouponCode
+		}
+		coupon.Code = *input.Code
+	}
+
+	if input.DiscountPercentage != nil {
+		if err := validator.ValidateDiscountPercentage(*input.DiscountPercentage); err != nil {
+			return nil, utils.ErrInvalidDiscountPercentage
+		}
+		coupon.DiscountPercentage = *input.DiscountPercentage
+	}
+
+	if input.MinOrderAmount != nil {
+		if err := validator.ValidateMinOrderAmount(*input.MinOrderAmount); err != nil {
+			return nil, utils.ErrInvalidMinOrderAmount
+		}
+		coupon.MinOrderAmount = *input.MinOrderAmount
+	}
+
+	if input.ExpiresAt != nil {
+		expiryTime, err := time.Parse("2006-01-02", *input.ExpiresAt)
+		if err != nil {
+			return nil, utils.ErrInvalidExpiryDate
+		}
+		// Set the time to end of day (23:59:59)
+		expiryTime = time.Date(expiryTime.Year(), expiryTime.Month(), expiryTime.Day(), 23, 59, 59, 0, time.UTC)
+		if expiryTime.Before(time.Now()) {
+			return nil, utils.ErrInvalidExpiryDate
+		}
+		coupon.ExpiresAt = &expiryTime
+	}
+
+	coupon.UpdatedAt = time.Now()
+
+	err = u.couponRepo.Update(ctx, coupon)
+	if err != nil {
+		return nil, err
+	}
+
+	return coupon, nil
+}
+
+func (u *couponUseCase) SoftDeleteCoupon(ctx context.Context, couponID int64) error {
+	// Check if the coupon exists
+	coupon, err := u.couponRepo.GetByID(ctx, couponID)
+	if err != nil {
+		if err == utils.ErrCouponNotFound {
+			return utils.ErrCouponNotFound
+		}
+		return err
+	}
+
+	// Check if the coupon is already soft deleted
+	if coupon.IsDeleted {
+		return utils.ErrCouponAlreadyDeleted
+	}
+
+	// Check if the coupon is in use
+	isInUse, err := u.couponRepo.IsCouponInUse(ctx, couponID)
+	if err != nil {
+		return err
+	}
+	if isInUse {
+		return utils.ErrCouponInUse
+	}
+
+	// Perform soft delete
+	err = u.couponRepo.SoftDelete(ctx, couponID)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

@@ -61,3 +61,28 @@ func isValidExpiryDate(expiresAtStr string) bool {
 
 	return expiresAt.After(time.Now().UTC())
 }
+
+func ValidateCouponCode(code string) error {
+	if len(code) < 3 || len(code) > 20 {
+		return utils.ErrInvalidCouponCode
+	}
+	matched, _ := regexp.MatchString(`^[A-Z0-9]+$`, code)
+	if !matched {
+		return utils.ErrInvalidCouponCode
+	}
+	return nil
+}
+
+func ValidateDiscountPercentage(percentage float64) error {
+	if percentage <= 0 || percentage > 100 {
+		return utils.ErrInvalidDiscountPercentage
+	}
+	return nil
+}
+
+func ValidateMinOrderAmount(amount float64) error {
+	if amount < 0 {
+		return utils.ErrInvalidMinOrderAmount
+	}
+	return nil
+}

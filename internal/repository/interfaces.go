@@ -87,6 +87,7 @@ type ProductRepository interface {
 	UpdateStock(ctx context.Context, tx *sql.Tx, productID int64, quantityChange int) error
 	UpdateStockQuantity(ctx context.Context, productID int64, quantity int) error
 	GetProducts(ctx context.Context, params domain.ProductQueryParams) ([]*domain.Product, int64, error)
+	GetPublicProductByID(ctx context.Context, id int64) (*domain.PublicProduct, error)
 }
 
 type CartRepository interface {
@@ -107,6 +108,11 @@ type CouponRepository interface {
 	Create(ctx context.Context, coupon *domain.Coupon) error
 	GetByCode(ctx context.Context, code string) (*domain.Coupon, error)
 	IsApplied(ctx context.Context, checkoutID int64) (bool, error)
+	GetAllCoupons(ctx context.Context, params domain.CouponQueryParams) ([]*domain.Coupon, int64, error)
+	GetByID(ctx context.Context, id int64) (*domain.Coupon, error)
+	Update(ctx context.Context, coupon *domain.Coupon) error
+	SoftDelete(ctx context.Context, couponID int64) error
+	IsCouponInUse(ctx context.Context, couponID int64) (bool, error)
 }
 
 type CheckoutRepository interface {

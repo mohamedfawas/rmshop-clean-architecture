@@ -566,3 +566,54 @@ func (r *productRepository) GetProducts(ctx context.Context, params domain.Produ
 
 	return products, totalCount, nil
 }
+
+func (r *productRepository) GetPublicProductByID(ctx context.Context, id int64) (*domain.PublicProduct, error) {
+	query := `
+        SELECT p.id, p.name, p.slug, p.description, p.price, p.stock_quantity, 
+               p.created_at, p.updated_at, c.name as category_name, sc.name as subcategory_name
+        FROM products p
+        JOIN sub_categories sc ON p.sub_category_id = sc.id
+        JOIN categories c ON sc.parent_category_id = c.id
+        WHERE p.id = $1 AND p.is_deleted = false
+    `
+
+	var product domain.PublicProduct
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&product.ID, &product.Name, &product.Slug, &product.Description,
+		&product.Price, &product.StockQuantity, &product.CreatedAt,
+		&product.UpdatedAt, &product.CategoryName, &product.SubcategoryName,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, utils.ErrProductNotFound
+		}
+		return nil, err
+	}
+
+	// Fetch product images
+	imagesQuery := `
+        SELECT image_url
+        FROM product_images
+        WHERE product_id = $1
+        ORDER BY is_primary DESC, created_at ASC
+    `
+	rows, err := r.db.QueryContext(ctx, imagesQuery, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var images []string
+	for rows.Next() {
+		var imageURL string
+		if err := rows.Scan(&imageURL); err != nil {
+			return nil, err
+		}
+		images = append(images, imageURL)
+	}
+
+	product.Images = images
+
+	return &product, nil
+}

@@ -26,6 +26,7 @@ type ProductUseCase interface {
 	DeleteProductImage(ctx context.Context, productID, imageID int64) error
 	GetAllProducts(ctx context.Context) ([]*domain.Product, error)
 	GetProducts(ctx context.Context, params domain.ProductQueryParams) ([]*domain.Product, int64, error)
+	GetPublicProductByID(ctx context.Context, id int64) (*domain.PublicProduct, error)
 }
 
 type productUseCase struct {
@@ -464,4 +465,16 @@ func (u *productUseCase) GetProducts(ctx context.Context, params domain.ProductQ
 
 	// Call repository method
 	return u.productRepo.GetProducts(ctx, params)
+}
+
+func (u *productUseCase) GetPublicProductByID(ctx context.Context, id int64) (*domain.PublicProduct, error) {
+	product, err := u.productRepo.GetPublicProductByID(ctx, id)
+	if err != nil {
+		if err == utils.ErrProductNotFound {
+			return nil, utils.ErrProductNotFound
+		}
+		return nil, fmt.Errorf("failed to retrieve product: %w", err)
+	}
+
+	return product, nil
 }

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"strconv"
@@ -427,4 +428,28 @@ func parseQueryParams(r *http.Request) domain.ProductQueryParams {
 	params.Categories = r.URL.Query()["category"]
 
 	return params
+}
+
+func (h *ProductHandler) GetPublicProductByID(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	productID, err := strconv.ParseInt(vars["productId"], 10, 64)
+	if err != nil {
+		log.Printf("Invalid product ID: %v", err)
+		api.SendResponse(w, http.StatusBadRequest, "Invalid product ID", nil, "Product ID must be a number")
+		return
+	}
+
+	product, err := h.productUseCase.GetPublicProductByID(r.Context(), productID)
+	if err != nil {
+		switch err {
+		case utils.ErrProductNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Product not found", nil, "The requested product does not exist or has been deleted")
+		default:
+			log.Printf("Error retrieving product: %v", err)
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to retrieve product", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	api.SendResponse(w, http.StatusOK, "Product retrieved successfully", product, "")
 }

@@ -100,6 +100,9 @@ func NewRouter(userHandler *handlers.UserHandler,
 
 	// Admin routes: coupon routes
 	r.HandleFunc("/admin/coupons", chainMiddleware(jwtAuth, adminAuth)(couponHandler.CreateCoupon)).Methods("POST")
+	r.HandleFunc("/admin/coupons", chainMiddleware(jwtAuth, adminAuth)(couponHandler.GetAllCoupons)).Methods("GET")
+	r.HandleFunc("/admin/coupons/{coupon_id}", chainMiddleware(jwtAuth, adminAuth)(couponHandler.UpdateCoupon)).Methods("PATCH")
+	r.HandleFunc("/admin/coupons/{coupon_id}", chainMiddleware(jwtAuth, adminAuth)(couponHandler.SoftDeleteCoupon)).Methods("DELETE")
 
 	// admin : order management
 	r.HandleFunc("/admin/orders", chainMiddleware(jwtAuth, adminAuth)(orderHandler.GetOrders)).Methods("GET")
@@ -146,6 +149,7 @@ func NewRouter(userHandler *handlers.UserHandler,
 	r.HandleFunc("/user/forgot-password", middleware.RateLimitMiddleware(userHandler.ForgotPassword, otpResendLimiter)).Methods("POST")
 	r.HandleFunc("/user/reset-password", userHandler.ResetPassword).Methods("POST")
 	r.HandleFunc("/products", productHandler.GetProducts).Methods("GET")
+	r.HandleFunc("/products/{productId}", productHandler.GetPublicProductByID).Methods("GET")
 
 	log.Println("Router setup complete")
 	return r
