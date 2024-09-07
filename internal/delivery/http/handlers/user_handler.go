@@ -435,10 +435,6 @@ func (h *UserHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//trim space and convert to lower case
-	updateData.Name = strings.ToLower(strings.TrimSpace(updateData.Name))
-	updateData.PhoneNumber = strings.TrimSpace(updateData.PhoneNumber)
-
 	//no input data
 	if updateData.Name == "" && updateData.PhoneNumber == "" {
 		api.SendResponse(w, http.StatusBadRequest, "Failed to update user profile", nil, "No update data provided")
@@ -447,6 +443,7 @@ func (h *UserHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 
 	//validate the updated name
 	if updateData.Name != "" {
+		updateData.Name = strings.ToLower(strings.TrimSpace(updateData.Name))
 		err = validator.ValidateUserName(updateData.Name)
 		if err != nil {
 			switch err {
@@ -464,6 +461,7 @@ func (h *UserHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if updateData.PhoneNumber != "" {
+		updateData.PhoneNumber = strings.TrimSpace(updateData.PhoneNumber)
 		//validate updated phone number
 		err = validator.ValidatePhoneNumber(updateData.PhoneNumber)
 		if err != nil {

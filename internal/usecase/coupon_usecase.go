@@ -11,14 +11,6 @@ import (
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/validator"
 )
 
-type CouponUseCase interface {
-	CreateCoupon(ctx context.Context, input domain.CreateCouponInput) (*domain.Coupon, error)
-	ApplyCoupon(ctx context.Context, userID int64, checkoutID int64, couponCode string) (*domain.ApplyCouponResponse, error)
-	GetAllCoupons(ctx context.Context, params domain.CouponQueryParams) ([]*domain.Coupon, int64, error)
-	UpdateCoupon(ctx context.Context, couponID int64, input domain.CouponUpdateInput) (*domain.Coupon, error)
-	SoftDeleteCoupon(ctx context.Context, couponID int64) error
-}
-
 type couponUseCase struct {
 	couponRepo   repository.CouponRepository
 	checkoutRepo repository.CheckoutRepository
@@ -31,15 +23,33 @@ func NewCouponUseCase(couponRepo repository.CouponRepository, checkoutRepo repos
 	}
 }
 
+// CreateCoupon handles the creation of a new coupon by validating the input,
+// checking for existing coupons with the same code,
+// and inserting the new coupon into the database.
+// It returns the created coupon if successful or an error if validation fails,
+// the coupon already exists, or if there is an issue with database operations.
+//
+// Parameters:
+// - ctx: context for managing request-scoped values and cancellation signals.
+// - input: domain.CreateCouponInput object containing the details of the coupon to be created.
+//
+// Returns:
+// - *domain.Coupon: a pointer to the created Coupon object if the creation is successful.
+// - error: an error if the creation fails due to validation errors, existing coupon with the same code, or database errors.
+//
+// Possible errors:
+// - utils.ErrInvalidExpiryDate: returned if the provided expiry date is invalid and cannot be parsed.
+// - utils.ErrDuplicateCouponCode: returned if a coupon with the same code already exists in the database.
+// - error: returned if any other error occurs during the coupon retrieval or creation process.
 func (u *couponUseCase) CreateCoupon(ctx context.Context, input domain.CreateCouponInput) (*domain.Coupon, error) {
-	// Validate input
+	// Validate input coupon details
 	if err := validator.ValidateCouponInput(input); err != nil {
 		log.Printf("validation error : %v", err)
 		return nil, err
 	}
 
 	// Parse the expiry date
-	var expiresAt *time.Time
+	var expiresAt *time.Time // expiry date can be null
 	if input.ExpiresAt != "" {
 		parsedTime, err := time.Parse("2006-01-02", input.ExpiresAt)
 		if err != nil {
@@ -50,10 +60,11 @@ func (u *couponUseCase) CreateCoupon(ctx context.Context, input domain.CreateCou
 
 	// Check if coupon with the same code already exists
 	existingCoupon, err := u.couponRepo.GetByCode(ctx, input.Code)
-	if err != nil && err != utils.ErrCouponNotFound {
+	if err != nil && err != utils.ErrCouponNotFound { // no problem if coupon is not found
 		log.Printf("error while retrieving the coupon details using id : %v", err)
 		return nil, err
 	}
+	// if coupon already exists
 	if existingCoupon != nil {
 		return nil, utils.ErrDuplicateCouponCode
 	}
@@ -73,7 +84,7 @@ func (u *couponUseCase) CreateCoupon(ctx context.Context, input domain.CreateCou
 	// Save coupon to database
 	err = u.couponRepo.Create(ctx, coupon)
 	if err != nil {
-		log.Printf("error while creating coupon entry in db : %v", err)
+		log.Printf("error while creating coupon entry in database : %v", err)
 		return nil, err
 	}
 
@@ -156,6 +167,22 @@ func (u *couponUseCase) ApplyCoupon(ctx context.Context, userID int64, checkoutI
 	}, nil
 }
 
+// GetAllCoupons validates the query parameters, sets default values for pagination and sorting,
+// and delegates the query execution to the coupon repository to retrieve a list of coupons.
+// It ensures that pagination limits, sorting fields, and sort order are within valid bounds
+// and sets the current time to filter out expired coupons.
+//
+// Parameters:
+//   - ctx: A context object that manages request deadlines, cancelation signals,
+//          and other request-scoped values.
+//   - params: A CouponQueryParams struct containing filters such as status,
+//             discount range, pagination, and sorting.
+//
+// Returns:
+//   - []*domain.Coupon: A slice of pointers to Coupon objects that match the query parameters.
+//   - int64: The total count of matching coupons for pagination purposes.
+//   - error: Returns an error if any issue occurs during query validation or execution.
+
 func (u *couponUseCase) GetAllCoupons(ctx context.Context, params domain.CouponQueryParams) ([]*domain.Coupon, int64, error) {
 	// Validate and set default values
 	if params.Page < 1 {
@@ -163,26 +190,40 @@ func (u *couponUseCase) GetAllCoupons(ctx context.Context, params domain.CouponQ
 	}
 	if params.Limit < 1 {
 		params.Limit = 10
-	} else if params.Limit > 100 {
-		params.Limit = 100
+	} else if params.Limit > 20 {
+		params.Limit = 20
 	}
 
-	// Validate sorting parameters
+	// Define valid sorting fields for coupons (e.g., by creation date, discount, or minimum order amount).
 	validSortFields := map[string]bool{"created_at": true, "discount_percentage": true, "min_order_amount": true}
+	// If the `Sort` field is provided but is not one of the valid fields, default it to "created_at".
 	if params.Sort != "" && !validSortFields[params.Sort] {
 		params.Sort = "created_at"
 	}
+
 	if params.Order != "asc" && params.Order != "desc" {
 		params.Order = "desc"
 	}
 
-	// Set the current time for filtering out expired coupons
-	params.CurrentTime = time.Now()
+	// Set the current time to filter out expired coupons later in the repository query.
+	params.CurrentTime = time.Now().UTC()
 
-	// Call repository method
 	return u.couponRepo.GetAllCoupons(ctx, params)
 }
 
+// UpdateCoupon updates an existing coupon with the provided input data.
+// It validates the input fields before updating the coupon and ensures that the
+// coupon code, discount percentage, minimum order amount, and expiry date are valid.
+//
+// Parameters:
+//   - ctx: The context for managing request flow, cancellation, and timeouts.
+//   - couponID: The ID of the coupon to be updated.
+//   - input: A domain.CouponUpdateInput struct containing the fields to update.
+//
+// Returns:
+//   - *domain.Coupon: Returns the updated coupon object upon successful update.
+//   - error: Returns an error if the coupon is not found, if validation fails, or if
+//     there is an issue updating the coupon in the repository.
 func (u *couponUseCase) UpdateCoupon(ctx context.Context, couponID int64, input domain.CouponUpdateInput) (*domain.Coupon, error) {
 	coupon, err := u.couponRepo.GetByID(ctx, couponID)
 	if err != nil {
@@ -223,45 +264,13 @@ func (u *couponUseCase) UpdateCoupon(ctx context.Context, couponID int64, input 
 		coupon.ExpiresAt = &expiryTime
 	}
 
-	coupon.UpdatedAt = time.Now()
+	coupon.UpdatedAt = time.Now().UTC()
 
 	err = u.couponRepo.Update(ctx, coupon)
 	if err != nil {
+		log.Printf("error : %v", err)
 		return nil, err
 	}
 
 	return coupon, nil
-}
-
-func (u *couponUseCase) SoftDeleteCoupon(ctx context.Context, couponID int64) error {
-	// Check if the coupon exists
-	coupon, err := u.couponRepo.GetByID(ctx, couponID)
-	if err != nil {
-		if err == utils.ErrCouponNotFound {
-			return utils.ErrCouponNotFound
-		}
-		return err
-	}
-
-	// Check if the coupon is already soft deleted
-	if coupon.IsDeleted {
-		return utils.ErrCouponAlreadyDeleted
-	}
-
-	// Check if the coupon is in use
-	isInUse, err := u.couponRepo.IsCouponInUse(ctx, couponID)
-	if err != nil {
-		return err
-	}
-	if isInUse {
-		return utils.ErrCouponInUse
-	}
-
-	// Perform soft delete
-	err = u.couponRepo.SoftDelete(ctx, couponID)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }

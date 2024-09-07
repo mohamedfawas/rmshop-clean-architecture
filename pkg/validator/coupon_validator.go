@@ -34,7 +34,7 @@ func ValidateCouponInput(input domain.CreateCouponInput) error {
 
 // isValidCouponCode checks if the coupon code is alphanumeric and between 4 to 20 characters
 func isValidCouponCode(code string) bool {
-	match, _ := regexp.MatchString(`^[A-Z0-9]{4,20}$`, code)
+	match, _ := regexp.MatchString(`^[a-zA-Z0-9]{4,20}$`, code)
 	return match
 }
 
@@ -45,13 +45,13 @@ func isValidDiscountPercentage(percentage float64) bool {
 
 // isValidMinOrderAmount checks if the minimum order amount is non-negative
 func isValidMinOrderAmount(amount float64) bool {
-	return amount >= 0
+	return amount > 0
 }
 
 // isValidExpiryDate checks if the expiry date is in the future and in the correct format
 func isValidExpiryDate(expiresAtStr string) bool {
 	if expiresAtStr == "" {
-		return true // No expiry date is considered valid
+		return true // Coupons without expiry date is valid
 	}
 
 	expiresAt, err := time.Parse("2006-01-02", expiresAtStr)
@@ -59,7 +59,7 @@ func isValidExpiryDate(expiresAtStr string) bool {
 		return false // Invalid date format
 	}
 
-	return expiresAt.After(time.Now().UTC())
+	return expiresAt.After(time.Now().UTC()) // expiry date in future
 }
 
 func ValidateCouponCode(code string) error {

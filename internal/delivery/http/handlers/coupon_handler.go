@@ -31,8 +31,8 @@ func (h *CouponHandler) CreateCoupon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// trim whitespace
-	input.Code = strings.TrimSpace(input.Code)
+	// trim whitespace, case insensitive
+	input.Code = strings.ToLower(strings.TrimSpace(input.Code))
 
 	coupon, err := h.couponUseCase.CreateCoupon(r.Context(), input)
 	if err != nil {
@@ -116,62 +116,109 @@ func (h *CouponHandler) ApplyCoupon(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CouponHandler) GetAllCoupons(w http.ResponseWriter, r *http.Request) {
-	// Check if the user is an admin
-	userRole, ok := r.Context().Value(middleware.UserRoleKey).(string)
-	if !ok || userRole != "admin" {
-		api.SendResponse(w, http.StatusForbidden, "Access denied", nil, "Admin privileges required")
-		return
-	}
-
 	// Parse query parameters
 	params := parseGetCouponsQueryParams(r)
 
 	// Call use case method
 	coupons, totalCount, err := h.couponUseCase.GetAllCoupons(r.Context(), params)
 	if err != nil {
-		api.SendResponse(w, http.StatusInternalServerError, "Failed to retrieve coupons", nil, err.Error())
+		log.Printf("error : %v", err)
+		api.SendResponse(w, http.StatusInternalServerError, "Failed to retrieve coupons", nil, "An unexpected error occured")
 		return
 	}
 
-	// Prepare response
+	// Prepare the response data
+	// Create a map containing:
+	// - `coupons`: the retrieved coupon data
+	// - `total_count`: the total number of coupons available
+	// - `page`: the current page number from the query parameters
+	// - `limit`: the number of items per page from the query parameters
+	// - `total_pages`: calculated by dividing the total count by the limit, rounding up
 	response := map[string]interface{}{
 		"coupons":     coupons,
 		"total_count": totalCount,
 		"page":        params.Page,
 		"limit":       params.Limit,
-		"total_pages": (totalCount + int64(params.Limit) - 1) / int64(params.Limit),
+		"total_pages": (totalCount + int64(params.Limit) - 1) / int64(params.Limit), //addition of - 1 ensures that you round up to the next page if there are any remaining items that don't fit perfectly into the full pages
+		// The formula (a + b - 1) / b is a common way to perform integer division with rounding up
 	}
 
 	api.SendResponse(w, http.StatusOK, "Coupons retrieved successfully", response, "")
 }
 
+// parseGetCouponsQueryParams extracts and parses coupon query parameters from the HTTP request.
+// It populates a domain.CouponQueryParams struct with pagination, sorting, filtering, and search values,
+// returning default values for page and limit if not provided.
+//
+// Parameters:
+// - r: the incoming *http.Request containing query parameters for coupon filtering.
+//
+// Returns:
+//   - domain.CouponQueryParams: a struct containing the parsed query parameters including page, limit, sort, order,
+//     status, search, and discount filters.
+//
+// Query parameters:
+// - page: the page number for pagination (defaults to 1 if not provided or invalid).
+// - limit: the number of results per page (defaults to 10 if not provided or invalid).
+// - sort: the field to sort the results by (e.g., "created_at").
+// - order: the sorting order ("asc" or "desc").
+// - status: filter by coupon status (e.g., "active").
+// - search: search term for coupon code or description.
+// - min_discount: minimum discount percentage filter.
+// - max_discount: maximum discount percentage filter.
 func parseGetCouponsQueryParams(r *http.Request) domain.CouponQueryParams {
+	// Initialize the query parameters struct with default values
+	// Default page is set to 1, and default limit (results per page) is set to 10.
 	params := domain.CouponQueryParams{
 		Page:  1,
 		Limit: 10,
 	}
 
+	// Parse the "page" query parameter from the request URL.
+	// If it's a valid integer and greater than 0, assign it to the params.Page.
+	// Otherwise, keep the default value of 1.
 	if page, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && page > 0 {
 		params.Page = page
 	}
 
+	// Parse the "limit" query parameter from the request URL.
+	// If it's a valid integer and greater than 0, assign it to the params.Limit.
+	// Otherwise, keep the default value of 10.
 	if limit, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && limit > 0 {
 		params.Limit = limit
 	}
 
+	// Assign the "sort" query parameter to the params.Sort field.
+	// This defines which field to sort the results by (e.g., "created_at").
 	params.Sort = r.URL.Query().Get("sort")
+
+	// Assign the "order" query parameter to the params.Order field.
+	// This defines the sorting order (e.g., "asc" or "desc").
 	params.Order = r.URL.Query().Get("order")
+
+	// Assign the "status" query parameter to the params.Status field.
+	// This allows filtering by the coupon's status (e.g., "active")
 	params.Status = r.URL.Query().Get("status")
+
+	// Assign the "search" query parameter to the params.Search field.
+	// This allows searching for coupons by a search term, such as a coupon code or description.
 	params.Search = r.URL.Query().Get("search")
 
+	// Parse the "min_discount" query parameter from the request URL.
+	// If it's a valid float, assign it to the params.MinDiscount field.
+	// This sets a minimum discount filter for the coupons.
 	if minDiscount, err := strconv.ParseFloat(r.URL.Query().Get("min_discount"), 64); err == nil {
 		params.MinDiscount = &minDiscount
 	}
 
+	// Parse the "max_discount" query parameter from the request URL.
+	// If it's a valid float, assign it to the params.MaxDiscount field.
+	// This sets a maximum discount filter for the coupons.
 	if maxDiscount, err := strconv.ParseFloat(r.URL.Query().Get("max_discount"), 64); err == nil {
 		params.MaxDiscount = &maxDiscount
 	}
 
+	// Return the populated CouponQueryParams struct with all the parsed values
 	return params
 }
 
@@ -210,31 +257,4 @@ func (h *CouponHandler) UpdateCoupon(w http.ResponseWriter, r *http.Request) {
 	}
 
 	api.SendResponse(w, http.StatusOK, "Coupon updated successfully", updatedCoupon, "")
-}
-
-func (h *CouponHandler) SoftDeleteCoupon(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	couponID, err := strconv.ParseInt(vars["coupon_id"], 10, 64)
-	if err != nil {
-		api.SendResponse(w, http.StatusBadRequest, "Failed to delete coupon", nil, "Invalid coupon ID format")
-		return
-	}
-
-	err = h.couponUseCase.SoftDeleteCoupon(r.Context(), couponID)
-	if err != nil {
-		switch err {
-		case utils.ErrCouponNotFound:
-			api.SendResponse(w, http.StatusNotFound, "Failed to delete coupon", nil, "Coupon not found")
-		case utils.ErrCouponAlreadyDeleted:
-			api.SendResponse(w, http.StatusBadRequest, "Failed to delete coupon", nil, "Coupon is already soft deleted")
-		case utils.ErrCouponInUse:
-			api.SendResponse(w, http.StatusBadRequest, "Failed to delete coupon", nil, "Cannot delete coupon as it is currently in use")
-		default:
-			log.Printf("error : %v", err)
-			api.SendResponse(w, http.StatusInternalServerError, "Failed to delete coupon", nil, "An unexpected error occurred")
-		}
-		return
-	}
-
-	api.SendResponse(w, http.StatusOK, "Coupon successfully soft deleted", nil, "")
 }

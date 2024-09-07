@@ -111,8 +111,6 @@ type CouponRepository interface {
 	GetAllCoupons(ctx context.Context, params domain.CouponQueryParams) ([]*domain.Coupon, int64, error)
 	GetByID(ctx context.Context, id int64) (*domain.Coupon, error)
 	Update(ctx context.Context, coupon *domain.Coupon) error
-	SoftDelete(ctx context.Context, couponID int64) error
-	IsCouponInUse(ctx context.Context, couponID int64) (bool, error)
 }
 
 type CheckoutRepository interface {

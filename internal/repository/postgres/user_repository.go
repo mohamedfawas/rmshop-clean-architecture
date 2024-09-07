@@ -258,6 +258,15 @@ func (r *userRepository) GetByID(ctx context.Context, id int64) (*domain.User, e
 	return &user, nil
 }
 
+// Update updates the details of an existing user in the database.
+// It updates the user's name, phone number, and the timestamp for when the update was made.
+//
+// Parameters:
+//   - ctx: Context for controlling execution and managing timeouts.
+//   - user: Pointer to a User domain object containing the updated user information.
+//
+// Returns:
+//   - error: Returns an error if the update operation fails, otherwise returns nil.
 func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
 	query := `UPDATE users 	SET name=$1, phone_number=$2,updated_at= NOW() WHERE id=$3`
 	_, err := r.db.ExecContext(ctx, query, user.Name, user.PhoneNumber, user.ID)

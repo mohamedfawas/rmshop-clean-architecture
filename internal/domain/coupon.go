@@ -11,8 +11,6 @@ type Coupon struct {
 	CreatedAt          time.Time  `json:"created_at"`
 	UpdatedAt          time.Time  `json:"updated_at"`
 	ExpiresAt          *time.Time `json:"expires_at,omitempty"`
-	DeletedAt          *time.Time `json:"deleted_at,omitempty"`
-	IsDeleted          bool       `json:"is_deleted"`
 }
 
 type CreateCouponInput struct {

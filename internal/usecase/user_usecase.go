@@ -314,6 +314,7 @@ func (u *userUseCase) UpdateProfile(ctx context.Context, userID int64, updateDat
 
 	err = u.userRepo.Update(ctx, user)
 	if err != nil {
+		log.Printf("error : %v", err)
 		return nil, err
 	}
 	return user, nil
