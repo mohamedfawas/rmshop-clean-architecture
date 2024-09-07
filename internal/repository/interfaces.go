@@ -102,6 +102,7 @@ type CartRepository interface {
 	ApplyCoupon(ctx context.Context, userID int64, coupon *domain.Coupon) error
 	RemoveCoupon(ctx context.Context, userID int64) error
 	GetAppliedCoupon(ctx context.Context, userID int64) (*domain.Coupon, error)
+	ClearCart(ctx context.Context, userID int64) error
 }
 
 type CouponRepository interface {

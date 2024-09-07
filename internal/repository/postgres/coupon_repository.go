@@ -98,19 +98,19 @@ func (r *couponRepository) GetByCode(ctx context.Context, code string) (*domain.
 
 // GetAllCoupons retrieves a list of coupons from the database based on the provided query parameters.
 // It supports filtering by coupon status, discount range, search terms,
-//    and handles pagination, sorting, and expiration dates.
+//
+//	and handles pagination, sorting, and expiration dates.
 //
 // Parameters:
 //   - ctx: A context object that carries deadlines, cancelation signals,
-//          and other request-scoped values.
+//     and other request-scoped values.
 //   - params: An instance of CouponQueryParams containing the filters (status,
-//             discount range, search query, pagination, and sorting options).
+//     discount range, search query, pagination, and sorting options).
 //
 // Returns:
 //   - []*domain.Coupon: A slice of pointers to Coupon objects that match the filters.
 //   - int64: The total count of coupons that match the filters, used for pagination purposes.
 //   - error: Returns an error if there is an issue executing the query or scanning results; otherwise, returns nil.
-
 func (r *couponRepository) GetAllCoupons(ctx context.Context, params domain.CouponQueryParams) ([]*domain.Coupon, int64, error) {
 	query := `
 		SELECT id, code, discount_percentage, min_order_amount, is_active, created_at, updated_at, expires_at
@@ -221,6 +221,21 @@ func (r *couponRepository) GetAllCoupons(ctx context.Context, params domain.Coup
 	return coupons, totalCount, nil
 }
 
+// GetByID retrieves a coupon from the repository by its ID, provided that the coupon is active.
+// It executes a SQL query to fetch the coupon details from the database, and maps the result to a Coupon struct.
+//
+// Parameters:
+//
+//	ctx (context.Context) : The context for managing request-scoped values, deadlines, and cancellation.
+//	id (int64)            : The ID of the coupon to be retrieved.
+//
+// Returns:
+//
+//	(*domain.Coupon, error) : A pointer to the Coupon object if found and active, or nil and an error if not found or if an error occurs.
+//
+// Possible errors:
+//   - utils.ErrCouponNotFound : If no coupon with the provided ID exists or the coupon is not active.
+//   - Other database errors  : Includes errors related to query execution or data retrieval.
 func (r *couponRepository) GetByID(ctx context.Context, id int64) (*domain.Coupon, error) {
 	query := `
         SELECT id, code, discount_percentage, min_order_amount, is_active, 
@@ -237,6 +252,7 @@ func (r *couponRepository) GetByID(ctx context.Context, id int64) (*domain.Coupo
 		return nil, utils.ErrCouponNotFound
 	}
 	if err != nil {
+		log.Printf("error while retrieving coupon details using ID : %v", err)
 		return nil, err
 	}
 	return &coupon, nil

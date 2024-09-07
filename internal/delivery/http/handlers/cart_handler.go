@@ -22,6 +22,7 @@ func NewCartHandler(cartUseCase usecase.CartUseCase) *CartHandler {
 }
 
 func (h *CartHandler) AddToCart(w http.ResponseWriter, r *http.Request) {
+	// extract the user id from the context key
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok {
 		api.SendResponse(w, http.StatusUnauthorized, "Failed to add item to cart", nil, "User not authenticated")

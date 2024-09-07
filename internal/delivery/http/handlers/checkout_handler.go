@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -144,6 +145,7 @@ func (h *CheckoutHandler) UpdateCheckoutAddress(w http.ResponseWriter, r *http.R
 		case utils.ErrMissingRequiredFields:
 			api.SendResponse(w, http.StatusBadRequest, "Missing required fields", nil, "Please fill all required address fields")
 		default:
+			log.Printf("error : %v", err)
 			api.SendResponse(w, http.StatusInternalServerError, "Internal server error", nil, "An unexpected error occurred")
 		}
 		return

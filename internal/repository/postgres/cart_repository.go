@@ -32,6 +32,22 @@ func (r *cartRepository) AddCartItem(ctx context.Context, item *domain.CartItem)
 	return err
 }
 
+// GetCartItemByProductID retrieves a cart item from the database based on the provided userID and productID.
+// It queries the `cart_items` table to find the item associated with the specified user and product.
+//
+// Parameters:
+//
+//	ctx (context.Context) : The context for managing request-scoped values, deadlines, and cancellation.
+//	userID (int64)        : The ID of the user whose cart item is being retrieved.
+//	productID (int64)     : The ID of the product for which the cart item is being retrieved.
+//
+// Returns:
+//
+//	(*domain.CartItem, error) : A pointer to the CartItem if found, or nil and an error if the item does not exist or if a database error occurs.
+//
+// Possible errors:
+//   - utils.ErrCartItemNotFound : If no cart item is found with the specified userID and productID.
+//   - Other database-related errors : If there is an error querying the database or scanning the result.
 func (r *cartRepository) GetCartItemByProductID(ctx context.Context, userID, productID int64) (*domain.CartItem, error) {
 	query := `
 		SELECT id, user_id, product_id, quantity, created_at, updated_at
@@ -46,7 +62,7 @@ func (r *cartRepository) GetCartItemByProductID(ctx context.Context, userID, pro
 		return nil, utils.ErrCartItemNotFound
 	}
 	if err != nil {
-		log.Printf("eror while retrieving cart item details using id : %v", err)
+		log.Printf("eror while retrieving cart item details using user id and product id : %v", err)
 		return nil, err
 	}
 	return &item, nil
@@ -172,6 +188,7 @@ func (r *cartRepository) GetCartItemByID(ctx context.Context, itemID int64) (*do
 }
 
 func (r *cartRepository) GetCartTotal(ctx context.Context, userID int64) (float64, error) {
+	// COALESCE ensures that the result is 0 instead of NULL
 	query := `SELECT COALESCE(SUM(ci.quantity * p.price), 0) 
               FROM cart_items ci 
               JOIN products p ON ci.product_id = p.id 
@@ -180,6 +197,7 @@ func (r *cartRepository) GetCartTotal(ctx context.Context, userID int64) (float6
 	var total float64
 	err := r.db.QueryRowContext(ctx, query, userID).Scan(&total)
 	if err != nil {
+		log.Printf("error while getting cart total : %v", err)
 		return 0, err
 	}
 	return total, nil
@@ -190,6 +208,9 @@ func (r *cartRepository) ApplyCoupon(ctx context.Context, userID int64, coupon *
               ON CONFLICT (user_id) DO UPDATE SET coupon_id = $2`
 
 	_, err := r.db.ExecContext(ctx, query, userID, coupon.ID)
+	if err != nil {
+		log.Printf("error while adding to applied coupons : %v", err)
+	}
 	return err
 }
 
@@ -197,6 +218,9 @@ func (r *cartRepository) RemoveCoupon(ctx context.Context, userID int64) error {
 	query := `DELETE FROM applied_coupons WHERE user_id = $1`
 
 	_, err := r.db.ExecContext(ctx, query, userID)
+	if err != nil {
+		log.Printf("error while removing applied coupon : %v", err)
+	}
 	return err
 }
 
@@ -216,8 +240,19 @@ func (r *cartRepository) GetAppliedCoupon(ctx context.Context, userID int64) (*d
 		return nil, nil
 	}
 	if err != nil {
+		log.Printf("error while retrieving applied coupon details : %v", err)
 		return nil, err
 	}
 
 	return &coupon, nil
+}
+
+func (r *cartRepository) ClearCart(ctx context.Context, userID int64) error {
+	query := `DELETE FROM cart_items WHERE user_id = $1`
+	_, err := r.db.ExecContext(ctx, query, userID)
+	if err != nil {
+		log.Printf("error while clearing cart for user %d: %v", userID, err)
+		return err
+	}
+	return nil
 }

@@ -43,6 +43,7 @@ func (u *checkoutUseCase) CreateCheckout(ctx context.Context, userID int64) (*do
 	// Get cart items
 	cartItems, err := u.checkoutRepo.GetCartItems(ctx, userID)
 	if err != nil {
+		log.Printf("error while retrieving cart items : %v", err)
 		return nil, err
 	}
 
@@ -57,6 +58,7 @@ func (u *checkoutUseCase) CreateCheckout(ctx context.Context, userID int64) (*do
 	for _, item := range cartItems {
 		product, err := u.productRepo.GetByID(ctx, item.ProductID)
 		if err != nil {
+			log.Printf("error while retrieving product details : %v", err)
 			return nil, err
 		}
 
@@ -78,12 +80,14 @@ func (u *checkoutUseCase) CreateCheckout(ctx context.Context, userID int64) (*do
 	// Create checkout session
 	session, err := u.checkoutRepo.CreateCheckoutSession(ctx, userID)
 	if err != nil {
+		log.Printf("error while creating checkout session : %v", err)
 		return nil, err
 	}
 
 	// Add items to checkout session
 	err = u.checkoutRepo.AddCheckoutItems(ctx, session.ID, checkoutItems)
 	if err != nil {
+		log.Printf("error while adding items to checkout session : %v", err)
 		return nil, err
 	}
 
@@ -95,6 +99,7 @@ func (u *checkoutUseCase) CreateCheckout(ctx context.Context, userID int64) (*do
 	// Update the checkout session in the database
 	err = u.checkoutRepo.UpdateCheckoutDetails(ctx, session)
 	if err != nil {
+		log.Printf("error while updating checkout details : %v", err)
 		return nil, err
 	}
 
@@ -105,6 +110,7 @@ func (u *checkoutUseCase) ApplyCoupon(ctx context.Context, userID int64, checkou
 	// Get the checkout session
 	checkout, err := u.checkoutRepo.GetCheckoutByID(ctx, checkoutID)
 	if err != nil {
+		log.Printf("error : get checkout by id : %v", err)
 		return nil, err
 	}
 
@@ -116,6 +122,7 @@ func (u *checkoutUseCase) ApplyCoupon(ctx context.Context, userID int64, checkou
 	// Double-check if the checkout is empty by counting items
 	items, err := u.checkoutRepo.GetCheckoutItems(ctx, checkoutID)
 	if err != nil {
+		log.Printf("error : Get checkout items : %v", err)
 		return nil, err
 	}
 
@@ -126,7 +133,6 @@ func (u *checkoutUseCase) ApplyCoupon(ctx context.Context, userID int64, checkou
 	// Update ItemCount if it's inconsistent
 	if checkout.ItemCount != len(items) {
 		checkout.ItemCount = len(items)
-		// You might want to log this inconsistency
 	}
 
 	// Check if a coupon is already applied
@@ -140,6 +146,7 @@ func (u *checkoutUseCase) ApplyCoupon(ctx context.Context, userID int64, checkou
 		if err == utils.ErrCouponNotFound {
 			return nil, utils.ErrInvalidCouponCode
 		}
+		log.Printf("error : Get coupon using code : %v", err)
 		return nil, err
 	}
 
@@ -177,6 +184,7 @@ func (u *checkoutUseCase) ApplyCoupon(ctx context.Context, userID int64, checkou
 	// Save the updated checkout
 	err = u.checkoutRepo.UpdateCheckoutDetails(ctx, checkout)
 	if err != nil {
+		log.Printf("error : Update checkout details : %v", err)
 		return nil, err
 	}
 
@@ -364,6 +372,13 @@ func (u *checkoutUseCase) PlaceOrder(ctx context.Context, userID, checkoutID int
 	err = u.checkoutRepo.UpdateCheckoutStatus(ctx, tx, checkout)
 	if err != nil {
 		log.Printf("Error updating checkout status: %v", err)
+		return nil, err
+	}
+
+	// Clear the user's cart
+	err = u.cartRepo.ClearCart(ctx, userID)
+	if err != nil {
+		log.Printf("Error clearing user's cart: %v", err)
 		return nil, err
 	}
 

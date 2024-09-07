@@ -28,6 +28,18 @@ type UserUpdatedData struct {
 	PhoneNumber string `json:"phone_number"`
 }
 
+type UserProfileResponse struct {
+	ID              int64     `json:"id"`
+	Name            string    `json:"name"`
+	Email           string    `json:"email"`
+	DOB             string    `json:"date_of_birth"`
+	PhoneNumber     string    `json:"phone_number"`
+	IsEmailVerified bool      `json:"is_email_verified"`
+	CreatedAt       time.Time `json:"created_at"`
+	LastLogin       time.Time `json:"last_login,omitempty"`
+	IsBlocked       bool      `json:"is_blocked"`
+}
+
 type BlacklistedToken struct {
 	Token     string    `json:"token"`
 	ExpiresAt time.Time `json:"expires_at"`

@@ -56,6 +56,20 @@ func (r *checkoutRepository) AddCheckoutItems(ctx context.Context, sessionID int
 	return tx.Commit()
 }
 
+// GetCartItems retrieves a list of cart items for a specified user from the database.
+//
+// This method performs the following actions:
+// 1. Executes a SQL query to fetch cart items and their associated product details for the given user ID.
+// 2. Scans the resulting rows into domain.CartItemWithProduct structs and appends them to a slice.
+// 3. Returns the slice of cart items and any potential error encountered during the process.
+//
+// Parameters:
+// - ctx: A context.Context to control the lifetime of the database query.
+// - userID: The unique identifier of the user whose cart items are being retrieved.
+//
+// Returns:
+// - A slice of pointers to domain.CartItemWithProduct structs containing the cart items and product details for the specified user.
+// - An error if there was an issue executing the query or processing the results
 func (r *checkoutRepository) GetCartItems(ctx context.Context, userID int64) ([]*domain.CartItemWithProduct, error) {
 	query := `
         SELECT ci.id, ci.product_id, ci.quantity, p.name, p.price
@@ -65,6 +79,7 @@ func (r *checkoutRepository) GetCartItems(ctx context.Context, userID int64) ([]
     `
 	rows, err := r.db.QueryContext(ctx, query, userID)
 	if err != nil {
+		log.Printf("error while retrieving cart item details : %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -74,6 +89,7 @@ func (r *checkoutRepository) GetCartItems(ctx context.Context, userID int64) ([]
 		var item domain.CartItemWithProduct
 		err := rows.Scan(&item.ID, &item.ProductID, &item.Quantity, &item.ProductName, &item.ProductPrice)
 		if err != nil {
+			log.Printf("error : %v", err)
 			return nil, err
 		}
 		items = append(items, &item)
@@ -86,6 +102,21 @@ func (r *checkoutRepository) GetCartItems(ctx context.Context, userID int64) ([]
 	return items, nil
 }
 
+// GetCheckoutByID retrieves a checkout session from the database based on the provided checkoutID.
+// It executes a SQL query to fetch the checkout session details and maps the result to a domain.CheckoutSession struct.
+//
+// Parameters:
+//
+//	ctx (context.Context)   : The context for managing request-scoped values, deadlines, and cancellation.
+//	checkoutID (int64)      : The ID of the checkout session to retrieve.
+//
+// Returns:
+//
+//	(*domain.CheckoutSession, error) : A pointer to the retrieved checkout session on success, or an error if the operation fails.
+//
+// Possible errors:
+//   - utils.ErrCheckoutNotFound : If no checkout session is found with the provided checkoutID.
+//   - Other database-related errors : If there is an issue executing the SQL query or scanning the results.
 func (r *checkoutRepository) GetCheckoutByID(ctx context.Context, checkoutID int64) (*domain.CheckoutSession, error) {
 	query := `
         SELECT id, user_id, total_amount, discount_amount, final_amount, item_count, created_at, updated_at, status, coupon_code, coupon_applied, address_id
@@ -218,6 +249,7 @@ func (r *checkoutRepository) GetCheckoutWithItems(ctx context.Context, checkoutI
 
 	rows, err := r.db.QueryContext(ctx, query, checkoutID)
 	if err != nil {
+		log.Printf("error while getting checkout with items : %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -239,6 +271,7 @@ func (r *checkoutRepository) GetCheckoutWithItems(ctx context.Context, checkoutI
 			&addressLine1, &addressLine2, &city, &state, &pincode, &phoneNumber,
 		)
 		if err != nil {
+			log.Printf("error while adding entries to checkout item slice : %v", err)
 			return nil, err
 		}
 

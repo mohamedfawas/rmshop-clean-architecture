@@ -95,6 +95,7 @@ func (u *couponUseCase) ApplyCoupon(ctx context.Context, userID int64, checkoutI
 	// Get the checkout session
 	checkout, err := u.checkoutRepo.GetCheckoutByID(ctx, checkoutID)
 	if err != nil {
+		log.Printf("error while retrieving checkout session using ID : %v", err)
 		return nil, err
 	}
 
@@ -119,6 +120,7 @@ func (u *couponUseCase) ApplyCoupon(ctx context.Context, userID int64, checkoutI
 		if err == utils.ErrCouponNotFound {
 			return nil, utils.ErrInvalidCouponCode
 		}
+		log.Printf("error while retrieving coupon using coupon code : %v", err)
 		return nil, err
 	}
 
@@ -158,6 +160,7 @@ func (u *couponUseCase) ApplyCoupon(ctx context.Context, userID int64, checkoutI
 	// Save the updated checkout
 	err = u.checkoutRepo.UpdateCheckoutDetails(ctx, checkout)
 	if err != nil {
+		log.Printf("error while updating checkout details : %v", err)
 		return nil, err
 	}
 

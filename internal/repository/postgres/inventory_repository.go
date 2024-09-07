@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
@@ -75,6 +76,7 @@ func (r *inventoryRepository) GetInventory(ctx context.Context, params domain.In
 	var total int64
 	err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total)
 	if err != nil {
+		log.Printf("error while getting count : %v", err)
 		return nil, 0, err
 	}
 
@@ -92,6 +94,7 @@ func (r *inventoryRepository) GetInventory(ctx context.Context, params domain.In
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
+		log.Printf("error while adding pagination query : %v", err)
 		return nil, 0, err
 	}
 	defer rows.Close()
@@ -101,6 +104,7 @@ func (r *inventoryRepository) GetInventory(ctx context.Context, params domain.In
 		var item domain.InventoryItem
 		err := rows.Scan(&item.ProductID, &item.ProductName, &item.Price, &item.StockQuantity, &item.CategoryID, &item.CategoryName)
 		if err != nil {
+			log.Printf("error while retrieving inventory item : %v", err)
 			return nil, 0, err
 		}
 		items = append(items, &item)

@@ -80,6 +80,22 @@ func (r *productRepository) NameExists(ctx context.Context, name string) (bool, 
 	return exists, err
 }
 
+// GetByID retrieves a product from the database by its ID.
+// It returns a pointer to the product if found, or an error if the product is not found or if there's a database error.
+//
+// Parameters:
+//
+//	ctx (context.Context) : The context for managing request-scoped values, deadlines, and cancellation.
+//	id (int64)            : The ID of the product to retrieve.
+//
+// Returns:
+//
+//	(*domain.Product, error) : A pointer to the product if it exists and is not deleted, or nil and an error if the product
+//	                            is not found or if there is a database error.
+//
+// Possible errors:
+//   - utils.ErrProductNotFound : If no product with the provided ID is found in the database or if the product is marked as deleted.
+//   - Other database errors    : If there is a problem executing the query or scanning the results.
 func (r *productRepository) GetByID(ctx context.Context, id int64) (*domain.Product, error) {
 	query := `SELECT id, name, slug, description, price, stock_quantity, sub_category_id, created_at, updated_at, deleted_at, is_deleted
               FROM products WHERE id = $1 AND is_deleted = false`

@@ -249,6 +249,7 @@ func (r *orderRepository) GetOrders(ctx context.Context, params domain.OrderQuer
 	var total int64
 	err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total)
 	if err != nil {
+		log.Printf("error while get count : %v", err)
 		return nil, 0, err
 	}
 
@@ -266,6 +267,7 @@ func (r *orderRepository) GetOrders(ctx context.Context, params domain.OrderQuer
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
+		log.Printf("erorr applying pagination : %v", err)
 		return nil, 0, err
 	}
 	defer rows.Close()
@@ -276,6 +278,7 @@ func (r *orderRepository) GetOrders(ctx context.Context, params domain.OrderQuer
 		err := rows.Scan(&o.ID, &o.UserID, &o.TotalAmount, &o.PaymentMethod, &o.PaymentStatus,
 			&o.DeliveryStatus, &o.OrderStatus, &o.RefundStatus, &o.AddressID, &o.CreatedAt, &o.UpdatedAt)
 		if err != nil {
+			log.Printf("db error : %v", err)
 			return nil, 0, err
 		}
 		orders = append(orders, &o)

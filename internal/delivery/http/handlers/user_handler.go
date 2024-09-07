@@ -621,7 +621,7 @@ func (h *UserHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *UserHandler) AddUserAddress(w http.ResponseWriter, r *http.Request) {
-	// extract userId from the jwt token
+	// extract userId from the context
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok {
 		api.SendResponse(w, http.StatusUnauthorized, "Failed to add address", nil, "Invalid user ID in token")
@@ -648,7 +648,7 @@ func (h *UserHandler) AddUserAddress(w http.ResponseWriter, r *http.Request) {
 
 	// validate not null entries
 	if userAddress.AddressLine1 == "" || userAddress.State == "" || userAddress.City == "" || userAddress.PinCode == "" || userAddress.PhoneNumber == "" {
-		api.SendResponse(w, http.StatusBadRequest, "Failed to add the address", nil, "Please provide a valid address with all the necessary columns filled")
+		api.SendResponse(w, http.StatusBadRequest, "Failed to add the address", nil, "Please provide a valid address with all the necessary fields filled")
 		return
 	}
 

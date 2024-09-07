@@ -44,7 +44,7 @@ func (u *cartUseCase) AddToCart(ctx context.Context, userID, productID int64, qu
 	if err != nil {
 		return nil, err
 	}
-	if product == nil || product.DeletedAt != nil {
+	if product == nil || product.IsDeleted {
 		return nil, utils.ErrProductNotFound
 	}
 

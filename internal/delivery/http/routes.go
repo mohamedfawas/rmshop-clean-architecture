@@ -134,7 +134,6 @@ func NewRouter(userHandler *handlers.UserHandler,
 
 	// Admin routes : Coupon management
 	r.HandleFunc("/admin/coupons", chainMiddleware(jwtAuth, adminAuth)(couponHandler.CreateCoupon)).Methods("POST")
-	r.HandleFunc("/admin/coupons", chainMiddleware(jwtAuth, adminAuth)(couponHandler.GetAllCoupons)).Methods("GET")
 	r.HandleFunc("/admin/coupons/{coupon_id}", chainMiddleware(jwtAuth, adminAuth)(couponHandler.UpdateCoupon)).Methods("PATCH")
 
 	// admin routes : order management
@@ -172,6 +171,8 @@ func NewRouter(userHandler *handlers.UserHandler,
 	r.HandleFunc("/user/cart", chainMiddleware(jwtAuth, userAuth)(cartHandler.GetUserCart)).Methods("GET")
 	r.HandleFunc("/user/cart/items/{itemId}", chainMiddleware(jwtAuth, userAuth)(cartHandler.UpdateCartItemQuantity)).Methods("PATCH")
 	r.HandleFunc("/user/cart/items/{itemId}", chainMiddleware(jwtAuth, userAuth)(cartHandler.DeleteCartItem)).Methods("DELETE")
+
+	// apply coupon : remove this code later
 	r.HandleFunc("/user/cart/apply-coupon", chainMiddleware(jwtAuth, userAuth)(couponHandler.ApplyCoupon)).Methods("POST")
 
 	// User routes : Checkout
@@ -193,6 +194,7 @@ func NewRouter(userHandler *handlers.UserHandler,
 	// Public routes : Homepage
 	r.HandleFunc("/products", productHandler.GetProducts).Methods("GET")
 	r.HandleFunc("/products/{productId}", productHandler.GetPublicProductByID).Methods("GET")
+	r.HandleFunc("/coupons", couponHandler.GetAllCoupons).Methods("GET")
 
 	log.Println("Router setup complete")
 	return r
