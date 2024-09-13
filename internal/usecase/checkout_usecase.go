@@ -317,15 +317,6 @@ func (u *checkoutUseCase) PlaceOrder(ctx context.Context, userID, checkoutID int
 		return nil, utils.ErrInvalidAddress
 	}
 
-	// Create the order
-	order := &domain.Order{
-		UserID:         userID,
-		TotalAmount:    checkout.FinalAmount,
-		OrderStatus:    "pending",
-		DeliveryStatus: "processing",
-		AddressID:      checkout.ShippingAddress.ID,
-	}
-
 	// Start a database transaction
 	tx, err := u.checkoutRepo.BeginTx(ctx)
 	if err != nil {
@@ -333,8 +324,17 @@ func (u *checkoutUseCase) PlaceOrder(ctx context.Context, userID, checkoutID int
 	}
 	defer tx.Rollback()
 
+	// Create the order
+	order := &domain.Order{
+		UserID:            userID,
+		TotalAmount:       checkout.FinalAmount,
+		OrderStatus:       "pending",
+		DeliveryStatus:    "processing",
+		ShippingAddressID: checkout.ShippingAddress.ID,
+	}
+
 	// Create the order in the database
-	err = u.orderRepo.CreateOrder(ctx, tx, order)
+	orderID, err := u.orderRepo.CreateOrder(ctx, tx, order)
 	if err != nil {
 		log.Printf("Error creating order: %v", err)
 		return nil, err
@@ -342,14 +342,14 @@ func (u *checkoutUseCase) PlaceOrder(ctx context.Context, userID, checkoutID int
 
 	// Create the payment
 	payment := &domain.Payment{
-		OrderID:       order.ID,
+		OrderID:       orderID,
 		Amount:        checkout.FinalAmount,
 		PaymentMethod: paymentMethod,
 		Status:        "pending",
 	}
 
 	// Add the payment to the database
-	err = u.orderRepo.CreatePayment(ctx, payment)
+	err = u.orderRepo.CreatePayment(ctx, tx, payment)
 	if err != nil {
 		log.Printf("Error creating payment: %v", err)
 		return nil, err

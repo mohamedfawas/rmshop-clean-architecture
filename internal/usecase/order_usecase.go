@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 	"time"
 
@@ -20,9 +21,9 @@ type OrderUseCase interface {
 	GetOrders(ctx context.Context, params domain.OrderQueryParams) ([]*domain.Order, int64, error)
 	UpdateOrderStatus(ctx context.Context, orderID int64, newStatus string) (*domain.OrderStatusUpdateResult, error)
 	GetPaymentByOrderID(ctx context.Context, orderID int64) (*domain.Payment, error)
-	CreatePayment(ctx context.Context, payment *domain.Payment) error
+	CreatePayment(ctx context.Context, tx *sql.Tx, payment *domain.Payment) error
 	UpdatePayment(ctx context.Context, payment *domain.Payment) error
-	ProcessPayment(ctx context.Context, orderID int64, paymentMethod string, amount float64) (*domain.Payment, error)
+	ProcessPayment(ctx context.Context, tx *sql.Tx, orderID int64, paymentMethod string, amount float64) (*domain.Payment, error)
 	VerifyAndUpdateRazorpayPayment(ctx context.Context, input domain.RazorpayPaymentInput) error
 }
 
@@ -229,15 +230,15 @@ func (u *orderUseCase) GetPaymentByOrderID(ctx context.Context, orderID int64) (
 	return u.orderRepo.GetPaymentByOrderID(ctx, orderID)
 }
 
-func (u *orderUseCase) CreatePayment(ctx context.Context, payment *domain.Payment) error {
-	return u.orderRepo.CreatePayment(ctx, payment)
+func (u *orderUseCase) CreatePayment(ctx context.Context, tx *sql.Tx, payment *domain.Payment) error {
+	return u.orderRepo.CreatePayment(ctx, tx, payment)
 }
 
 func (u *orderUseCase) UpdatePayment(ctx context.Context, payment *domain.Payment) error {
 	return u.orderRepo.UpdatePayment(ctx, payment)
 }
 
-func (u *orderUseCase) ProcessPayment(ctx context.Context, orderID int64, paymentMethod string, amount float64) (*domain.Payment, error) {
+func (u *orderUseCase) ProcessPayment(ctx context.Context, tx *sql.Tx, orderID int64, paymentMethod string, amount float64) (*domain.Payment, error) {
 	payment := &domain.Payment{
 		OrderID:       orderID,
 		Amount:        amount,
@@ -248,14 +249,18 @@ func (u *orderUseCase) ProcessPayment(ctx context.Context, orderID int64, paymen
 	if paymentMethod == "razorpay" {
 		razorpayOrder, err := u.razorpayService.CreateOrder(int64(amount*100), "INR")
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to create Razorpay order: %w", err)
 		}
 		payment.RazorpayOrderID = razorpayOrder.ID
+		payment.Status = "awaiting_payment"
+	} else if paymentMethod != "cod" {
+		return nil, fmt.Errorf("unsupported payment method: %s", paymentMethod)
 	}
 
-	err := u.orderRepo.CreatePayment(ctx, payment)
+	// Use the transaction to create the payment
+	err := u.CreatePayment(ctx, tx, payment)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create payment: %w", err)
 	}
 
 	return payment, nil

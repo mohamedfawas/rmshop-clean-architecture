@@ -132,7 +132,7 @@ type CheckoutRepository interface {
 }
 
 type OrderRepository interface {
-	CreateOrder(ctx context.Context, tx *sql.Tx, order *domain.Order) error
+	CreateOrder(ctx context.Context, tx *sql.Tx, order *domain.Order) (int64, error)
 	AddOrderItem(ctx context.Context, tx *sql.Tx, item *domain.OrderItem) error
 	GetByID(ctx context.Context, id int64) (*domain.Order, error)
 	GetUserOrders(ctx context.Context, userID int64, page, limit int, sortBy, order, status string) ([]*domain.Order, int64, error)
@@ -141,7 +141,7 @@ type OrderRepository interface {
 	GetOrders(ctx context.Context, params domain.OrderQueryParams) ([]*domain.Order, int64, error)
 	UpdateOrderPaymentStatus(ctx context.Context, orderID int64, status string, paymentID string) error
 	GetPaymentByOrderID(ctx context.Context, orderID int64) (*domain.Payment, error)
-	CreatePayment(ctx context.Context, payment *domain.Payment) error
+	CreatePayment(ctx context.Context, tx *sql.Tx, payment *domain.Payment) error
 	UpdatePayment(ctx context.Context, payment *domain.Payment) error
 	GetPaymentByRazorpayOrderID(ctx context.Context, razorpayOrderID string) (*domain.Payment, error)
 }

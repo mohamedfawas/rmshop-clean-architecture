@@ -6,16 +6,16 @@ import (
 )
 
 type Order struct {
-	ID             int64          `json:"id"`
-	UserID         int64          `json:"user_id"`
-	TotalAmount    float64        `json:"total_amount"`
-	DeliveryStatus string         `json:"delivery_status"`
-	OrderStatus    string         `json:"order_status"`
-	RefundStatus   sql.NullString `json:"refund_status"`
-	AddressID      int64          `json:"address_id"`
-	CreatedAt      time.Time      `json:"created_at"`
-	UpdatedAt      time.Time      `json:"updated_at"`
-	Items          []OrderItem    `json:"items"`
+	ID                int64          `json:"id"`
+	UserID            int64          `json:"user_id"`
+	TotalAmount       float64        `json:"total_amount"`
+	DeliveryStatus    string         `json:"delivery_status"`
+	OrderStatus       string         `json:"order_status"`
+	RefundStatus      sql.NullString `json:"refund_status"`
+	ShippingAddressID int64          `json:"shipping_address_id"`
+	CreatedAt         time.Time      `json:"created_at"`
+	UpdatedAt         time.Time      `json:"updated_at"`
+	Items             []OrderItem    `json:"items"`
 }
 
 type OrderItem struct {

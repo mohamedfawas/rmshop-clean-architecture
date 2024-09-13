@@ -421,48 +421,6 @@ func (r *checkoutRepository) GetCheckoutWithAddressByID(ctx context.Context, che
 	return &checkout, nil
 }
 
-func (r *checkoutRepository) GetCheckoutByID(ctx context.Context, checkoutID int64) (*domain.CheckoutSession, error) {
-	query := `
-        SELECT id, user_id, total_amount, discount_amount, final_amount, item_count, 
-               created_at, updated_at, status, coupon_code, coupon_applied, shipping_address_id
-        FROM checkout_sessions
-        WHERE id = $1
-    `
-	var checkout domain.CheckoutSession
-	var couponCode sql.NullString
-	var shippingAddressID sql.NullInt64
-	err := r.db.QueryRowContext(ctx, query, checkoutID).Scan(
-		&checkout.ID, &checkout.UserID, &checkout.TotalAmount, &checkout.DiscountAmount, &checkout.FinalAmount,
-		&checkout.ItemCount, &checkout.CreatedAt, &checkout.UpdatedAt, &checkout.Status,
-		&couponCode, &checkout.CouponApplied, &shippingAddressID,
-	)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, utils.ErrCheckoutNotFound
-		}
-		log.Printf("error while retrieving checkout sessions : %v", err)
-		return nil, err
-	}
-
-	// Assign the coupon code only if it's not NULL
-	if couponCode.Valid {
-		checkout.CouponCode = couponCode.String
-	}
-
-	// If there's a shipping address ID, we need to fetch the address details
-	if shippingAddressID.Valid {
-		shippingAddress, err := r.getShippingAddressById(ctx, shippingAddressID.Int64)
-		if err != nil {
-			log.Printf("error fetching shipping address: %v", err)
-			// We don't return here as we still want to return the checkout session
-		} else {
-			checkout.ShippingAddress = shippingAddress
-		}
-	}
-
-	return &checkout, nil
-}
-
 func (r *checkoutRepository) getShippingAddressById(ctx context.Context, id int64) (*domain.ShippingAddress, error) {
 	query := `
         SELECT id, address_line1, address_line2, city, state, landmark, pincode, phone_number
@@ -478,4 +436,52 @@ func (r *checkoutRepository) getShippingAddressById(ctx context.Context, id int6
 		return nil, err
 	}
 	return &address, nil
+}
+
+func (r *checkoutRepository) GetCheckoutByID(ctx context.Context, checkoutID int64) (*domain.CheckoutSession, error) {
+	query := `
+        SELECT cs.id, cs.user_id, cs.total_amount, cs.discount_amount, cs.final_amount, 
+               cs.item_count, cs.created_at, cs.updated_at, cs.status, cs.coupon_code, 
+               cs.coupon_applied, cs.shipping_address_id,
+               sa.address_line1, sa.address_line2, sa.city, sa.state, sa.landmark, sa.pincode, sa.phone_number
+        FROM checkout_sessions cs
+        LEFT JOIN shipping_addresses sa ON cs.shipping_address_id = sa.id
+        WHERE cs.id = $1
+    `
+	var checkout domain.CheckoutSession
+	var couponCode, addressLine1, addressLine2, city, state, landmark, pincode, phoneNumber sql.NullString
+	var shippingAddressID sql.NullInt64
+
+	err := r.db.QueryRowContext(ctx, query, checkoutID).Scan(
+		&checkout.ID, &checkout.UserID, &checkout.TotalAmount, &checkout.DiscountAmount, &checkout.FinalAmount,
+		&checkout.ItemCount, &checkout.CreatedAt, &checkout.UpdatedAt, &checkout.Status, &couponCode,
+		&checkout.CouponApplied, &shippingAddressID,
+		&addressLine1, &addressLine2, &city, &state, &landmark, &pincode, &phoneNumber,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, utils.ErrCheckoutNotFound
+		}
+		log.Printf("error while retrieving checkout sessions : %v", err)
+		return nil, err
+	}
+
+	if couponCode.Valid {
+		checkout.CouponCode = couponCode.String
+	}
+
+	if shippingAddressID.Valid {
+		checkout.ShippingAddress = &domain.ShippingAddress{
+			ID:           shippingAddressID.Int64,
+			AddressLine1: addressLine1.String,
+			AddressLine2: addressLine2.String,
+			City:         city.String,
+			State:        state.String,
+			Landmark:     landmark.String,
+			PinCode:      pincode.String,
+			PhoneNumber:  phoneNumber.String,
+		}
+	}
+
+	return &checkout, nil
 }

@@ -7,6 +7,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/utils"
@@ -20,19 +21,22 @@ func NewOrderRepository(db *sql.DB) *orderRepository {
 	return &orderRepository{db: db}
 }
 
-func (r *orderRepository) CreateOrder(ctx context.Context, tx *sql.Tx, order *domain.Order) error {
+func (r *orderRepository) CreateOrder(ctx context.Context, tx *sql.Tx, order *domain.Order) (int64, error) {
 	query := `
-		INSERT INTO orders (user_id, total_amount, delivery_status, address_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		RETURNING id, created_at
-	`
+        INSERT INTO orders (user_id, total_amount, delivery_status, shipping_address_id, order_status, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id, created_at
+    `
+	var orderID int64
 	err := tx.QueryRowContext(ctx, query,
-		order.UserID, order.TotalAmount, order.DeliveryStatus, order.AddressID,
-	).Scan(&order.ID, &order.CreatedAt)
+		order.UserID, order.TotalAmount, order.DeliveryStatus, order.ShippingAddressID, order.OrderStatus, time.Now().UTC(), time.Now().UTC(),
+	).Scan(&orderID, &order.CreatedAt)
 	if err != nil {
 		log.Printf("error while adding the order entry : %v", err)
+		return 0, err
 	}
-	return err
+	order.ID = orderID
+	return orderID, nil
 }
 
 func (r *orderRepository) AddOrderItem(ctx context.Context, tx *sql.Tx, item *domain.OrderItem) error {
@@ -63,7 +67,7 @@ func (r *orderRepository) GetByID(ctx context.Context, id int64) (*domain.Order,
 		&order.DeliveryStatus,
 		&order.OrderStatus,
 		&order.RefundStatus,
-		&order.AddressID,
+		&order.ShippingAddressID,
 		&order.CreatedAt,
 		&order.UpdatedAt,
 		&razorpayOrderID,
@@ -154,7 +158,7 @@ func (r *orderRepository) GetUserOrders(ctx context.Context, userID int64, page,
 	var orders []*domain.Order
 	for rows.Next() {
 		var o domain.Order
-		err := rows.Scan(&o.ID, &o.TotalAmount, &o.DeliveryStatus, &o.AddressID, &o.CreatedAt)
+		err := rows.Scan(&o.ID, &o.TotalAmount, &o.DeliveryStatus, &o.ShippingAddressID, &o.CreatedAt)
 		if err != nil {
 			log.Printf("Error scanning order row: %v", err)
 			return nil, 0, err
@@ -289,7 +293,7 @@ func (r *orderRepository) GetOrders(ctx context.Context, params domain.OrderQuer
 	for rows.Next() {
 		var o domain.Order
 		err := rows.Scan(&o.ID, &o.UserID, &o.TotalAmount,
-			&o.DeliveryStatus, &o.OrderStatus, &o.RefundStatus, &o.AddressID, &o.CreatedAt, &o.UpdatedAt)
+			&o.DeliveryStatus, &o.OrderStatus, &o.RefundStatus, &o.ShippingAddressID, &o.CreatedAt, &o.UpdatedAt)
 		if err != nil {
 			log.Printf("db error : %v", err)
 			return nil, 0, err
@@ -336,18 +340,6 @@ func (r *orderRepository) GetPaymentByOrderID(ctx context.Context, orderID int64
 	return &payment, nil
 }
 
-func (r *orderRepository) CreatePayment(ctx context.Context, payment *domain.Payment) error {
-	query := `
-        INSERT INTO payments (order_id, amount, payment_method, payment_status, razorpay_order_id)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING id, created_at, updated_at
-    `
-	err := r.db.QueryRowContext(ctx, query,
-		payment.OrderID, payment.Amount, payment.PaymentMethod, payment.Status, payment.RazorpayOrderID,
-	).Scan(&payment.ID, &payment.CreatedAt, &payment.UpdatedAt)
-	return err
-}
-
 func (r *orderRepository) UpdatePayment(ctx context.Context, payment *domain.Payment) error {
 	query := `
         UPDATE payments
@@ -380,4 +372,19 @@ func (r *orderRepository) GetPaymentByRazorpayOrderID(ctx context.Context, razor
 		return nil, err
 	}
 	return &payment, nil
+}
+
+func (r *orderRepository) CreatePayment(ctx context.Context, tx *sql.Tx, payment *domain.Payment) error {
+	query := `
+        INSERT INTO payments (order_id, amount, payment_method, payment_status, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id
+    `
+	err := tx.QueryRowContext(ctx, query,
+		payment.OrderID, payment.Amount, payment.PaymentMethod, payment.Status, time.Now().UTC(), time.Now().UTC(),
+	).Scan(&payment.ID)
+	if err != nil {
+		return fmt.Errorf("failed to create payment: %w", err)
+	}
+	return nil
 }
