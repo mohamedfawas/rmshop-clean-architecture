@@ -4,7 +4,10 @@ import (
 	"database/sql"
 	"log"
 	"net/http"
+	"path/filepath"
+	"text/template"
 
+	"github.com/mohamedfawas/rmshop-clean-architecture/internal/config"
 	httpDelivery "github.com/mohamedfawas/rmshop-clean-architecture/internal/delivery/http"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/delivery/http/handlers"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/repository/postgres"
@@ -16,11 +19,12 @@ import (
 
 // Server struct holds the router which will be used to handle HTTP requests
 type Server struct {
-	router http.Handler
+	router    http.Handler
+	templates *template.Template
 }
 
 // NewServer creates and returns a new Server instance
-func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudinary.CloudinaryService, tokenBlacklist *auth.TokenBlacklist) *Server {
+func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudinary.CloudinaryService, tokenBlacklist *auth.TokenBlacklist, cfg *config.Config) *Server {
 	log.Println("Initializing server components...")
 
 	// User components initialization
@@ -76,7 +80,7 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 	checkoutHandler := handlers.NewCheckoutHandler(checkoutUseCase, couponUseCase)
 	log.Println("Checkout components initialized")
 
-	orderUseCase := usecase.NewOrderUseCase(orderRepo)
+	orderUseCase := usecase.NewOrderUseCase(orderRepo, cfg.Razorpay.KeySecret, cfg.Razorpay.KeySecret)
 	orderHandler := handlers.NewOrderHandler(orderUseCase)
 	log.Println("Order components initialized")
 
@@ -84,6 +88,9 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 	inventoryUseCase := usecase.NewInventoryUseCase(inventoryRepo, productRepo)
 	inventoryHandler := handlers.NewInventoryHandler(inventoryUseCase)
 	log.Println("Inventory components initialized")
+
+	templates := setupTemplates()
+	paymentHandler := handlers.NewPaymentHandler(orderUseCase, cfg.Razorpay.KeyID, cfg.Razorpay.KeySecret, templates)
 
 	// Initialize the router with all handlers
 	router := httpDelivery.NewRouter(
@@ -98,12 +105,15 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 		checkoutHandler,
 		orderHandler,
 		inventoryHandler,
+		paymentHandler,
+		templates,
 	)
 	log.Println("Router initialized")
 
 	// Return a new Server instance with the initialized router
 	return &Server{
-		router: router,
+		router:    router,
+		templates: templates,
 	}
 }
 
@@ -111,4 +121,10 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 // This method is called for every HTTP request to the server
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.router.ServeHTTP(w, r)
+}
+
+func setupTemplates() *template.Template {
+	templatesDir := "./static/html" // Adjust this path as needed
+	pattern := filepath.Join(templatesDir, "*.html")
+	return template.Must(template.ParseGlob(pattern))
 }

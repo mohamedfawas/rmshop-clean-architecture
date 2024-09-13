@@ -9,8 +9,6 @@ type Order struct {
 	ID             int64          `json:"id"`
 	UserID         int64          `json:"user_id"`
 	TotalAmount    float64        `json:"total_amount"`
-	PaymentMethod  string         `json:"payment_method"`
-	PaymentStatus  string         `json:"payment_status"`
 	DeliveryStatus string         `json:"delivery_status"`
 	OrderStatus    string         `json:"order_status"`
 	RefundStatus   sql.NullString `json:"refund_status"`
@@ -49,4 +47,32 @@ type OrderQueryParams struct {
 	StartDate  *time.Time
 	EndDate    *time.Time
 	Fields     []string
+}
+
+type RazorpayOrderResponse struct {
+	OrderID     string `json:"order_id"`
+	Amount      int64  `json:"amount"`
+	Currency    string `json:"currency"`
+	Description string `json:"description"`
+}
+
+type VerifyPaymentInput struct {
+	OrderID           int64  `json:"order_id"`
+	RazorpayPaymentID string `json:"razorpay_payment_id"`
+	RazorpaySignature string `json:"razorpay_signature"`
+}
+
+type CreateOrderInput struct {
+	UserID        int64       `json:"user_id"`
+	Items         []OrderItem `json:"items"`
+	AddressID     int64       `json:"address_id"`
+	PaymentMethod string      `json:"payment_method"`
+	CouponCode    string      `json:"coupon_code,omitempty"`
+	Notes         string      `json:"notes,omitempty"`
+}
+
+type RazorpayPaymentInput struct {
+	OrderID   string `json:"razorpay_order_id"`
+	PaymentID string `json:"razorpay_payment_id"`
+	Signature string `json:"razorpay_signature"`
 }

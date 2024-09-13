@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment</title>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+</head>
+<body>
+    <div class="container d-flex align-items-center justify-content-center main-container">
+        <div class="card text-center">
+            <div class="card-header">
+                Payment Details
+            </div>
+            <div class="card-body">
+                <h5 id="user" class="card-title">Order ID: {{.OrderID}}</h5>
+                <p class="card-text">Total: ₹{{.FinalPrice}}</p>
+                <button id="rzp-button1" class="btn btn-primary">Pay Now</button>
+            </div>
+            <div class="card-footer text-muted">
+                Within 5 minutes
+            </div>
+        </div>
+    </div>
+
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script>
+var options = {
+    "key": "{{.RazorpayKeyID}}",
+    "amount": "{{.FinalPrice}}00", // Amount in paise
+    "currency": "INR",
+    "name": "Your Company Name",
+    "description": "Order #{{.OrderID}}",
+    "order_id": "{{.RazorpayOrderID}}", // This comes from the backend
+    "handler": function (response){
+        fetch('/home/razorpay-payment', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    razorpay_payment_id: response.razorpay_payment_id,
+                    razorpay_order_id: response.razorpay_order_id,
+                    razorpay_signature: response.razorpay_signature
+                }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if(data.status === 200) {
+                    alert('Payment successful');
+                    // Redirect or update UI as needed
+                } else {
+                    alert('Payment failed: ' + data.error);
+                }
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+                alert('Payment failed');
+            });
+    },
+    "prefill": {
+        "name": "Customer Name",
+        "email": "customer@example.com",
+        "contact": "9999999999"
+    },
+    "theme": {
+        "color": "#3399cc"
+    }
+};
+var rzp1 = new Razorpay(options);
+document.getElementById('rzp-button1').onclick = function(e){
+    rzp1.open();
+    e.preventDefault();
+}
+</script>
+</body>
+</html>

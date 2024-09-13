@@ -126,6 +126,9 @@ type CheckoutRepository interface {
 	UpdateCheckoutDetails(ctx context.Context, checkout *domain.CheckoutSession) error
 	UpdateCheckoutStatus(ctx context.Context, tx *sql.Tx, checkout *domain.CheckoutSession) error
 	BeginTx(ctx context.Context) (*sql.Tx, error)
+	CreateOrGetShippingAddress(ctx context.Context, userID, addressID int64) (int64, error)
+	UpdateCheckoutShippingAddress(ctx context.Context, checkoutID, shippingAddressID int64) error
+	GetCheckoutWithAddressByID(ctx context.Context, checkoutID int64) (*domain.CheckoutSession, error)
 }
 
 type OrderRepository interface {
@@ -136,6 +139,11 @@ type OrderRepository interface {
 	UpdateOrderStatus(ctx context.Context, orderID int64, status string) error
 	UpdateRefundStatus(ctx context.Context, orderID int64, refundStatus sql.NullString) error
 	GetOrders(ctx context.Context, params domain.OrderQueryParams) ([]*domain.Order, int64, error)
+	UpdateOrderPaymentStatus(ctx context.Context, orderID int64, status string, paymentID string) error
+	GetPaymentByOrderID(ctx context.Context, orderID int64) (*domain.Payment, error)
+	CreatePayment(ctx context.Context, payment *domain.Payment) error
+	UpdatePayment(ctx context.Context, payment *domain.Payment) error
+	GetPaymentByRazorpayOrderID(ctx context.Context, razorpayOrderID string) (*domain.Payment, error)
 }
 
 type InventoryRepository interface {

@@ -3,6 +3,7 @@ package http
 import (
 	"log"
 	"net/http"
+	"text/template"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -86,7 +87,9 @@ func NewRouter(userHandler *handlers.UserHandler,
 	couponHandler *handlers.CouponHandler,
 	checkoutHandler *handlers.CheckoutHandler,
 	orderHandler *handlers.OrderHandler,
-	inventoryHandler *handlers.InventoryHandler) http.Handler {
+	inventoryHandler *handlers.InventoryHandler,
+	paymentHandler *handlers.PaymentHandler,
+	templates *template.Template) http.Handler {
 	log.Println("Setting up router...")
 
 	r := mux.NewRouter() // set up mux router
@@ -195,6 +198,9 @@ func NewRouter(userHandler *handlers.UserHandler,
 	r.HandleFunc("/products", productHandler.GetProducts).Methods("GET")
 	r.HandleFunc("/products/{productId}", productHandler.GetPublicProductByID).Methods("GET")
 	r.HandleFunc("/coupons", couponHandler.GetAllCoupons).Methods("GET")
+
+	r.HandleFunc("/home/payment", paymentHandler.RenderPaymentPage).Methods("GET")
+	r.HandleFunc("/home/razorpay-payment", paymentHandler.ProcessRazorpayPayment).Methods("POST")
 
 	log.Println("Router setup complete")
 	return r

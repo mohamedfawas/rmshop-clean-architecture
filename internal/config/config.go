@@ -13,6 +13,7 @@ type Config struct {
 	SMTP       SMTPConfig
 	Cloudinary CloudinaryConfig
 	JWT        JWTConfig
+	Razorpay   RazorpayConfig
 }
 
 type ServerConfig struct {
@@ -49,6 +50,11 @@ type JWTConfig struct {
 	Secret string
 }
 
+type RazorpayConfig struct {
+	KeyID     string
+	KeySecret string
+}
+
 func Load() (*Config, error) {
 	viper.SetConfigName("config") //specify the name of the configuration file (without the extension)
 	viper.SetConfigType("yaml")   // specify the format of the configuration file
@@ -69,6 +75,5 @@ func Load() (*Config, error) {
 		log.Printf("Error unmarshaling config: %v", err)
 		return nil, err
 	}
-
 	return &config, nil
 }

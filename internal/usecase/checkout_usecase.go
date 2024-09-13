@@ -14,7 +14,7 @@ import (
 type CheckoutUseCase interface {
 	CreateCheckout(ctx context.Context, userID int64) (*domain.CheckoutSession, error)
 	ApplyCoupon(ctx context.Context, userID int64, checkoutID int64, couponCode string) (*domain.ApplyCouponResponse, error)
-	UpdateCheckoutAddress(ctx context.Context, userID, checkoutID int64, addressInput domain.AddressInput) (*domain.CheckoutSession, error)
+	UpdateCheckoutAddress(ctx context.Context, userID, checkoutID, addressID int64) (*domain.CheckoutSession, error)
 	GetCheckoutSummary(ctx context.Context, userID, checkoutID int64) (*domain.CheckoutSummary, error)
 	PlaceOrder(ctx context.Context, userID, checkoutID int64, paymentMethod string) (*domain.Order, error)
 }
@@ -194,7 +194,7 @@ func (u *checkoutUseCase) ApplyCoupon(ctx context.Context, userID int64, checkou
 	}, nil
 }
 
-func (u *checkoutUseCase) UpdateCheckoutAddress(ctx context.Context, userID, checkoutID int64, addressInput domain.AddressInput) (*domain.CheckoutSession, error) {
+func (u *checkoutUseCase) UpdateCheckoutAddress(ctx context.Context, userID, checkoutID, addressID int64) (*domain.CheckoutSession, error) {
 	// Get the checkout session
 	checkout, err := u.checkoutRepo.GetCheckoutByID(ctx, checkoutID)
 	if err != nil {
@@ -211,31 +211,27 @@ func (u *checkoutUseCase) UpdateCheckoutAddress(ctx context.Context, userID, che
 		return nil, utils.ErrInvalidCheckoutState
 	}
 
-	if addressInput.AddressID != 0 {
-		// Update with existing address
-		address, err := u.userRepo.GetUserAddressByID(ctx, addressInput.AddressID)
-		if err != nil {
-			return nil, err
-		}
-		if address.UserID != userID {
-			return nil, utils.ErrUnauthorized
-		}
-		err = u.checkoutRepo.UpdateCheckoutAddress(ctx, checkoutID, addressInput.AddressID)
-		if err != nil {
-			return nil, err
-		}
-	} else if addressInput.NewAddress != nil {
-		// Validate new address
-		if err := validateAddress(addressInput.NewAddress); err != nil {
-			return nil, err
-		}
-		// Add new address and update checkout
-		err = u.checkoutRepo.AddNewAddressToCheckout(ctx, checkoutID, addressInput.NewAddress)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		return nil, utils.ErrInvalidAddressInput
+	// Get the address
+	address, err := u.userRepo.GetUserAddressByID(ctx, addressID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if the address belongs to the user
+	if address.UserID != userID {
+		return nil, utils.ErrAddressNotBelongToUser
+	}
+
+	// Create or get existing shipping address
+	shippingAddressID, err := u.checkoutRepo.CreateOrGetShippingAddress(ctx, userID, addressID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update checkout with new shipping address ID
+	err = u.checkoutRepo.UpdateCheckoutShippingAddress(ctx, checkoutID, shippingAddressID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Fetch the updated checkout session
@@ -317,7 +313,7 @@ func (u *checkoutUseCase) PlaceOrder(ctx context.Context, userID, checkoutID int
 	}
 
 	// Verify that a valid address is associated with the checkout
-	if checkout.AddressID == 0 {
+	if checkout.ShippingAddress.ID == 0 {
 		return nil, utils.ErrInvalidAddress
 	}
 
@@ -325,10 +321,9 @@ func (u *checkoutUseCase) PlaceOrder(ctx context.Context, userID, checkoutID int
 	order := &domain.Order{
 		UserID:         userID,
 		TotalAmount:    checkout.FinalAmount,
-		PaymentMethod:  paymentMethod,
-		PaymentStatus:  "pending",
+		OrderStatus:    "pending",
 		DeliveryStatus: "processing",
-		AddressID:      checkout.AddressID,
+		AddressID:      checkout.ShippingAddress.ID,
 	}
 
 	// Start a database transaction
@@ -342,6 +337,21 @@ func (u *checkoutUseCase) PlaceOrder(ctx context.Context, userID, checkoutID int
 	err = u.orderRepo.CreateOrder(ctx, tx, order)
 	if err != nil {
 		log.Printf("Error creating order: %v", err)
+		return nil, err
+	}
+
+	// Create the payment
+	payment := &domain.Payment{
+		OrderID:       order.ID,
+		Amount:        checkout.FinalAmount,
+		PaymentMethod: paymentMethod,
+		Status:        "pending",
+	}
+
+	// Add the payment to the database
+	err = u.orderRepo.CreatePayment(ctx, payment)
+	if err != nil {
+		log.Printf("Error creating payment: %v", err)
 		return nil, err
 	}
 

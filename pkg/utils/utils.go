@@ -236,6 +236,15 @@ var (
 	ErrOrderNotCancellable       = errors.New("order cannot be cancelled in its current state")
 	ErrCancellationPeriodExpired = errors.New("cancellation period has expired for this order")
 	ErrInvalidOrderStatus        = errors.New("invalid order status")
+	ErrOrderAlreadyPaid          = errors.New("order already paid")
+	ErrOrderCancelled            = errors.New("order cancelled")
+	ErrInvalidOrderAmount        = errors.New("invalid order amount")
+
+	// shipping address
+	ErrAddressNotBelongToUser = errors.New("address don't belong to user")
+
+	// payment
+	ErrPaymentNotFound = errors.New("payment not found")
 
 	// inventory
 	ErrStockQuantityTooLarge = errors.New("stock quantity too large")

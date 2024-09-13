@@ -65,7 +65,7 @@ func main() {
 	tasks.StartTokenCleanupTask(tokenBlacklist)
 
 	// Create a new server instance with the database connection and email sender
-	srv := server.NewServer(db, emailSender, cloudinaryService, tokenBlacklist)
+	srv := server.NewServer(db, emailSender, cloudinaryService, tokenBlacklist, cfg)
 
 	// Start the HTTP server
 	log.Printf("Starting server on : %s", cfg.Server.Port)

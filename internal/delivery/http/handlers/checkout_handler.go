@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 	"strconv"
 
@@ -107,53 +106,53 @@ func (h *CheckoutHandler) ApplyCoupon(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CheckoutHandler) UpdateCheckoutAddress(w http.ResponseWriter, r *http.Request) {
-	// Get user ID from context (set by auth middleware)
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok {
-		api.SendResponse(w, http.StatusUnauthorized, "Unauthorized", nil, "Invalid user ID")
+		api.SendResponse(w, http.StatusUnauthorized, "Failed to update address", nil, "User not authenticated")
 		return
 	}
 
-	// Get checkout ID from URL
 	vars := mux.Vars(r)
 	checkoutID, err := strconv.ParseInt(vars["checkout_id"], 10, 64)
 	if err != nil {
-		api.SendResponse(w, http.StatusBadRequest, "Invalid checkout ID", nil, "Checkout ID must be a number")
+		api.SendResponse(w, http.StatusBadRequest, "Failed to update address", nil, "Invalid checkout ID")
 		return
 	}
 
-	// Parse request body
-	var addressInput domain.AddressInput
-	err = json.NewDecoder(r.Body).Decode(&addressInput)
-	if err != nil {
-		api.SendResponse(w, http.StatusBadRequest, "Invalid request body", nil, "Failed to parse request body")
+	var input struct {
+		AddressID int64 `json:"address_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to update address", nil, "Invalid request body")
 		return
 	}
 
-	// Call use case method
-	updatedCheckout, err := h.checkoutUseCase.UpdateCheckoutAddress(r.Context(), userID, checkoutID, addressInput)
+	if input.AddressID <= 0 {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to update address", nil, "Invalid address ID")
+		return
+	}
+
+	updatedCheckout, err := h.checkoutUseCase.UpdateCheckoutAddress(r.Context(), userID, checkoutID, input.AddressID)
 	if err != nil {
 		switch err {
 		case utils.ErrCheckoutNotFound:
-			api.SendResponse(w, http.StatusNotFound, "Checkout not found", nil, "The specified checkout does not exist")
+			api.SendResponse(w, http.StatusNotFound, "Failed to update address", nil, "Checkout not found")
 		case utils.ErrUnauthorized:
-			api.SendResponse(w, http.StatusForbidden, "Unauthorized", nil, "You don't have permission to update this checkout")
+			api.SendResponse(w, http.StatusForbidden, "Failed to update address", nil, "Unauthorized access")
 		case utils.ErrInvalidCheckoutState:
-			api.SendResponse(w, http.StatusBadRequest, "Invalid checkout state", nil, "The checkout is not in a valid state for address update")
-		case utils.ErrInvalidAddressInput:
-			api.SendResponse(w, http.StatusBadRequest, "Invalid address input", nil, "Please provide either an address ID or a new address")
-		case utils.ErrMissingRequiredFields:
-			api.SendResponse(w, http.StatusBadRequest, "Missing required fields", nil, "Please fill all required address fields")
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update address", nil, "Checkout is not in a valid state for address update")
+		case utils.ErrAddressNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Failed to update address", nil, "Address not found")
+		case utils.ErrAddressNotBelongToUser:
+			api.SendResponse(w, http.StatusForbidden, "Failed to update address", nil, "Address does not belong to the user")
 		default:
-			log.Printf("error : %v", err)
-			api.SendResponse(w, http.StatusInternalServerError, "Internal server error", nil, "An unexpected error occurred")
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to update address", nil, "An unexpected error occurred")
 		}
 		return
 	}
 
 	api.SendResponse(w, http.StatusOK, "Address updated successfully", updatedCheckout, "")
 }
-
 func (h *CheckoutHandler) GetCheckoutSummary(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok {
@@ -211,7 +210,7 @@ func (h *CheckoutHandler) PlaceOrder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate payment method
-	if input.PaymentMethod != "COD" {
+	if input.PaymentMethod != "COD" && input.PaymentMethod != "razorpay" {
 		api.SendResponse(w, http.StatusBadRequest, "Failed to place order", nil, "Invalid payment method")
 		return
 	}

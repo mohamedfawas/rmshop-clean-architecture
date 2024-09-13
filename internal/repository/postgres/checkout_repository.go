@@ -102,56 +102,6 @@ func (r *checkoutRepository) GetCartItems(ctx context.Context, userID int64) ([]
 	return items, nil
 }
 
-// GetCheckoutByID retrieves a checkout session from the database based on the provided checkoutID.
-// It executes a SQL query to fetch the checkout session details and maps the result to a domain.CheckoutSession struct.
-//
-// Parameters:
-//
-//	ctx (context.Context)   : The context for managing request-scoped values, deadlines, and cancellation.
-//	checkoutID (int64)      : The ID of the checkout session to retrieve.
-//
-// Returns:
-//
-//	(*domain.CheckoutSession, error) : A pointer to the retrieved checkout session on success, or an error if the operation fails.
-//
-// Possible errors:
-//   - utils.ErrCheckoutNotFound : If no checkout session is found with the provided checkoutID.
-//   - Other database-related errors : If there is an issue executing the SQL query or scanning the results.
-func (r *checkoutRepository) GetCheckoutByID(ctx context.Context, checkoutID int64) (*domain.CheckoutSession, error) {
-	query := `
-        SELECT id, user_id, total_amount, discount_amount, final_amount, item_count, created_at, updated_at, status, coupon_code, coupon_applied, address_id
-        FROM checkout_sessions
-        WHERE id = $1
-    `
-	var checkout domain.CheckoutSession
-	var couponCode sql.NullString
-	var addressID sql.NullInt64
-	err := r.db.QueryRowContext(ctx, query, checkoutID).Scan(
-		&checkout.ID, &checkout.UserID, &checkout.TotalAmount, &checkout.DiscountAmount, &checkout.FinalAmount,
-		&checkout.ItemCount, &checkout.CreatedAt, &checkout.UpdatedAt, &checkout.Status,
-		&couponCode, &checkout.CouponApplied, &addressID,
-	)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, utils.ErrCheckoutNotFound
-		}
-		log.Printf("error while retrieving checkout sessions : %v", err)
-		return nil, err
-	}
-
-	// Assign the coupon code only if it's not NULL
-	if couponCode.Valid {
-		checkout.CouponCode = couponCode.String
-	} else {
-		checkout.CouponCode = "" // or however you want to represent a missing coupon code
-	}
-	if addressID.Valid {
-		checkout.AddressID = addressID.Int64
-	}
-
-	return &checkout, nil
-}
-
 func (r *couponRepository) IsApplied(ctx context.Context, checkoutID int64) (bool, error) {
 	query := `SELECT coupon_applied FROM checkout_sessions WHERE id = $1`
 	var isApplied bool
@@ -353,4 +303,167 @@ func (r *checkoutRepository) UpdateCheckoutStatus(ctx context.Context, tx *sql.T
 
 func (r *checkoutRepository) BeginTx(ctx context.Context) (*sql.Tx, error) {
 	return r.db.BeginTx(ctx, nil)
+}
+
+func (r *checkoutRepository) CreateOrGetShippingAddress(ctx context.Context, userID, addressID int64) (int64, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	var shippingAddressID int64
+	err = tx.QueryRowContext(ctx, `
+        INSERT INTO shipping_addresses (user_id, address_id, address_line1, address_line2, city, state, landmark, pincode, phone_number)
+        SELECT $1, ua.id, ua.address_line1, ua.address_line2, ua.city, ua.state, ua.landmark, ua.pincode, ua.phone_number
+        FROM user_address ua
+        WHERE ua.id = $2 AND ua.user_id = $1
+        ON CONFLICT (user_id, address_id) 
+        DO UPDATE SET 
+            address_line1 = EXCLUDED.address_line1,
+            address_line2 = EXCLUDED.address_line2,
+            city = EXCLUDED.city,
+            state = EXCLUDED.state,
+            landmark = EXCLUDED.landmark,
+            pincode = EXCLUDED.pincode,
+            phone_number = EXCLUDED.phone_number,
+            created_at = CURRENT_TIMESTAMP
+        RETURNING id
+    `, userID, addressID).Scan(&shippingAddressID)
+	if err != nil {
+		return 0, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return 0, err
+	}
+
+	return shippingAddressID, nil
+}
+
+func (r *checkoutRepository) UpdateCheckoutShippingAddress(ctx context.Context, checkoutID, shippingAddressID int64) error {
+	query := `
+        UPDATE checkout_sessions 
+        SET shipping_address_id = $1, updated_at = NOW() 
+        WHERE id = $2
+    `
+	result, err := r.db.ExecContext(ctx, query, shippingAddressID, checkoutID)
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return utils.ErrCheckoutNotFound
+	}
+
+	return nil
+}
+
+func (r *checkoutRepository) GetCheckoutWithAddressByID(ctx context.Context, checkoutID int64) (*domain.CheckoutSession, error) {
+	query := `
+        SELECT cs.id, cs.user_id, cs.total_amount, cs.discount_amount, cs.final_amount, 
+               cs.item_count, cs.status, cs.coupon_code, cs.coupon_applied, cs.shipping_address_id,
+               sa.id, sa.address_line1, sa.address_line2, sa.city, sa.state, sa.landmark, sa.pincode, sa.phone_number
+        FROM checkout_sessions cs
+        LEFT JOIN shipping_addresses sa ON cs.shipping_address_id = sa.id
+        WHERE cs.id = $1
+    `
+	var checkout domain.CheckoutSession
+	var shippingAddressID sql.NullInt64
+	var shippingAddress domain.ShippingAddress
+	var couponCode, addressLine1, addressLine2, city, state, landmark, pincode, phoneNumber sql.NullString
+
+	err := r.db.QueryRowContext(ctx, query, checkoutID).Scan(
+		&checkout.ID, &checkout.UserID, &checkout.TotalAmount, &checkout.DiscountAmount, &checkout.FinalAmount,
+		&checkout.ItemCount, &checkout.Status, &couponCode, &checkout.CouponApplied, &shippingAddressID,
+		&shippingAddress.ID, &addressLine1, &addressLine2, &city, &state, &landmark, &pincode, &phoneNumber,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, utils.ErrCheckoutNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if couponCode.Valid {
+		checkout.CouponCode = couponCode.String
+	}
+
+	if shippingAddressID.Valid {
+		shippingAddress.AddressLine1 = addressLine1.String
+		shippingAddress.AddressLine2 = addressLine2.String
+		shippingAddress.City = city.String
+		shippingAddress.State = state.String
+		shippingAddress.Landmark = landmark.String
+		shippingAddress.PinCode = pincode.String
+		shippingAddress.PhoneNumber = phoneNumber.String
+		checkout.ShippingAddress = &shippingAddress
+	}
+
+	return &checkout, nil
+}
+
+func (r *checkoutRepository) GetCheckoutByID(ctx context.Context, checkoutID int64) (*domain.CheckoutSession, error) {
+	query := `
+        SELECT id, user_id, total_amount, discount_amount, final_amount, item_count, 
+               created_at, updated_at, status, coupon_code, coupon_applied, shipping_address_id
+        FROM checkout_sessions
+        WHERE id = $1
+    `
+	var checkout domain.CheckoutSession
+	var couponCode sql.NullString
+	var shippingAddressID sql.NullInt64
+	err := r.db.QueryRowContext(ctx, query, checkoutID).Scan(
+		&checkout.ID, &checkout.UserID, &checkout.TotalAmount, &checkout.DiscountAmount, &checkout.FinalAmount,
+		&checkout.ItemCount, &checkout.CreatedAt, &checkout.UpdatedAt, &checkout.Status,
+		&couponCode, &checkout.CouponApplied, &shippingAddressID,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, utils.ErrCheckoutNotFound
+		}
+		log.Printf("error while retrieving checkout sessions : %v", err)
+		return nil, err
+	}
+
+	// Assign the coupon code only if it's not NULL
+	if couponCode.Valid {
+		checkout.CouponCode = couponCode.String
+	}
+
+	// If there's a shipping address ID, we need to fetch the address details
+	if shippingAddressID.Valid {
+		shippingAddress, err := r.getShippingAddressById(ctx, shippingAddressID.Int64)
+		if err != nil {
+			log.Printf("error fetching shipping address: %v", err)
+			// We don't return here as we still want to return the checkout session
+		} else {
+			checkout.ShippingAddress = shippingAddress
+		}
+	}
+
+	return &checkout, nil
+}
+
+func (r *checkoutRepository) getShippingAddressById(ctx context.Context, id int64) (*domain.ShippingAddress, error) {
+	query := `
+        SELECT id, address_line1, address_line2, city, state, landmark, pincode, phone_number
+        FROM shipping_addresses
+        WHERE id = $1
+    `
+	var address domain.ShippingAddress
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&address.ID, &address.AddressLine1, &address.AddressLine2, &address.City,
+		&address.State, &address.Landmark, &address.PinCode, &address.PhoneNumber,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &address, nil
 }

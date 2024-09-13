@@ -1,7 +1,7 @@
 package domain
 
 type InventoryItem struct {
-	ID            int64   `json:"id"`
+	ID            int64   `json:"id,omitempty"`
 	ProductID     int64   `json:"product_id"`
 	ProductName   string  `json:"product_name"`
 	CategoryID    int64   `json:"category_id"`

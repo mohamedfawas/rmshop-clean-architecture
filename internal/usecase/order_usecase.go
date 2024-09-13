@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log"
 	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/repository"
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/payment/razorpay"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/utils"
 )
 
@@ -17,14 +19,23 @@ type OrderUseCase interface {
 	CancelOrder(ctx context.Context, userID, orderID int64) (*domain.OrderCancellationResult, error)
 	GetOrders(ctx context.Context, params domain.OrderQueryParams) ([]*domain.Order, int64, error)
 	UpdateOrderStatus(ctx context.Context, orderID int64, newStatus string) (*domain.OrderStatusUpdateResult, error)
+	GetPaymentByOrderID(ctx context.Context, orderID int64) (*domain.Payment, error)
+	CreatePayment(ctx context.Context, payment *domain.Payment) error
+	UpdatePayment(ctx context.Context, payment *domain.Payment) error
+	ProcessPayment(ctx context.Context, orderID int64, paymentMethod string, amount float64) (*domain.Payment, error)
+	VerifyAndUpdateRazorpayPayment(ctx context.Context, input domain.RazorpayPaymentInput) error
 }
 
 type orderUseCase struct {
-	orderRepo repository.OrderRepository
+	orderRepo       repository.OrderRepository
+	razorpayService *razorpay.Service
 }
 
-func NewOrderUseCase(orderRepo repository.OrderRepository) OrderUseCase {
-	return &orderUseCase{orderRepo: orderRepo}
+func NewOrderUseCase(orderRepo repository.OrderRepository, razorpayKeyID, razorpaySecret string) OrderUseCase {
+	return &orderUseCase{
+		orderRepo:       orderRepo,
+		razorpayService: razorpay.NewService(razorpayKeyID, razorpaySecret),
+	}
 }
 
 func (u *orderUseCase) GetOrderByID(ctx context.Context, userID, orderID int64) (*domain.Order, error) {
@@ -36,8 +47,8 @@ func (u *orderUseCase) GetOrderByID(ctx context.Context, userID, orderID int64) 
 		return nil, err
 	}
 
-	// Check if the order belongs to the user
-	if order.UserID != userID {
+	// If userID is provided (not 0), check if the order belongs to the user
+	if userID != 0 && order.UserID != userID {
 		return nil, utils.ErrUnauthorized
 	}
 
@@ -108,14 +119,18 @@ func (u *orderUseCase) CancelOrder(ctx context.Context, userID, orderID int64) (
 
 	// Initiate refund if necessary
 	refundStatus := "not_applicable"
-	if order.PaymentStatus == "paid" {
+	payment, err := u.orderRepo.GetPaymentByOrderID(ctx, orderID)
+	if err != nil {
+		// Log the error but continue, as we don't want to fail the cancellation due to payment retrieval issues
+		log.Printf("Error retrieving payment for order %d: %v", orderID, err)
+	} else if payment != nil && payment.Status == "paid" {
 		refundStatus = "initiated"
 		// Here you would typically call a payment service to initiate the refund
 		// For now, we'll just update the status
 		err = u.orderRepo.UpdateRefundStatus(ctx, orderID, sql.NullString{String: refundStatus, Valid: true})
 		if err != nil {
 			// Log the error, but don't fail the cancellation
-			// You might want to handle this differently based on your requirements
+			log.Printf("Error updating refund status for order %d: %v", orderID, err)
 		}
 	}
 
@@ -123,14 +138,6 @@ func (u *orderUseCase) CancelOrder(ctx context.Context, userID, orderID int64) (
 		OrderID:      orderID,
 		RefundStatus: refundStatus,
 	}, nil
-}
-
-func isCancellable(status string) bool {
-	cancellableStatuses := map[string]bool{
-		"pending":    true,
-		"processing": true,
-	}
-	return cancellableStatuses[status]
 }
 
 func (u *orderUseCase) GetOrders(ctx context.Context, params domain.OrderQueryParams) ([]*domain.Order, int64, error) {
@@ -158,22 +165,15 @@ func (u *orderUseCase) GetOrders(ctx context.Context, params domain.OrderQueryPa
 }
 
 func (u *orderUseCase) UpdateOrderStatus(ctx context.Context, orderID int64, newStatus string) (*domain.OrderStatusUpdateResult, error) {
-
-	// Get the current order
 	order, err := u.orderRepo.GetByID(ctx, orderID)
 	if err != nil {
-		if err == utils.ErrOrderNotFound {
-			return nil, utils.ErrOrderNotFound
-		}
 		return nil, err
 	}
 
-	// Validate the new status
 	if !isValidOrderStatus(newStatus) {
 		return nil, utils.ErrInvalidOrderStatus
 	}
 
-	// If status is being set to cancelled, perform cancellation logic
 	var refundStatus string
 	if newStatus == "cancelled" {
 		if order.OrderStatus == "cancelled" {
@@ -182,19 +182,19 @@ func (u *orderUseCase) UpdateOrderStatus(ctx context.Context, orderID int64, new
 		if !isCancellable(order.OrderStatus) {
 			return nil, utils.ErrOrderNotCancellable
 		}
-		// Perform cancellation-specific logic (e.g., initiate refund)
 		refundStatus = "not_applicable"
-		if order.PaymentStatus == "paid" {
+		payment, err := u.orderRepo.GetPaymentByOrderID(ctx, orderID)
+		if err != nil {
+			log.Printf("Error retrieving payment for order %d: %v", orderID, err)
+		} else if payment != nil && payment.Status == "paid" {
 			refundStatus = "initiated"
 			err = u.orderRepo.UpdateRefundStatus(ctx, orderID, sql.NullString{String: refundStatus, Valid: true})
 			if err != nil {
-				// Handle refund initiation error
 				return nil, err
 			}
 		}
 	}
 
-	// Update the order status
 	err = u.orderRepo.UpdateOrderStatus(ctx, orderID, newStatus)
 	if err != nil {
 		return nil, err
@@ -215,4 +215,83 @@ func isValidOrderStatus(status string) bool {
 		}
 	}
 	return false
+}
+
+func isCancellable(status string) bool {
+	cancellableStatuses := map[string]bool{
+		"pending":    true,
+		"processing": true,
+	}
+	return cancellableStatuses[status]
+}
+
+func (u *orderUseCase) GetPaymentByOrderID(ctx context.Context, orderID int64) (*domain.Payment, error) {
+	return u.orderRepo.GetPaymentByOrderID(ctx, orderID)
+}
+
+func (u *orderUseCase) CreatePayment(ctx context.Context, payment *domain.Payment) error {
+	return u.orderRepo.CreatePayment(ctx, payment)
+}
+
+func (u *orderUseCase) UpdatePayment(ctx context.Context, payment *domain.Payment) error {
+	return u.orderRepo.UpdatePayment(ctx, payment)
+}
+
+func (u *orderUseCase) ProcessPayment(ctx context.Context, orderID int64, paymentMethod string, amount float64) (*domain.Payment, error) {
+	payment := &domain.Payment{
+		OrderID:       orderID,
+		Amount:        amount,
+		PaymentMethod: paymentMethod,
+		Status:        "pending",
+	}
+
+	if paymentMethod == "razorpay" {
+		razorpayOrder, err := u.razorpayService.CreateOrder(int64(amount*100), "INR")
+		if err != nil {
+			return nil, err
+		}
+		payment.RazorpayOrderID = razorpayOrder.ID
+	}
+
+	err := u.orderRepo.CreatePayment(ctx, payment)
+	if err != nil {
+		return nil, err
+	}
+
+	return payment, nil
+}
+
+func (u *orderUseCase) VerifyAndUpdateRazorpayPayment(ctx context.Context, input domain.RazorpayPaymentInput) error {
+	payment, err := u.orderRepo.GetPaymentByRazorpayOrderID(ctx, input.OrderID)
+	if err != nil {
+		return err
+	}
+
+	attributes := map[string]interface{}{
+		"razorpay_order_id":   input.OrderID,
+		"razorpay_payment_id": input.PaymentID,
+		"razorpay_signature":  input.Signature,
+	}
+
+	if err := u.razorpayService.VerifyPaymentSignature(attributes); err != nil {
+		return errors.New("invalid signature")
+	}
+
+	payment.Status = "paid"
+	payment.RazorpayPaymentID = input.PaymentID
+	payment.RazorpaySignature = input.Signature
+
+	err = u.orderRepo.UpdatePayment(ctx, payment)
+	if err != nil {
+		return err
+	}
+
+	// Update order status
+	err = u.orderRepo.UpdateOrderStatus(ctx, payment.OrderID, "paid")
+	if err != nil {
+		// Log the error but don't return it, as the payment was successful
+		log.Printf("Failed to update order status: %v", err)
+	}
+
+	return nil
 }

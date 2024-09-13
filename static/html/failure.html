@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Failed</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container mt-5 pt-5">
+        <div class="card w-50 mx-auto">
+            <div class="card-body text-center">
+                <h2 id="payment-failed" class="text-danger">Payment Failed</h2>
+                <p>Unfortunately, your payment could not be processed.</p>
+                <p>Order ID: <span id="order-id"></span></p>
+                <a href="/" class="btn btn-primary mr-2">Back to Home</a>
+                <a href="#" id="try-again" class="btn btn-secondary">Try Again</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const orderId = urlParams.get('order_id');
+        document.getElementById('order-id').textContent = orderId;
+        document.getElementById('try-again').href = '/payment?order_id=' + orderId;
+    });
+    </script>
+</body>
+</html>
