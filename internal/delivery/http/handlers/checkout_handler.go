@@ -170,6 +170,8 @@ func (h *CheckoutHandler) GetCheckoutSummary(w http.ResponseWriter, r *http.Requ
 	summary, err := h.checkoutUseCase.GetCheckoutSummary(r.Context(), userID, checkoutID)
 	if err != nil {
 		switch err {
+		case utils.ErrEmptyCart:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to get checkout summary", nil, "Checkout is empty")
 		case utils.ErrCheckoutNotFound:
 			api.SendResponse(w, http.StatusNotFound, "Failed to get checkout summary", nil, "Checkout not found")
 		case utils.ErrUnauthorized:

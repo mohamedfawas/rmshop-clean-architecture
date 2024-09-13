@@ -187,13 +187,13 @@ func (r *checkoutRepository) AddNewAddressToCheckout(ctx context.Context, checko
 func (r *checkoutRepository) GetCheckoutWithItems(ctx context.Context, checkoutID int64) (*domain.CheckoutSummary, error) {
 	query := `
         SELECT cs.id, cs.user_id, cs.total_amount, cs.discount_amount, cs.final_amount, 
-               cs.item_count, cs.status, cs.coupon_code, cs.coupon_applied, cs.address_id,
+               cs.item_count, cs.status, cs.coupon_code, cs.coupon_applied, cs.shipping_address_id,
                ci.id, ci.product_id, p.name, ci.quantity, ci.price, ci.subtotal,
-               ua.address_line1, ua.address_line2, ua.city, ua.state, ua.pincode, ua.phone_number
+               sa.address_line1, sa.address_line2, sa.city, sa.state, sa.pincode, sa.phone_number
         FROM checkout_sessions cs
         LEFT JOIN checkout_items ci ON cs.id = ci.session_id
         LEFT JOIN products p ON ci.product_id = p.id
-        LEFT JOIN user_address ua ON cs.address_id = ua.id
+        LEFT JOIN shipping_addresses sa ON cs.shipping_address_id = sa.id
         WHERE cs.id = $1
     `
 
@@ -212,16 +212,16 @@ func (r *checkoutRepository) GetCheckoutWithItems(ctx context.Context, checkoutI
 	for rows.Next() {
 		var item domain.CheckoutItemDetail
 		var couponCode, addressLine1, addressLine2, city, state, pincode, phoneNumber sql.NullString
-		var addressID sql.NullInt64
+		var shippingAddressID sql.NullInt64
 
 		err := rows.Scan(
 			&summary.ID, &summary.UserID, &summary.TotalAmount, &summary.DiscountAmount, &summary.FinalAmount,
-			&summary.ItemCount, &summary.Status, &couponCode, &summary.CouponApplied, &addressID,
+			&summary.ItemCount, &summary.Status, &couponCode, &summary.CouponApplied, &shippingAddressID,
 			&item.ID, &item.ProductID, &item.Name, &item.Quantity, &item.Price, &item.Subtotal,
 			&addressLine1, &addressLine2, &city, &state, &pincode, &phoneNumber,
 		)
 		if err != nil {
-			log.Printf("error while adding entries to checkout item slice : %v", err)
+			log.Printf("error while scanning row : %v", err)
 			return nil, err
 		}
 
@@ -231,9 +231,9 @@ func (r *checkoutRepository) GetCheckoutWithItems(ctx context.Context, checkoutI
 
 		items = append(items, &item)
 
-		if !addressSet && addressID.Valid {
+		if !addressSet && shippingAddressID.Valid {
 			address = domain.UserAddress{
-				ID:           addressID.Int64,
+				ID:           shippingAddressID.Int64,
 				AddressLine1: addressLine1.String,
 				AddressLine2: addressLine2.String,
 				City:         city.String,
@@ -246,6 +246,7 @@ func (r *checkoutRepository) GetCheckoutWithItems(ctx context.Context, checkoutI
 	}
 
 	if err = rows.Err(); err != nil {
+		log.Printf("error after iterating rows : %v", err)
 		return nil, err
 	}
 
@@ -254,14 +255,25 @@ func (r *checkoutRepository) GetCheckoutWithItems(ctx context.Context, checkoutI
 		summary.Address = &address
 	}
 
-	var itemCount int
-	for _, item := range items {
-		itemCount += item.Quantity
+	// Handle empty checkout
+	if len(items) == 0 {
+		summary.Status = "empty"
+		summary.TotalAmount = 0
+		summary.DiscountAmount = 0
+		summary.FinalAmount = 0
+		summary.ItemCount = 0
+	} else {
+		// Recalculate item count
+		var itemCount int
+		for _, item := range items {
+			itemCount += item.Quantity
+		}
+		summary.ItemCount = itemCount
 	}
-	summary.ItemCount = itemCount
+
 	// Update the checkout session with the correct item count
 	updateQuery := `UPDATE checkout_sessions SET item_count = $1 WHERE id = $2`
-	_, err = r.db.ExecContext(ctx, updateQuery, itemCount, checkoutID)
+	_, err = r.db.ExecContext(ctx, updateQuery, summary.ItemCount, checkoutID)
 	if err != nil {
 		log.Printf("error updating item count: %v", err)
 		return nil, err
