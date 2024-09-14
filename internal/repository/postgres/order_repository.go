@@ -322,30 +322,6 @@ func (r *orderRepository) UpdatePayment(ctx context.Context, payment *domain.Pay
 	return err
 }
 
-func (r *orderRepository) GetPaymentByRazorpayOrderID(ctx context.Context, razorpayOrderID string) (*domain.Payment, error) {
-	query := `
-        SELECT id, order_id, amount, payment_method, payment_status, created_at, updated_at, 
-               razorpay_order_id, razorpay_payment_id, razorpay_signature
-        FROM payments
-        WHERE razorpay_order_id = $1
-    `
-	var payment domain.Payment
-	err := r.db.QueryRowContext(ctx, query, razorpayOrderID).Scan(
-		&payment.ID, &payment.OrderID, &payment.Amount, &payment.PaymentMethod, &payment.Status,
-		&payment.CreatedAt, &payment.UpdatedAt, &payment.RazorpayOrderID, &payment.RazorpayPaymentID,
-		&payment.RazorpaySignature,
-	)
-	if err == sql.ErrNoRows {
-		log.Printf("No payment found for Razorpay order ID: %s", razorpayOrderID)
-		return nil, utils.ErrPaymentNotFound
-	}
-	if err != nil {
-		log.Printf("Error querying payment by Razorpay order ID %s: %v", razorpayOrderID, err)
-		return nil, fmt.Errorf("database error: %w", err)
-	}
-	return &payment, nil
-}
-
 func (r *orderRepository) GetReturnRequestByOrderID(ctx context.Context, orderID int64) (*domain.ReturnRequest, error) {
 	query := `
 		SELECT id, order_id, reason, status, created_at, updated_at
@@ -507,4 +483,37 @@ func (r *orderRepository) UpdateOrderRazorpayID(ctx context.Context, orderID int
     `
 	_, err := r.db.ExecContext(ctx, query, razorpayOrderID, orderID)
 	return err
+}
+
+func (r *orderRepository) GetPaymentByRazorpayOrderID(ctx context.Context, razorpayOrderID string) (*domain.Payment, error) {
+	query := `
+		SELECT id, order_id, amount, payment_method, payment_status, created_at, updated_at, 
+			   razorpay_order_id, razorpay_payment_id, razorpay_signature
+		FROM payments
+		WHERE razorpay_order_id = $1
+	`
+	var payment domain.Payment
+	var razorpayPaymentID, razorpaySignature sql.NullString
+	err := r.db.QueryRowContext(ctx, query, razorpayOrderID).Scan(
+		&payment.ID, &payment.OrderID, &payment.Amount, &payment.PaymentMethod, &payment.Status,
+		&payment.CreatedAt, &payment.UpdatedAt, &payment.RazorpayOrderID,
+		&razorpayPaymentID, &razorpaySignature,
+	)
+	if err == sql.ErrNoRows {
+		log.Printf("No payment found for Razorpay order ID: %s", razorpayOrderID)
+		return nil, utils.ErrPaymentNotFound
+	}
+	if err != nil {
+		log.Printf("Error querying payment by Razorpay order ID %s: %v", razorpayOrderID, err)
+		return nil, fmt.Errorf("database error: %w", err)
+	}
+
+	if razorpayPaymentID.Valid {
+		payment.RazorpayPaymentID = razorpayPaymentID.String
+	}
+	if razorpaySignature.Valid {
+		payment.RazorpaySignature = razorpaySignature.String
+	}
+
+	return &payment, nil
 }

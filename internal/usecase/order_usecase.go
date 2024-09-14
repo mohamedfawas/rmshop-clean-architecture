@@ -291,57 +291,6 @@ func (u *orderUseCase) ProcessPayment(ctx context.Context, tx *sql.Tx, orderID i
 	return payment, nil
 }
 
-func (u *orderUseCase) VerifyAndUpdateRazorpayPayment(ctx context.Context, input domain.RazorpayPaymentInput) error {
-	log.Printf("Verifying and updating Razorpay payment for order ID: %s", input.OrderID)
-
-	payment, err := u.orderRepo.GetPaymentByRazorpayOrderID(ctx, input.OrderID)
-	if err != nil {
-		if err == utils.ErrPaymentNotFound {
-			log.Printf("Payment not found for Razorpay order ID: %s", input.OrderID)
-			return fmt.Errorf("payment not found for Razorpay order ID %s", input.OrderID)
-		}
-		log.Printf("Error getting payment by Razorpay order ID: %v", err)
-		return fmt.Errorf("failed to retrieve payment: %w", err)
-	}
-
-	log.Printf("Payment found for Razorpay order ID %s: %+v", input.OrderID, payment)
-
-	attributes := map[string]interface{}{
-		"razorpay_order_id":   input.OrderID,
-		"razorpay_payment_id": input.PaymentID,
-		"razorpay_signature":  input.Signature,
-	}
-
-	if err := u.razorpayService.VerifyPaymentSignature(attributes); err != nil {
-		log.Printf("Invalid Razorpay signature: %v", err)
-		return errors.New("invalid signature")
-	}
-
-	payment.Status = "paid"
-	payment.RazorpayPaymentID = input.PaymentID
-	payment.RazorpaySignature = input.Signature
-
-	err = u.orderRepo.UpdatePayment(ctx, payment)
-	if err != nil {
-		log.Printf("Error updating payment: %v", err)
-		return fmt.Errorf("failed to update payment: %w", err)
-	}
-
-	log.Printf("Payment updated successfully: %+v", payment)
-
-	// Update order status
-	err = u.orderRepo.UpdateOrderStatus(ctx, payment.OrderID, "paid")
-	if err != nil {
-		log.Printf("Failed to update order status: %v", err)
-		// Don't return the error here, as the payment was successful
-	} else {
-		log.Printf("Order status updated to 'paid' for order ID: %d", payment.OrderID)
-	}
-
-	log.Printf("Payment successfully verified and updated for order ID: %s", input.OrderID)
-	return nil
-}
-
 func (u *orderUseCase) InitiateReturn(ctx context.Context, userID, orderID int64, reason string) (*domain.ReturnRequest, error) {
 	// Get the order
 	order, err := u.orderRepo.GetByID(ctx, orderID)
@@ -576,4 +525,55 @@ func (u *orderUseCase) PlaceOrderRazorpay(ctx context.Context, userID, checkoutI
 	}
 
 	return order, nil
+}
+
+func (u *orderUseCase) VerifyAndUpdateRazorpayPayment(ctx context.Context, input domain.RazorpayPaymentInput) error {
+	log.Printf("Verifying and updating Razorpay payment for order ID: %s", input.OrderID)
+
+	payment, err := u.orderRepo.GetPaymentByRazorpayOrderID(ctx, input.OrderID)
+	if err != nil {
+		if err == utils.ErrPaymentNotFound {
+			log.Printf("Payment not found for Razorpay order ID: %s", input.OrderID)
+			return fmt.Errorf("payment not found for Razorpay order ID %s", input.OrderID)
+		}
+		log.Printf("Error getting payment by Razorpay order ID: %v", err)
+		return fmt.Errorf("failed to retrieve payment: %w", err)
+	}
+
+	log.Printf("Payment found for Razorpay order ID %s: %+v", input.OrderID, payment)
+
+	attributes := map[string]interface{}{
+		"razorpay_order_id":   input.OrderID,
+		"razorpay_payment_id": input.PaymentID,
+		"razorpay_signature":  input.Signature,
+	}
+
+	if err := u.razorpayService.VerifyPaymentSignature(attributes); err != nil {
+		log.Printf("Invalid Razorpay signature: %v", err)
+		return errors.New("invalid signature")
+	}
+
+	payment.Status = "paid"
+	payment.RazorpayPaymentID = input.PaymentID
+	payment.RazorpaySignature = input.Signature
+
+	err = u.orderRepo.UpdatePayment(ctx, payment)
+	if err != nil {
+		log.Printf("Error updating payment: %v", err)
+		return fmt.Errorf("failed to update payment: %w", err)
+	}
+
+	log.Printf("Payment updated successfully: %+v", payment)
+
+	// Update order status
+	err = u.orderRepo.UpdateOrderStatus(ctx, payment.OrderID, "paid")
+	if err != nil {
+		log.Printf("Failed to update order status: %v", err)
+		// Don't return the error here, as the payment was successful
+	} else {
+		log.Printf("Order status updated to 'paid' for order ID: %d", payment.OrderID)
+	}
+
+	log.Printf("Payment successfully verified and updated for order ID: %s", input.OrderID)
+	return nil
 }
