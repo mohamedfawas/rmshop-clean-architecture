@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
 
+	"github.com/gorilla/mux"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/delivery/http/middleware"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/api"
@@ -58,4 +60,82 @@ func (h *WishlistHandler) AddToWishlist(w http.ResponseWriter, r *http.Request) 
 	}
 
 	api.SendResponse(w, http.StatusCreated, "Item added to wishlist successfully", wishlistItem, "")
+}
+
+func (h *WishlistHandler) RemoveFromWishlist(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	if !ok {
+		api.SendResponse(w, http.StatusUnauthorized, "Failed to remove item from wishlist", nil, "User not authenticated")
+		return
+	}
+
+	vars := mux.Vars(r)
+	productID, err := strconv.ParseInt(vars["productId"], 10, 64)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to remove item from wishlist", nil, "Invalid product ID")
+		return
+	}
+
+	isEmpty, err := h.wishlistUseCase.RemoveFromWishlist(r.Context(), userID, productID)
+	if err != nil {
+		switch err {
+		case utils.ErrProductNotInWishlist:
+			api.SendResponse(w, http.StatusNotFound, "Failed to remove item from wishlist", nil, "Product not found in wishlist")
+		case utils.ErrUnauthorized:
+			api.SendResponse(w, http.StatusForbidden, "Failed to remove item from wishlist", nil, "You don't have permission to remove this item")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to remove item from wishlist", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	response := map[string]interface{}{
+		"message": "Product successfully removed from wishlist",
+	}
+	if isEmpty {
+		response["wishlist_status"] = "empty"
+	}
+
+	api.SendResponse(w, http.StatusOK, "Item removed from wishlist successfully", response, "")
+}
+
+func (h *WishlistHandler) GetUserWishlist(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	if !ok {
+		api.SendResponse(w, http.StatusUnauthorized, "Failed to retrieve wishlist", nil, "User not authenticated")
+		return
+	}
+
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	sortBy := r.URL.Query().Get("sort")
+	order := r.URL.Query().Get("order")
+
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 || limit > 100 {
+		limit = 10
+	}
+
+	wishlistItems, totalCount, err := h.wishlistUseCase.GetUserWishlist(r.Context(), userID, page, limit, sortBy, order)
+	if err != nil {
+		switch err {
+		case utils.ErrUserNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Failed to retrieve wishlist", nil, "User not found")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to retrieve wishlist", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	response := map[string]interface{}{
+		"items":       wishlistItems,
+		"total_count": totalCount,
+		"page":        page,
+		"limit":       limit,
+		"total_pages": (totalCount + int64(limit) - 1) / int64(limit),
+	}
+
+	api.SendResponse(w, http.StatusOK, "Wishlist retrieved successfully", response, "")
 }

@@ -65,7 +65,7 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 
 	// wishlist
 	wishlistRepo := postgres.NewWishlistRepository(db)
-	wishlistUseCase := usecase.NewWishlistUseCase(wishlistRepo, productRepo)
+	wishlistUseCase := usecase.NewWishlistUseCase(wishlistRepo, productRepo, userRepo)
 	wishlistHandler := handlers.NewWishlistHandler(wishlistUseCase)
 
 	// checkour repo initialized

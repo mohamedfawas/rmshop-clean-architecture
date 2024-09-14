@@ -256,9 +256,11 @@ var (
 	ErrInvalidReturnReason       = errors.New("invalid return reason")
 	ErrReturnRequestNotFound     = errors.New("return request not found")
 
+	// wishlist
 	ErrProductOutOfStock     = errors.New("product is out of stock")
 	ErrDuplicateWishlistItem = errors.New("product already in wishlist")
 	ErrWishlistFull          = errors.New("wishlist is full")
+	ErrProductNotInWishlist  = errors.New("product not found in wishlist")
 
 	ErrInternalServer = errors.New("internal server error")
 )

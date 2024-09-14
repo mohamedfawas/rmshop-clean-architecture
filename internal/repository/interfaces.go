@@ -162,4 +162,6 @@ type WishlistRepository interface {
 	AddItem(ctx context.Context, item *domain.WishlistItem) error
 	ItemExists(ctx context.Context, userID, productID int64) (bool, error)
 	GetWishlistItemCount(ctx context.Context, userID int64) (int, error)
+	RemoveItem(ctx context.Context, userID, productID int64) error
+	GetUserWishlistItems(ctx context.Context, userID int64, page, limit int, sortBy, order string) ([]*domain.WishlistItem, int64, error)
 }

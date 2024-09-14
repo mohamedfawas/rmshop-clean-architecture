@@ -10,17 +10,21 @@ import (
 
 type WishlistUseCase interface {
 	AddToWishlist(ctx context.Context, userID, productID int64) (*domain.WishlistItem, error)
+	RemoveFromWishlist(ctx context.Context, userID, productID int64) (bool, error)
+	GetUserWishlist(ctx context.Context, userID int64, page, limit int, sortBy, order string) ([]*domain.WishlistItem, int64, error)
 }
 
 type wishlistUseCase struct {
 	wishlistRepo repository.WishlistRepository
 	productRepo  repository.ProductRepository
+	userRepo     repository.UserRepository
 }
 
-func NewWishlistUseCase(wishlistRepo repository.WishlistRepository, productRepo repository.ProductRepository) WishlistUseCase {
+func NewWishlistUseCase(wishlistRepo repository.WishlistRepository, productRepo repository.ProductRepository, userRepo repository.UserRepository) WishlistUseCase {
 	return &wishlistUseCase{
 		wishlistRepo: wishlistRepo,
 		productRepo:  productRepo,
+		userRepo:     userRepo,
 	}
 }
 
@@ -66,4 +70,56 @@ func (u *wishlistUseCase) AddToWishlist(ctx context.Context, userID, productID i
 	}
 
 	return wishlistItem, nil
+}
+
+func (u *wishlistUseCase) RemoveFromWishlist(ctx context.Context, userID, productID int64) (bool, error) {
+	// Check if the item exists in the user's wishlist
+	exists, err := u.wishlistRepo.ItemExists(ctx, userID, productID)
+	if err != nil {
+		return false, err
+	}
+	if !exists {
+		return false, utils.ErrProductNotInWishlist
+	}
+
+	// Remove the item
+	err = u.wishlistRepo.RemoveItem(ctx, userID, productID)
+	if err != nil {
+		return false, err
+	}
+
+	// Check if the wishlist is now empty
+	count, err := u.wishlistRepo.GetWishlistItemCount(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+
+	return count == 0, nil
+}
+
+func (u *wishlistUseCase) GetUserWishlist(ctx context.Context, userID int64, page, limit int, sortBy, order string) ([]*domain.WishlistItem, int64, error) {
+	// Check if user exists
+	_, err := u.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		if err == utils.ErrUserNotFound {
+			return nil, 0, utils.ErrUserNotFound
+		}
+		return nil, 0, err
+	}
+
+	// Validate and set default sorting options
+	if sortBy == "" {
+		sortBy = "created_at"
+	}
+	if order != "asc" && order != "desc" {
+		order = "desc"
+	}
+
+	// Get wishlist items
+	items, totalCount, err := u.wishlistRepo.GetUserWishlistItems(ctx, userID, page, limit, sortBy, order)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return items, totalCount, nil
 }

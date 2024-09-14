@@ -172,6 +172,8 @@ func NewRouter(userHandler *handlers.UserHandler,
 
 	// wish list
 	r.HandleFunc("/user/wishlist/items", chainMiddleware(jwtAuth)(wishlistHandler.AddToWishlist)).Methods("POST")
+	r.HandleFunc("/user/wishlist/items/{productId}", chainMiddleware(jwtAuth, userAuth)(wishlistHandler.RemoveFromWishlist)).Methods("DELETE")
+	r.HandleFunc("/user/wishlist", chainMiddleware(jwtAuth, userAuth)(wishlistHandler.GetUserWishlist)).Methods("GET")
 
 	// User routes : Cart management
 	r.HandleFunc("/user/cart/items", chainMiddleware(jwtAuth, userAuth)(cartHandler.AddToCart)).Methods("POST")
