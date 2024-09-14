@@ -112,14 +112,12 @@ func (h *OrderHandler) GetUserOrders(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *OrderHandler) CancelOrder(w http.ResponseWriter, r *http.Request) {
-	// Extract user ID from context (set by auth middleware)
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok {
 		api.SendResponse(w, http.StatusUnauthorized, "Failed to cancel order", nil, "User not authenticated")
 		return
 	}
 
-	// Extract order ID from URL
 	vars := mux.Vars(r)
 	orderID, err := strconv.ParseInt(vars["orderId"], 10, 64)
 	if err != nil {
@@ -127,7 +125,6 @@ func (h *OrderHandler) CancelOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Call use case method to cancel the order
 	result, err := h.orderUseCase.CancelOrder(r.Context(), userID, orderID)
 	if err != nil {
 		switch err {
@@ -247,4 +244,54 @@ func (h *OrderHandler) UpdateOrderStatus(w http.ResponseWriter, r *http.Request)
 	}
 
 	api.SendResponse(w, http.StatusOK, "Order status updated successfully", result, "")
+}
+
+func (h *OrderHandler) InitiateReturn(w http.ResponseWriter, r *http.Request) {
+	// Extract user ID from context (set by auth middleware)
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	if !ok {
+		api.SendResponse(w, http.StatusUnauthorized, "Failed to initiate return", nil, "User not authenticated")
+		return
+	}
+
+	// Extract order ID from URL
+	vars := mux.Vars(r)
+	orderID, err := strconv.ParseInt(vars["orderId"], 10, 64)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to initiate return", nil, "Invalid order ID")
+		return
+	}
+
+	// Parse request body
+	var input struct {
+		Reason string `json:"reason"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to initiate return", nil, "Invalid request body")
+		return
+	}
+
+	// Call use case method to initiate return
+	returnRequest, err := h.orderUseCase.InitiateReturn(r.Context(), userID, orderID, input.Reason)
+	if err != nil {
+		switch err {
+		case utils.ErrOrderNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Failed to initiate return", nil, "Order not found")
+		case utils.ErrUnauthorized:
+			api.SendResponse(w, http.StatusForbidden, "Failed to initiate return", nil, "You don't have permission to return this order")
+		case utils.ErrOrderNotEligibleForReturn:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to initiate return", nil, "Order is not eligible for return")
+		case utils.ErrReturnWindowExpired:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to initiate return", nil, "Return window has expired")
+		case utils.ErrReturnAlreadyRequested:
+			api.SendResponse(w, http.StatusConflict, "Failed to initiate return", nil, "Return request already exists for this order")
+		case utils.ErrInvalidReturnReason:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to initiate return", nil, "Invalid return reason")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to initiate return", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	api.SendResponse(w, http.StatusCreated, "Return request initiated successfully", returnRequest, "")
 }

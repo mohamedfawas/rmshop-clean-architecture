@@ -89,6 +89,7 @@ func NewRouter(userHandler *handlers.UserHandler,
 	orderHandler *handlers.OrderHandler,
 	inventoryHandler *handlers.InventoryHandler,
 	paymentHandler *handlers.PaymentHandler,
+	wishlistHandler *handlers.WishlistHandler,
 	templates *template.Template) http.Handler {
 	log.Println("Setting up router...")
 
@@ -169,6 +170,9 @@ func NewRouter(userHandler *handlers.UserHandler,
 	r.HandleFunc("/user/addresses", chainMiddleware(jwtAuth, userAuth)(userHandler.GetUserAddresses)).Methods("GET")
 	r.HandleFunc("/user/addresses/{addressId}", chainMiddleware(jwtAuth, userAuth)(userHandler.DeleteUserAddress)).Methods("DELETE")
 
+	// wish list
+	r.HandleFunc("/user/wishlist/items", chainMiddleware(jwtAuth)(wishlistHandler.AddToWishlist)).Methods("POST")
+
 	// User routes : Cart management
 	r.HandleFunc("/user/cart/items", chainMiddleware(jwtAuth, userAuth)(cartHandler.AddToCart)).Methods("POST")
 	r.HandleFunc("/user/cart", chainMiddleware(jwtAuth, userAuth)(cartHandler.GetUserCart)).Methods("GET")
@@ -189,6 +193,9 @@ func NewRouter(userHandler *handlers.UserHandler,
 	r.HandleFunc("/user/orders/{order_id}", chainMiddleware(jwtAuth, userAuth)(orderHandler.GetOrderConfirmation)).Methods("GET")
 	r.HandleFunc("/user/orders", chainMiddleware(jwtAuth, userAuth)(orderHandler.GetUserOrders)).Methods("GET")
 	r.HandleFunc("/user/orders/{orderId}/cancel", chainMiddleware(jwtAuth, userAuth)(orderHandler.CancelOrder)).Methods("POST")
+
+	// order return
+	r.HandleFunc("/user/orders/{orderId}/return", chainMiddleware(jwtAuth, userAuth)(orderHandler.InitiateReturn)).Methods("POST")
 
 	// Public routes
 	r.HandleFunc("/user/forgot-password", middleware.RateLimitMiddleware(userHandler.ForgotPassword, otpResendLimiter)).Methods("POST")

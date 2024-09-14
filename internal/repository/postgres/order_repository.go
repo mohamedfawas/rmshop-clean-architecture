@@ -54,11 +54,10 @@ func (r *orderRepository) AddOrderItem(ctx context.Context, tx *sql.Tx, item *do
 func (r *orderRepository) GetByID(ctx context.Context, id int64) (*domain.Order, error) {
 	query := `
         SELECT id, user_id, total_amount, delivery_status, 
-               order_status, refund_status, address_id, created_at, updated_at, razorpay_order_id, razorpay_payment_id
+               order_status, refund_status, shipping_address_id, created_at, updated_at, delivered_at
         FROM orders
         WHERE id = $1
     `
-	var razorpayOrderID, razorpayPaymentID sql.NullString
 	var order domain.Order
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
 		&order.ID,
@@ -70,8 +69,7 @@ func (r *orderRepository) GetByID(ctx context.Context, id int64) (*domain.Order,
 		&order.ShippingAddressID,
 		&order.CreatedAt,
 		&order.UpdatedAt,
-		&razorpayOrderID,
-		&razorpayPaymentID,
+		&order.DeliveredAt,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -387,4 +385,110 @@ func (r *orderRepository) CreatePayment(ctx context.Context, tx *sql.Tx, payment
 		return fmt.Errorf("failed to create payment: %w", err)
 	}
 	return nil
+}
+
+func (r *orderRepository) GetReturnRequestByOrderID(ctx context.Context, orderID int64) (*domain.ReturnRequest, error) {
+	query := `
+		SELECT id, order_id, reason, status, created_at, updated_at
+		FROM return_requests
+		WHERE order_id = $1
+	`
+	var returnRequest domain.ReturnRequest
+	err := r.db.QueryRowContext(ctx, query, orderID).Scan(
+		&returnRequest.ID,
+		&returnRequest.OrderID,
+		&returnRequest.Reason,
+		&returnRequest.Status,
+		&returnRequest.CreatedAt,
+		&returnRequest.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, utils.ErrReturnRequestNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &returnRequest, nil
+}
+
+func (r *orderRepository) CreateReturnRequest(ctx context.Context, returnRequest *domain.ReturnRequest) error {
+	query := `
+		INSERT INTO return_requests (order_id, reason, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id
+	`
+	err := r.db.QueryRowContext(ctx, query,
+		returnRequest.OrderID,
+		returnRequest.Reason,
+		returnRequest.Status,
+		returnRequest.CreatedAt,
+		returnRequest.UpdatedAt,
+	).Scan(&returnRequest.ID)
+	return err
+}
+
+func (r *orderRepository) SetOrderDeliveredAt(ctx context.Context, orderID int64, deliveredAt *time.Time) error {
+	query := `
+        UPDATE orders
+        SET delivered_at = $1, updated_at = NOW()
+        WHERE id = $2
+    `
+	_, err := r.db.ExecContext(ctx, query, deliveredAt, orderID)
+	return err
+}
+
+func (r *orderRepository) BeginTx(ctx context.Context) (*sql.Tx, error) {
+	return r.db.BeginTx(ctx, nil)
+}
+
+func (r *orderRepository) CreateReturnRequestTx(ctx context.Context, tx *sql.Tx, returnRequest *domain.ReturnRequest) error {
+	query := `
+        INSERT INTO return_requests (order_id, reason, status, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id
+    `
+	err := tx.QueryRowContext(ctx, query,
+		returnRequest.OrderID,
+		returnRequest.Reason,
+		returnRequest.Status,
+		returnRequest.CreatedAt,
+		returnRequest.UpdatedAt,
+	).Scan(&returnRequest.ID)
+	return err
+}
+
+func (r *orderRepository) UpdateOrderStatusTx(ctx context.Context, tx *sql.Tx, orderID int64, status string) error {
+	query := `
+        UPDATE orders
+        SET order_status = $1, updated_at = NOW()
+        WHERE id = $2
+    `
+	_, err := tx.ExecContext(ctx, query, status, orderID)
+	return err
+}
+
+func (r *orderRepository) UpdateRefundStatusTx(ctx context.Context, tx *sql.Tx, orderID int64, refundStatus sql.NullString) error {
+	query := `
+        UPDATE orders
+        SET refund_status = $1, updated_at = NOW()
+        WHERE id = $2
+    `
+	_, err := tx.ExecContext(ctx, query, refundStatus, orderID)
+	return err
+}
+
+func (r *orderRepository) CreateRefundTx(ctx context.Context, tx *sql.Tx, refund *domain.Refund) error {
+	query := `
+        INSERT INTO refunds (order_id, amount, status, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id
+    `
+	err := tx.QueryRowContext(ctx, query,
+		refund.OrderID,
+		refund.Amount,
+		refund.Status,
+		refund.CreatedAt,
+		refund.UpdatedAt,
+	).Scan(&refund.ID)
+	return err
 }

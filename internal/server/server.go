@@ -63,6 +63,11 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 	cartHandler := handlers.NewCartHandler(cartUseCase)
 	log.Println("Cart components initialized")
 
+	// wishlist
+	wishlistRepo := postgres.NewWishlistRepository(db)
+	wishlistUseCase := usecase.NewWishlistUseCase(wishlistRepo, productRepo)
+	wishlistHandler := handlers.NewWishlistHandler(wishlistUseCase)
+
 	// checkour repo initialized
 	checkoutRepo := postgres.NewCheckoutRepository(db)
 	log.Println("Checkout repository initialized")
@@ -106,6 +111,7 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 		orderHandler,
 		inventoryHandler,
 		paymentHandler,
+		wishlistHandler,
 		templates,
 	)
 	log.Println("Router initialized")

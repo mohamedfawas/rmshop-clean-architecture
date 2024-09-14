@@ -15,6 +15,7 @@ type Order struct {
 	ShippingAddressID int64          `json:"shipping_address_id"`
 	CreatedAt         time.Time      `json:"created_at"`
 	UpdatedAt         time.Time      `json:"updated_at"`
+	DeliveredAt       *time.Time     `json:"delivered_at,omitempty"`
 	Items             []OrderItem    `json:"items"`
 }
 
@@ -75,4 +76,13 @@ type RazorpayPaymentInput struct {
 	OrderID   string `json:"razorpay_order_id"`
 	PaymentID string `json:"razorpay_payment_id"`
 	Signature string `json:"razorpay_signature"`
+}
+
+type ReturnRequest struct {
+	ID        int64     `json:"id"`
+	OrderID   int64     `json:"order_id"`
+	Reason    string    `json:"reason"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }

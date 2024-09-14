@@ -144,8 +144,22 @@ type OrderRepository interface {
 	CreatePayment(ctx context.Context, tx *sql.Tx, payment *domain.Payment) error
 	UpdatePayment(ctx context.Context, payment *domain.Payment) error
 	GetPaymentByRazorpayOrderID(ctx context.Context, razorpayOrderID string) (*domain.Payment, error)
+	GetReturnRequestByOrderID(ctx context.Context, orderID int64) (*domain.ReturnRequest, error)
+	CreateReturnRequest(ctx context.Context, returnRequest *domain.ReturnRequest) error
+	SetOrderDeliveredAt(ctx context.Context, orderID int64, deliveredAt *time.Time) error
+	CreateRefundTx(ctx context.Context, tx *sql.Tx, refund *domain.Refund) error
+	UpdateRefundStatusTx(ctx context.Context, tx *sql.Tx, orderID int64, refundStatus sql.NullString) error
+	UpdateOrderStatusTx(ctx context.Context, tx *sql.Tx, orderID int64, status string) error
+	CreateReturnRequestTx(ctx context.Context, tx *sql.Tx, returnRequest *domain.ReturnRequest) error
+	BeginTx(ctx context.Context) (*sql.Tx, error)
 }
 
 type InventoryRepository interface {
 	GetInventory(ctx context.Context, params domain.InventoryQueryParams) ([]*domain.InventoryItem, int64, error)
+}
+
+type WishlistRepository interface {
+	AddItem(ctx context.Context, item *domain.WishlistItem) error
+	ItemExists(ctx context.Context, userID, productID int64) (bool, error)
+	GetWishlistItemCount(ctx context.Context, userID int64) (int, error)
 }
