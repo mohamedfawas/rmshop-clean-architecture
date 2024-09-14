@@ -166,3 +166,7 @@ type WishlistRepository interface {
 	RemoveItem(ctx context.Context, userID, productID int64) error
 	GetUserWishlistItems(ctx context.Context, userID int64, page, limit int, sortBy, order string) ([]*domain.WishlistItem, int64, error)
 }
+
+type WalletRepository interface {
+	GetByUserID(ctx context.Context, userID int64) (*domain.Wallet, error)
+}

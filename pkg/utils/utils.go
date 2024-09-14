@@ -263,6 +263,10 @@ var (
 	ErrWishlistFull          = errors.New("wishlist is full")
 	ErrProductNotInWishlist  = errors.New("product not found in wishlist")
 
+	// wallet
+	ErrWalletNotFound       = errors.New("wallet not found")
+	ErrWalletNotInitialized = errors.New("wallet not initialized")
+
 	ErrInternalServer = errors.New("internal server error")
 )
 

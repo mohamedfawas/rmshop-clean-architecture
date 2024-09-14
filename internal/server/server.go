@@ -88,6 +88,11 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 	checkoutHandler := handlers.NewCheckoutHandler(checkoutUseCase, couponUseCase)
 	log.Println("Checkout components initialized")
 
+	walletRepo := postgres.NewWalletRepository(db)
+	walletUseCase := usecase.NewWalletUseCase(walletRepo, userRepo)
+	walletHandler := handlers.NewWalletHandler(walletUseCase)
+	log.Println("wallet components initialized")
+
 	orderUseCase := usecase.NewOrderUseCase(orderRepo, checkoutRepo, productRepo, cartRepo, cfg.Razorpay.KeySecret, cfg.Razorpay.KeySecret)
 	orderHandler := handlers.NewOrderHandler(orderUseCase)
 	log.Println("Order components initialized")
@@ -115,6 +120,7 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 		inventoryHandler,
 		paymentHandler,
 		wishlistHandler,
+		walletHandler,
 		templates,
 	)
 	log.Println("Router initialized")

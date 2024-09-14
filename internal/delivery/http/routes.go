@@ -90,6 +90,7 @@ func NewRouter(userHandler *handlers.UserHandler,
 	inventoryHandler *handlers.InventoryHandler,
 	paymentHandler *handlers.PaymentHandler,
 	wishlistHandler *handlers.WishlistHandler,
+	walletHandler *handlers.WalletHandler,
 	templates *template.Template) http.Handler {
 	log.Println("Setting up router...")
 
@@ -174,6 +175,9 @@ func NewRouter(userHandler *handlers.UserHandler,
 	r.HandleFunc("/user/wishlist/items", chainMiddleware(jwtAuth)(wishlistHandler.AddToWishlist)).Methods("POST")
 	r.HandleFunc("/user/wishlist/items/{productId}", chainMiddleware(jwtAuth, userAuth)(wishlistHandler.RemoveFromWishlist)).Methods("DELETE")
 	r.HandleFunc("/user/wishlist", chainMiddleware(jwtAuth, userAuth)(wishlistHandler.GetUserWishlist)).Methods("GET")
+
+	// user wallet
+	r.HandleFunc("/user/wallet/balance", chainMiddleware(jwtAuth, userAuth)(walletHandler.GetWalletBalance)).Methods("GET")
 
 	// User routes : Cart management
 	r.HandleFunc("/user/cart/items", chainMiddleware(jwtAuth, userAuth)(cartHandler.AddToCart)).Methods("POST")
