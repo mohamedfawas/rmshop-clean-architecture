@@ -56,20 +56,6 @@ func (r *checkoutRepository) AddCheckoutItems(ctx context.Context, sessionID int
 	return tx.Commit()
 }
 
-// GetCartItems retrieves a list of cart items for a specified user from the database.
-//
-// This method performs the following actions:
-// 1. Executes a SQL query to fetch cart items and their associated product details for the given user ID.
-// 2. Scans the resulting rows into domain.CartItemWithProduct structs and appends them to a slice.
-// 3. Returns the slice of cart items and any potential error encountered during the process.
-//
-// Parameters:
-// - ctx: A context.Context to control the lifetime of the database query.
-// - userID: The unique identifier of the user whose cart items are being retrieved.
-//
-// Returns:
-// - A slice of pointers to domain.CartItemWithProduct structs containing the cart items and product details for the specified user.
-// - An error if there was an issue executing the query or processing the results
 func (r *checkoutRepository) GetCartItems(ctx context.Context, userID int64) ([]*domain.CartItemWithProduct, error) {
 	query := `
         SELECT ci.id, ci.product_id, ci.quantity, p.name, p.price
@@ -299,7 +285,6 @@ func (r *checkoutRepository) UpdateCheckoutDetails(ctx context.Context, checkout
 	return err
 }
 
-// Add a new method for updating checkout status within a transaction
 func (r *checkoutRepository) UpdateCheckoutStatus(ctx context.Context, tx *sql.Tx, checkout *domain.CheckoutSession) error {
 	query := `
 		UPDATE checkout_sessions
@@ -351,29 +336,6 @@ func (r *checkoutRepository) CreateOrGetShippingAddress(ctx context.Context, use
 	}
 
 	return shippingAddressID, nil
-}
-
-func (r *checkoutRepository) UpdateCheckoutShippingAddress(ctx context.Context, checkoutID, shippingAddressID int64) error {
-	query := `
-        UPDATE checkout_sessions 
-        SET shipping_address_id = $1, updated_at = NOW() 
-        WHERE id = $2
-    `
-	result, err := r.db.ExecContext(ctx, query, shippingAddressID, checkoutID)
-	if err != nil {
-		return err
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if rowsAffected == 0 {
-		return utils.ErrCheckoutNotFound
-	}
-
-	return nil
 }
 
 func (r *checkoutRepository) GetCheckoutWithAddressByID(ctx context.Context, checkoutID int64) (*domain.CheckoutSession, error) {
@@ -440,29 +402,23 @@ func (r *checkoutRepository) getShippingAddressById(ctx context.Context, id int6
 
 func (r *checkoutRepository) GetCheckoutByID(ctx context.Context, checkoutID int64) (*domain.CheckoutSession, error) {
 	query := `
-        SELECT cs.id, cs.user_id, cs.total_amount, cs.discount_amount, cs.final_amount, 
-               cs.item_count, cs.created_at, cs.updated_at, cs.status, cs.coupon_code, 
-               cs.coupon_applied, cs.shipping_address_id,
-               sa.address_line1, sa.address_line2, sa.city, sa.state, sa.landmark, sa.pincode, sa.phone_number
-        FROM checkout_sessions cs
-        LEFT JOIN shipping_addresses sa ON cs.shipping_address_id = sa.id
-        WHERE cs.id = $1
+        SELECT id, user_id, total_amount, discount_amount, final_amount, 
+               item_count, created_at, updated_at, status, coupon_code, 
+               coupon_applied, shipping_address_id
+        FROM checkout_sessions
+        WHERE id = $1
     `
 	var checkout domain.CheckoutSession
-	var couponCode, addressLine1, addressLine2, city, state, landmark, pincode, phoneNumber sql.NullString
-	var shippingAddressID sql.NullInt64
-
+	var couponCode sql.NullString
 	err := r.db.QueryRowContext(ctx, query, checkoutID).Scan(
-		&checkout.ID, &checkout.UserID, &checkout.TotalAmount, &checkout.DiscountAmount, &checkout.FinalAmount,
-		&checkout.ItemCount, &checkout.CreatedAt, &checkout.UpdatedAt, &checkout.Status, &couponCode,
-		&checkout.CouponApplied, &shippingAddressID,
-		&addressLine1, &addressLine2, &city, &state, &landmark, &pincode, &phoneNumber,
+		&checkout.ID, &checkout.UserID, &checkout.TotalAmount, &checkout.DiscountAmount,
+		&checkout.FinalAmount, &checkout.ItemCount, &checkout.CreatedAt, &checkout.UpdatedAt,
+		&checkout.Status, &couponCode, &checkout.CouponApplied, &checkout.ShippingAddressID,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, utils.ErrCheckoutNotFound
 		}
-		log.Printf("error while retrieving checkout sessions : %v", err)
 		return nil, err
 	}
 
@@ -470,18 +426,28 @@ func (r *checkoutRepository) GetCheckoutByID(ctx context.Context, checkoutID int
 		checkout.CouponCode = couponCode.String
 	}
 
-	if shippingAddressID.Valid {
-		checkout.ShippingAddress = &domain.ShippingAddress{
-			ID:           shippingAddressID.Int64,
-			AddressLine1: addressLine1.String,
-			AddressLine2: addressLine2.String,
-			City:         city.String,
-			State:        state.String,
-			Landmark:     landmark.String,
-			PinCode:      pincode.String,
-			PhoneNumber:  phoneNumber.String,
-		}
+	return &checkout, nil
+}
+
+func (r *checkoutRepository) UpdateCheckoutShippingAddress(ctx context.Context, checkoutID, shippingAddressID int64) error {
+	query := `
+        UPDATE checkout_sessions 
+        SET shipping_address_id = $1, updated_at = NOW() 
+        WHERE id = $2
+    `
+	result, err := r.db.ExecContext(ctx, query, shippingAddressID, checkoutID)
+	if err != nil {
+		return err
 	}
 
-	return &checkout, nil
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return utils.ErrCheckoutNotFound
+	}
+
+	return nil
 }

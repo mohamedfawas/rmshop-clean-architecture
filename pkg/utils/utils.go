@@ -244,7 +244,8 @@ var (
 	ErrAddressNotBelongToUser = errors.New("address don't belong to user")
 
 	// payment
-	ErrPaymentNotFound = errors.New("payment not found")
+	ErrPaymentNotFound            = errors.New("payment not found")
+	ErrRazorpayServiceUnavailable = errors.New("Razorpay service unavailable")
 
 	// inventory
 	ErrStockQuantityTooLarge = errors.New("stock quantity too large")

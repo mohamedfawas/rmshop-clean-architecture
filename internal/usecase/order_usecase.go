@@ -26,16 +26,28 @@ type OrderUseCase interface {
 	ProcessPayment(ctx context.Context, tx *sql.Tx, orderID int64, paymentMethod string, amount float64) (*domain.Payment, error)
 	VerifyAndUpdateRazorpayPayment(ctx context.Context, input domain.RazorpayPaymentInput) error
 	InitiateReturn(ctx context.Context, userID, orderID int64, reason string) (*domain.ReturnRequest, error)
+	PlaceOrderRazorpay(ctx context.Context, userID, checkoutID int64) (*domain.Order, error)
+	UpdateOrderRazorpayID(ctx context.Context, orderID int64, razorpayOrderID string) error
 }
 
 type orderUseCase struct {
 	orderRepo       repository.OrderRepository
+	checkoutRepo    repository.CheckoutRepository
+	productRepo     repository.ProductRepository
+	cartRepo        repository.CartRepository
 	razorpayService *razorpay.Service
 }
 
-func NewOrderUseCase(orderRepo repository.OrderRepository, razorpayKeyID, razorpaySecret string) OrderUseCase {
+func NewOrderUseCase(orderRepo repository.OrderRepository,
+	checkoutRepo repository.CheckoutRepository,
+	productRepo repository.ProductRepository,
+	cartRepo repository.CartRepository,
+	razorpayKeyID, razorpaySecret string) OrderUseCase {
 	return &orderUseCase{
 		orderRepo:       orderRepo,
+		checkoutRepo:    checkoutRepo,
+		productRepo:     productRepo,
+		cartRepo:        cartRepo,
 		razorpayService: razorpay.NewService(razorpayKeyID, razorpaySecret),
 	}
 }
@@ -253,6 +265,8 @@ func (u *orderUseCase) ProcessPayment(ctx context.Context, tx *sql.Tx, orderID i
 		Amount:        amount,
 		PaymentMethod: paymentMethod,
 		Status:        "pending",
+		CreatedAt:     time.Now().UTC(),
+		UpdatedAt:     time.Now().UTC(),
 	}
 
 	if paymentMethod == "razorpay" {
@@ -266,20 +280,31 @@ func (u *orderUseCase) ProcessPayment(ctx context.Context, tx *sql.Tx, orderID i
 		return nil, fmt.Errorf("unsupported payment method: %s", paymentMethod)
 	}
 
-	// Use the transaction to create the payment
-	err := u.CreatePayment(ctx, tx, payment)
+	// Create the payment record in the database
+	err := u.orderRepo.CreatePayment(ctx, tx, payment)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create payment: %w", err)
+		return nil, fmt.Errorf("failed to create payment record: %w", err)
 	}
+
+	log.Printf("Payment record created: %+v", payment)
 
 	return payment, nil
 }
 
 func (u *orderUseCase) VerifyAndUpdateRazorpayPayment(ctx context.Context, input domain.RazorpayPaymentInput) error {
+	log.Printf("Verifying and updating Razorpay payment for order ID: %s", input.OrderID)
+
 	payment, err := u.orderRepo.GetPaymentByRazorpayOrderID(ctx, input.OrderID)
 	if err != nil {
-		return err
+		if err == utils.ErrPaymentNotFound {
+			log.Printf("Payment not found for Razorpay order ID: %s", input.OrderID)
+			return fmt.Errorf("payment not found for Razorpay order ID %s", input.OrderID)
+		}
+		log.Printf("Error getting payment by Razorpay order ID: %v", err)
+		return fmt.Errorf("failed to retrieve payment: %w", err)
 	}
+
+	log.Printf("Payment found for Razorpay order ID %s: %+v", input.OrderID, payment)
 
 	attributes := map[string]interface{}{
 		"razorpay_order_id":   input.OrderID,
@@ -288,6 +313,7 @@ func (u *orderUseCase) VerifyAndUpdateRazorpayPayment(ctx context.Context, input
 	}
 
 	if err := u.razorpayService.VerifyPaymentSignature(attributes); err != nil {
+		log.Printf("Invalid Razorpay signature: %v", err)
 		return errors.New("invalid signature")
 	}
 
@@ -297,16 +323,22 @@ func (u *orderUseCase) VerifyAndUpdateRazorpayPayment(ctx context.Context, input
 
 	err = u.orderRepo.UpdatePayment(ctx, payment)
 	if err != nil {
-		return err
+		log.Printf("Error updating payment: %v", err)
+		return fmt.Errorf("failed to update payment: %w", err)
 	}
+
+	log.Printf("Payment updated successfully: %+v", payment)
 
 	// Update order status
 	err = u.orderRepo.UpdateOrderStatus(ctx, payment.OrderID, "paid")
 	if err != nil {
-		// Log the error but don't return it, as the payment was successful
 		log.Printf("Failed to update order status: %v", err)
+		// Don't return the error here, as the payment was successful
+	} else {
+		log.Printf("Order status updated to 'paid' for order ID: %d", payment.OrderID)
 	}
 
+	log.Printf("Payment successfully verified and updated for order ID: %s", input.OrderID)
 	return nil
 }
 
@@ -432,4 +464,116 @@ func (u *orderUseCase) initiateRefund(ctx context.Context, tx *sql.Tx, payment *
 	}
 
 	return nil
+}
+
+func (u *orderUseCase) UpdateOrderRazorpayID(ctx context.Context, orderID int64, razorpayOrderID string) error {
+	return u.orderRepo.UpdateOrderRazorpayID(ctx, orderID, razorpayOrderID)
+}
+
+func (u *orderUseCase) PlaceOrderRazorpay(ctx context.Context, userID, checkoutID int64) (*domain.Order, error) {
+	tx, err := u.orderRepo.BeginTx(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	checkout, err := u.checkoutRepo.GetCheckoutByID(ctx, checkoutID)
+	if err != nil {
+		if err == utils.ErrCheckoutNotFound {
+			return nil, utils.ErrCheckoutNotFound
+		}
+		return nil, err
+	}
+
+	if checkout.UserID != userID {
+		return nil, utils.ErrUnauthorized
+	}
+
+	if checkout.Status != "pending" {
+		return nil, utils.ErrOrderAlreadyPlaced
+	}
+
+	items, err := u.checkoutRepo.GetCheckoutItems(ctx, checkoutID)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(items) == 0 {
+		return nil, utils.ErrEmptyCart
+	}
+
+	for _, item := range items {
+		product, err := u.productRepo.GetByID(ctx, item.ProductID)
+		if err != nil {
+			return nil, err
+		}
+		if product.StockQuantity < item.Quantity {
+			return nil, utils.ErrInsufficientStock
+		}
+	}
+
+	if checkout.ShippingAddressID == 0 {
+		return nil, utils.ErrInvalidAddress
+	}
+
+	order := &domain.Order{
+		UserID:            userID,
+		TotalAmount:       checkout.FinalAmount,
+		OrderStatus:       "pending",
+		DeliveryStatus:    "processing",
+		ShippingAddressID: checkout.ShippingAddressID,
+	}
+
+	orderID, err := u.orderRepo.CreateOrder(ctx, tx, order)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create order: %w", err)
+	}
+	order.ID = orderID
+
+	payment := &domain.Payment{
+		OrderID:       order.ID,
+		Amount:        checkout.FinalAmount,
+		PaymentMethod: "razorpay",
+		Status:        "pending",
+	}
+
+	err = u.orderRepo.CreatePayment(ctx, tx, payment)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create payment: %w", err)
+	}
+
+	for _, item := range items {
+		orderItem := &domain.OrderItem{
+			OrderID:   order.ID,
+			ProductID: item.ProductID,
+			Quantity:  item.Quantity,
+			Price:     item.Price,
+		}
+		err = u.orderRepo.AddOrderItem(ctx, tx, orderItem)
+		if err != nil {
+			return nil, fmt.Errorf("failed to add order item: %w", err)
+		}
+
+		err = u.productRepo.UpdateStock(ctx, tx, item.ProductID, -item.Quantity)
+		if err != nil {
+			return nil, fmt.Errorf("failed to update product stock: %w", err)
+		}
+	}
+
+	checkout.Status = "completed"
+	err = u.checkoutRepo.UpdateCheckoutStatus(ctx, tx, checkout)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update checkout status: %w", err)
+	}
+
+	err = u.cartRepo.ClearCart(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to clear user's cart: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return order, nil
 }

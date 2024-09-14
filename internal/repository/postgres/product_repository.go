@@ -477,17 +477,13 @@ func (r *productRepository) GetAll(ctx context.Context) ([]*domain.Product, erro
 
 func (r *productRepository) UpdateStock(ctx context.Context, tx *sql.Tx, productID int64, quantityChange int) error {
 	query := `
-		UPDATE products
-		SET stock_quantity = stock_quantity + $1
-		WHERE id = $2
-	`
+        UPDATE products
+        SET stock_quantity = stock_quantity + $1
+        WHERE id = $2
+    `
 	_, err := tx.ExecContext(ctx, query, quantityChange, productID)
-	if err != nil {
-		log.Printf("error while updating product data : %v", err)
-	}
 	return err
 }
-
 func (r *productRepository) UpdateStockQuantity(ctx context.Context, productID int64, quantity int) error {
 	query := `UPDATE products SET stock_quantity = $1, updated_at = NOW() WHERE id = $2 AND is_deleted = false`
 	result, err := r.db.ExecContext(ctx, query, quantity, productID)

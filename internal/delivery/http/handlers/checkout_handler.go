@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -220,6 +221,7 @@ func (h *CheckoutHandler) PlaceOrder(w http.ResponseWriter, r *http.Request) {
 	// Call use case method to place the order
 	order, err := h.checkoutUseCase.PlaceOrder(r.Context(), userID, checkoutID, input.PaymentMethod)
 	if err != nil {
+		log.Printf("error : %v", err)
 		switch err {
 		case utils.ErrCheckoutNotFound:
 			api.SendResponse(w, http.StatusNotFound, "Failed to place order", nil, "Checkout not found")

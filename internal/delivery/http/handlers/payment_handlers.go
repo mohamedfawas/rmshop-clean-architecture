@@ -33,7 +33,6 @@ func NewPaymentHandler(orderUseCase usecase.OrderUseCase, razorpayKeyID, razorpa
 }
 
 func (h *PaymentHandler) RenderPaymentPage(w http.ResponseWriter, r *http.Request) {
-	// Extract order ID from the request
 	orderIDStr := r.URL.Query().Get("order_id")
 	if orderIDStr == "" {
 		http.Error(w, "Order ID is required", http.StatusBadRequest)
@@ -46,13 +45,11 @@ func (h *PaymentHandler) RenderPaymentPage(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Try to extract user ID from the context, but don't require it
 	var userID int64
 	if id, ok := r.Context().Value(middleware.UserIDKey).(int64); ok {
 		userID = id
 	}
 
-	// Get order details
 	order, err := h.orderUseCase.GetOrderByID(r.Context(), userID, orderID)
 	if err != nil {
 		http.Error(w, "Failed to retrieve order details", http.StatusInternalServerError)
@@ -66,40 +63,107 @@ func (h *PaymentHandler) RenderPaymentPage(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Prepare data for the template
+	// Update the order with Razorpay order ID
+	err = h.orderUseCase.UpdateOrderRazorpayID(r.Context(), orderID, razorpayOrder.ID)
+	if err != nil {
+		http.Error(w, "Failed to update order with Razorpay ID", http.StatusInternalServerError)
+		return
+	}
+
 	data := struct {
 		OrderID         string
 		FinalPrice      float64
 		RazorpayKeyID   string
 		RazorpayOrderID string
 	}{
-		OrderID:         strconv.FormatInt(order.ID, 10), // Use the actual order ID
+		OrderID:         strconv.FormatInt(order.ID, 10),
 		FinalPrice:      order.TotalAmount,
 		RazorpayKeyID:   h.razorpayKeyID,
 		RazorpayOrderID: razorpayOrder.ID,
 	}
 
-	// Log the Razorpay Key ID for debugging
-	log.Printf("Using Razorpay Key ID: %s", h.razorpayKeyID)
-
-	// Render the template
 	if err := h.templates.ExecuteTemplate(w, "payment.html", data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
+// func (h *PaymentHandler) RenderPaymentPage(w http.ResponseWriter, r *http.Request) {
+// 	// Extract order ID from the request
+// 	orderIDStr := r.URL.Query().Get("order_id")
+// 	if orderIDStr == "" {
+// 		http.Error(w, "Order ID is required", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	orderID, err := strconv.ParseInt(orderIDStr, 10, 64)
+// 	if err != nil {
+// 		http.Error(w, "Invalid Order ID", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	// Try to extract user ID from the context, but don't require it
+// 	var userID int64
+// 	if id, ok := r.Context().Value(middleware.UserIDKey).(int64); ok {
+// 		userID = id
+// 	}
+
+// 	// Get order details
+// 	order, err := h.orderUseCase.GetOrderByID(r.Context(), userID, orderID)
+// 	if err != nil {
+// 		http.Error(w, "Failed to retrieve order details", http.StatusInternalServerError)
+// 		return
+// 	}
+
+// 	// Create Razorpay order
+// 	razorpayOrder, err := h.razorpayService.CreateOrder(int64(order.TotalAmount*100), "INR")
+// 	if err != nil {
+// 		http.Error(w, "Failed to create Razorpay order", http.StatusInternalServerError)
+// 		return
+// 	}
+
+// 	// Prepare data for the template
+// 	data := struct {
+// 		OrderID         string
+// 		FinalPrice      float64
+// 		RazorpayKeyID   string
+// 		RazorpayOrderID string
+// 	}{
+// 		OrderID:         strconv.FormatInt(order.ID, 10), // Use the actual order ID
+// 		FinalPrice:      order.TotalAmount,
+// 		RazorpayKeyID:   h.razorpayKeyID,
+// 		RazorpayOrderID: razorpayOrder.ID,
+// 	}
+
+// 	// Log the Razorpay Key ID for debugging
+// 	log.Printf("Using Razorpay Key ID: %s", h.razorpayKeyID)
+
+// 	// Render the template
+// 	if err := h.templates.ExecuteTemplate(w, "payment.html", data); err != nil {
+// 		http.Error(w, err.Error(), http.StatusInternalServerError)
+// 	}
+// }
+
 func (h *PaymentHandler) ProcessRazorpayPayment(w http.ResponseWriter, r *http.Request) {
 	var input domain.RazorpayPaymentInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		log.Printf("Error decoding request body: %v", err)
 		api.SendResponse(w, http.StatusBadRequest, "Invalid request body", nil, err.Error())
 		return
 	}
 
+	log.Printf("Received Razorpay payment input: %+v", input)
+
 	err := h.orderUseCase.VerifyAndUpdateRazorpayPayment(r.Context(), input)
 	if err != nil {
-		api.SendResponse(w, http.StatusInternalServerError, "Payment verification failed", nil, err.Error())
+		log.Printf("Error verifying and updating Razorpay payment: %v", err)
+		if err.Error() == "payment not found" {
+			api.SendResponse(w, http.StatusNotFound, "Payment verification failed", nil, "Payment not found")
+		} else {
+			api.SendResponse(w, http.StatusInternalServerError, "Payment verification failed", nil, err.Error())
+		}
 		return
 	}
 
+	log.Printf("Payment processed successfully for order ID: %s", input.OrderID)
 	api.SendResponse(w, http.StatusOK, "Payment processed successfully", nil, "")
 }

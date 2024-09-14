@@ -21,36 +21,6 @@ func NewOrderRepository(db *sql.DB) *orderRepository {
 	return &orderRepository{db: db}
 }
 
-func (r *orderRepository) CreateOrder(ctx context.Context, tx *sql.Tx, order *domain.Order) (int64, error) {
-	query := `
-        INSERT INTO orders (user_id, total_amount, delivery_status, shipping_address_id, order_status, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING id, created_at
-    `
-	var orderID int64
-	err := tx.QueryRowContext(ctx, query,
-		order.UserID, order.TotalAmount, order.DeliveryStatus, order.ShippingAddressID, order.OrderStatus, time.Now().UTC(), time.Now().UTC(),
-	).Scan(&orderID, &order.CreatedAt)
-	if err != nil {
-		log.Printf("error while adding the order entry : %v", err)
-		return 0, err
-	}
-	order.ID = orderID
-	return orderID, nil
-}
-
-func (r *orderRepository) AddOrderItem(ctx context.Context, tx *sql.Tx, item *domain.OrderItem) error {
-	query := `
-		INSERT INTO order_items (order_id, product_id, quantity, price)
-		VALUES ($1, $2, $3, $4)
-	`
-	_, err := tx.ExecContext(ctx, query, item.OrderID, item.ProductID, item.Quantity, item.Price)
-	if err != nil {
-		log.Printf("error while adding order item entry : %v", err)
-	}
-	return err
-}
-
 func (r *orderRepository) GetByID(ctx context.Context, id int64) (*domain.Order, error) {
 	query := `
         SELECT id, user_id, total_amount, delivery_status, 
@@ -178,9 +148,10 @@ func (r *orderRepository) UpdateOrderStatus(ctx context.Context, orderID int64, 
         SET order_status = $1, updated_at = NOW()
         WHERE id = $2
     `
+	log.Printf("Executing update order status query for order ID %d with status %s", orderID, status)
 	result, err := r.db.ExecContext(ctx, query, status, orderID)
 	if err != nil {
-		log.Printf("Error updating order status: %v", err)
+		log.Printf("Error executing update order status query: %v", err)
 		return err
 	}
 
@@ -190,8 +161,9 @@ func (r *orderRepository) UpdateOrderStatus(ctx context.Context, orderID int64, 
 		return err
 	}
 
+	log.Printf("Rows affected by update order status: %d", rowsAffected)
 	if rowsAffected == 0 {
-		return utils.ErrOrderNotFound
+		return fmt.Errorf("order not found or not updated: ID %d", orderID)
 	}
 	return nil
 }
@@ -364,27 +336,14 @@ func (r *orderRepository) GetPaymentByRazorpayOrderID(ctx context.Context, razor
 		&payment.RazorpaySignature,
 	)
 	if err == sql.ErrNoRows {
+		log.Printf("No payment found for Razorpay order ID: %s", razorpayOrderID)
 		return nil, utils.ErrPaymentNotFound
 	}
 	if err != nil {
-		return nil, err
+		log.Printf("Error querying payment by Razorpay order ID %s: %v", razorpayOrderID, err)
+		return nil, fmt.Errorf("database error: %w", err)
 	}
 	return &payment, nil
-}
-
-func (r *orderRepository) CreatePayment(ctx context.Context, tx *sql.Tx, payment *domain.Payment) error {
-	query := `
-        INSERT INTO payments (order_id, amount, payment_method, payment_status, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING id
-    `
-	err := tx.QueryRowContext(ctx, query,
-		payment.OrderID, payment.Amount, payment.PaymentMethod, payment.Status, time.Now().UTC(), time.Now().UTC(),
-	).Scan(&payment.ID)
-	if err != nil {
-		return fmt.Errorf("failed to create payment: %w", err)
-	}
-	return nil
 }
 
 func (r *orderRepository) GetReturnRequestByOrderID(ctx context.Context, orderID int64) (*domain.ReturnRequest, error) {
@@ -490,5 +449,62 @@ func (r *orderRepository) CreateRefundTx(ctx context.Context, tx *sql.Tx, refund
 		refund.CreatedAt,
 		refund.UpdatedAt,
 	).Scan(&refund.ID)
+	return err
+}
+
+func (r *orderRepository) CreateOrder(ctx context.Context, tx *sql.Tx, order *domain.Order) (int64, error) {
+	query := `
+        INSERT INTO orders (user_id, total_amount, delivery_status, shipping_address_id, order_status, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id, created_at
+    `
+	var orderID int64
+	err := tx.QueryRowContext(ctx, query,
+		order.UserID, order.TotalAmount, order.DeliveryStatus, order.ShippingAddressID, order.OrderStatus, time.Now().UTC(), time.Now().UTC(),
+	).Scan(&orderID, &order.CreatedAt)
+	if err != nil {
+		log.Printf("error while adding the order entry : %v", err)
+		return 0, err
+	}
+	order.ID = orderID
+	return orderID, nil
+}
+
+func (r *orderRepository) CreatePayment(ctx context.Context, tx *sql.Tx, payment *domain.Payment) error {
+	query := `
+        INSERT INTO payments (order_id, amount, payment_method, payment_status, created_at, updated_at, razorpay_order_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id
+    `
+	err := tx.QueryRowContext(ctx, query,
+		payment.OrderID, payment.Amount, payment.PaymentMethod, payment.Status, time.Now().UTC(), time.Now().UTC(), payment.RazorpayOrderID,
+	).Scan(&payment.ID)
+	if err != nil {
+		log.Printf("error while creating payment entry: %v", err)
+		return err
+	}
+	return nil
+}
+
+func (r *orderRepository) AddOrderItem(ctx context.Context, tx *sql.Tx, item *domain.OrderItem) error {
+	query := `
+        INSERT INTO order_items (order_id, product_id, quantity, price)
+        VALUES ($1, $2, $3, $4)
+    `
+	_, err := tx.ExecContext(ctx, query, item.OrderID, item.ProductID, item.Quantity, item.Price)
+	if err != nil {
+		log.Printf("error while adding order item entry : %v", err)
+		return err
+	}
+	return nil
+}
+
+func (r *orderRepository) UpdateOrderRazorpayID(ctx context.Context, orderID int64, razorpayOrderID string) error {
+	query := `
+        UPDATE payments
+        SET razorpay_order_id = $1
+        WHERE order_id = $2
+    `
+	_, err := r.db.ExecContext(ctx, query, razorpayOrderID, orderID)
 	return err
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/auth"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/cloudinary"
 	email "github.com/mohamedfawas/rmshop-clean-architecture/pkg/emailVerify"
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/payment/razorpay"
 )
 
 // Server struct holds the router which will be used to handle HTTP requests
@@ -81,11 +82,13 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 	couponHandler := handlers.NewCouponHandler(couponUseCase)
 	log.Println("Coupon components initialized")
 
-	checkoutUseCase := usecase.NewCheckoutUseCase(checkoutRepo, productRepo, cartRepo, couponRepo, userRepo, orderRepo)
+	razorpayService := razorpay.NewService(cfg.Razorpay.KeyID, cfg.Razorpay.KeySecret)
+
+	checkoutUseCase := usecase.NewCheckoutUseCase(checkoutRepo, productRepo, cartRepo, couponRepo, userRepo, orderRepo, razorpayService)
 	checkoutHandler := handlers.NewCheckoutHandler(checkoutUseCase, couponUseCase)
 	log.Println("Checkout components initialized")
 
-	orderUseCase := usecase.NewOrderUseCase(orderRepo, cfg.Razorpay.KeySecret, cfg.Razorpay.KeySecret)
+	orderUseCase := usecase.NewOrderUseCase(orderRepo, checkoutRepo, productRepo, cartRepo, cfg.Razorpay.KeySecret, cfg.Razorpay.KeySecret)
 	orderHandler := handlers.NewOrderHandler(orderUseCase)
 	log.Println("Order components initialized")
 

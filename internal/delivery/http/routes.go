@@ -189,9 +189,12 @@ func NewRouter(userHandler *handlers.UserHandler,
 	r.HandleFunc("/user/checkout/{checkout_id}/apply-coupon", chainMiddleware(jwtAuth, userAuth)(checkoutHandler.ApplyCoupon)).Methods("POST")
 	r.HandleFunc("/user/checkout/{checkout_id}/address", chainMiddleware(jwtAuth, userAuth)(checkoutHandler.UpdateCheckoutAddress)).Methods("PATCH")
 	r.HandleFunc("/user/checkout/{checkout_id}/summary", chainMiddleware(jwtAuth, userAuth)(checkoutHandler.GetCheckoutSummary)).Methods("GET")
-	r.HandleFunc("/user/checkout/{checkout_id}/place-order", chainMiddleware(jwtAuth, userAuth)(checkoutHandler.PlaceOrder)).Methods("POST")
+	// r.HandleFunc("/user/checkout/{checkout_id}/place-order", chainMiddleware(jwtAuth, userAuth)(checkoutHandler.PlaceOrder)).Methods("POST")
 
 	// User routes : Order management
+	// place order using razorpay
+	r.HandleFunc("/user/checkout/{checkout_id}/place-order/razorpay", chainMiddleware(jwtAuth, userAuth)(orderHandler.PlaceOrderRazorpay)).Methods("POST")
+
 	r.HandleFunc("/user/orders/{order_id}", chainMiddleware(jwtAuth, userAuth)(orderHandler.GetOrderConfirmation)).Methods("GET")
 	r.HandleFunc("/user/orders", chainMiddleware(jwtAuth, userAuth)(orderHandler.GetUserOrders)).Methods("GET")
 	r.HandleFunc("/user/orders/{orderId}/cancel", chainMiddleware(jwtAuth, userAuth)(orderHandler.CancelOrder)).Methods("POST")

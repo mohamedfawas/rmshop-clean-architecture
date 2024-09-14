@@ -3,11 +3,13 @@ package usecase
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/repository"
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/payment/razorpay"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/utils"
 )
 
@@ -20,22 +22,24 @@ type CheckoutUseCase interface {
 }
 
 type checkoutUseCase struct {
-	checkoutRepo repository.CheckoutRepository
-	productRepo  repository.ProductRepository
-	couponRepo   repository.CouponRepository
-	cartRepo     repository.CartRepository
-	userRepo     repository.UserRepository
-	orderRepo    repository.OrderRepository
+	checkoutRepo    repository.CheckoutRepository
+	productRepo     repository.ProductRepository
+	couponRepo      repository.CouponRepository
+	cartRepo        repository.CartRepository
+	userRepo        repository.UserRepository
+	orderRepo       repository.OrderRepository
+	razorpayService *razorpay.Service
 }
 
-func NewCheckoutUseCase(checkoutRepo repository.CheckoutRepository, productRepo repository.ProductRepository, cartRepo repository.CartRepository, couponRepo repository.CouponRepository, userRepo repository.UserRepository, orderRepo repository.OrderRepository) CheckoutUseCase {
+func NewCheckoutUseCase(checkoutRepo repository.CheckoutRepository, productRepo repository.ProductRepository, cartRepo repository.CartRepository, couponRepo repository.CouponRepository, userRepo repository.UserRepository, orderRepo repository.OrderRepository, razorpayService *razorpay.Service) CheckoutUseCase {
 	return &checkoutUseCase{
-		checkoutRepo: checkoutRepo,
-		productRepo:  productRepo,
-		couponRepo:   couponRepo,
-		cartRepo:     cartRepo,
-		userRepo:     userRepo,
-		orderRepo:    orderRepo,
+		checkoutRepo:    checkoutRepo,
+		productRepo:     productRepo,
+		couponRepo:      couponRepo,
+		cartRepo:        cartRepo,
+		userRepo:        userRepo,
+		orderRepo:       orderRepo,
+		razorpayService: razorpayService,
 	}
 }
 
@@ -233,7 +237,6 @@ func (u *checkoutUseCase) UpdateCheckoutAddress(ctx context.Context, userID, che
 	if err != nil {
 		return nil, err
 	}
-
 	// Fetch the updated checkout session
 	updatedCheckout, err := u.checkoutRepo.GetCheckoutByID(ctx, checkoutID)
 	if err != nil {
@@ -267,12 +270,53 @@ func (u *checkoutUseCase) GetCheckoutSummary(ctx context.Context, userID, checko
 	return summary, nil
 }
 
+func (u *checkoutUseCase) processPayment(ctx context.Context, tx *sql.Tx, orderID int64, paymentMethod string, amount float64) (*domain.Payment, error) {
+	payment := &domain.Payment{
+		OrderID:       orderID,
+		Amount:        amount,
+		PaymentMethod: paymentMethod,
+		Status:        "pending",
+		CreatedAt:     time.Now().UTC(),
+		UpdatedAt:     time.Now().UTC(),
+	}
+
+	if paymentMethod == "razorpay" {
+		// Convert amount to paise (Razorpay expects amount in smallest currency unit)
+		amountInPaise := int64(amount * 100)
+
+		razorpayOrder, err := u.razorpayService.CreateOrder(amountInPaise, "INR")
+		if err != nil {
+			return nil, fmt.Errorf("failed to create Razorpay order: %w", err)
+		}
+		payment.RazorpayOrderID = razorpayOrder.ID
+		payment.Status = "awaiting_payment"
+	} else if paymentMethod != "cod" {
+		return nil, fmt.Errorf("unsupported payment method: %s", paymentMethod)
+	}
+
+	// Create the payment record in the database
+	err := u.orderRepo.CreatePayment(ctx, tx, payment)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create payment record: %w", err)
+	}
+
+	log.Printf("Payment record created: %+v", payment)
+
+	return payment, nil
+}
+
 func (u *checkoutUseCase) PlaceOrder(ctx context.Context, userID, checkoutID int64, paymentMethod string) (*domain.Order, error) {
+	// Start a database transaction
+	tx, err := u.checkoutRepo.BeginTx(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	// Get the checkout session
 	checkout, err := u.checkoutRepo.GetCheckoutByID(ctx, checkoutID)
 	if err != nil {
-		log.Printf("Error getting checkout: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to get checkout: %w", err)
 	}
 
 	// Verify the checkout belongs to the user
@@ -288,13 +332,8 @@ func (u *checkoutUseCase) PlaceOrder(ctx context.Context, userID, checkoutID int
 	// Get checkout items
 	items, err := u.checkoutRepo.GetCheckoutItems(ctx, checkoutID)
 	if err != nil {
-		log.Printf("Error getting checkout items: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to get checkout items: %w", err)
 	}
-
-	// Log the state for debugging
-	log.Printf("Placing order for checkout %d: Items count: %d, Checkout item count: %d",
-		checkoutID, len(items), checkout.ItemCount)
 
 	if len(items) == 0 {
 		return nil, utils.ErrEmptyCart
@@ -304,25 +343,12 @@ func (u *checkoutUseCase) PlaceOrder(ctx context.Context, userID, checkoutID int
 	for _, item := range items {
 		product, err := u.productRepo.GetByID(ctx, item.ProductID)
 		if err != nil {
-			log.Printf("Error getting product %d: %v", item.ProductID, err)
-			return nil, err
+			return nil, fmt.Errorf("failed to get product %d: %w", item.ProductID, err)
 		}
 		if product.StockQuantity < item.Quantity {
 			return nil, utils.ErrInsufficientStock
 		}
 	}
-
-	// Verify that a valid address is associated with the checkout
-	if checkout.ShippingAddress.ID == 0 {
-		return nil, utils.ErrInvalidAddress
-	}
-
-	// Start a database transaction
-	tx, err := u.checkoutRepo.BeginTx(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
 
 	// Create the order
 	order := &domain.Order{
@@ -331,31 +357,35 @@ func (u *checkoutUseCase) PlaceOrder(ctx context.Context, userID, checkoutID int
 		OrderStatus:       "pending",
 		DeliveryStatus:    "processing",
 		ShippingAddressID: checkout.ShippingAddress.ID,
+		CreatedAt:         time.Now().UTC(),
+		UpdatedAt:         time.Now().UTC(),
 	}
 
 	// Create the order in the database
 	orderID, err := u.orderRepo.CreateOrder(ctx, tx, order)
 	if err != nil {
-		log.Printf("Error creating order: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to create order: %w", err)
 	}
+	order.ID = orderID
 
-	// Create the payment
-	payment := &domain.Payment{
-		OrderID:       orderID,
-		Amount:        checkout.FinalAmount,
-		PaymentMethod: paymentMethod,
-		Status:        "pending",
-	}
-
-	// Add the payment to the database
-	err = u.orderRepo.CreatePayment(ctx, tx, payment)
+	// Process payment
+	payment, err := u.processPayment(ctx, tx, order.ID, paymentMethod, order.TotalAmount)
 	if err != nil {
-		log.Printf("Error creating payment: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to process payment: %w", err)
 	}
 
-	// Add order items
+	// Handle different payment methods
+	switch paymentMethod {
+	case "cod":
+		payment.Status = "pending"
+		order.OrderStatus = "processing"
+	case "razorpay":
+		order.OrderStatus = "awaiting_payment"
+	default:
+		return nil, fmt.Errorf("unsupported payment method: %s", paymentMethod)
+	}
+
+	// Add order items and update product stock
 	for _, item := range items {
 		orderItem := &domain.OrderItem{
 			OrderID:   order.ID,
@@ -365,15 +395,13 @@ func (u *checkoutUseCase) PlaceOrder(ctx context.Context, userID, checkoutID int
 		}
 		err = u.orderRepo.AddOrderItem(ctx, tx, orderItem)
 		if err != nil {
-			log.Printf("Error adding order item: %v", err)
-			return nil, err
+			return nil, fmt.Errorf("failed to add order item: %w", err)
 		}
 
 		// Update product stock
 		err = u.productRepo.UpdateStock(ctx, tx, item.ProductID, -item.Quantity)
 		if err != nil {
-			log.Printf("Error updating product stock: %v", err)
-			return nil, err
+			return nil, fmt.Errorf("failed to update product stock: %w", err)
 		}
 	}
 
@@ -381,22 +409,25 @@ func (u *checkoutUseCase) PlaceOrder(ctx context.Context, userID, checkoutID int
 	checkout.Status = "completed"
 	err = u.checkoutRepo.UpdateCheckoutStatus(ctx, tx, checkout)
 	if err != nil {
-		log.Printf("Error updating checkout status: %v", err)
-		return nil, err
-	}
-
-	// Clear the user's cart
-	err = u.cartRepo.ClearCart(ctx, userID)
-	if err != nil {
-		log.Printf("Error clearing user's cart: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to update checkout status: %w", err)
 	}
 
 	// Commit the transaction
-	err = tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	// After successful commit, update order status and clear cart
+	err = u.orderRepo.UpdateOrderStatus(ctx, order.ID, order.OrderStatus)
 	if err != nil {
-		log.Printf("Error committing transaction: %v", err)
-		return nil, err
+		// Log this error, but don't fail the order placement
+		log.Printf("Failed to update order status: %v", err)
+	}
+
+	err = u.cartRepo.ClearCart(ctx, userID)
+	if err != nil {
+		// Log this error, but don't fail the order placement
+		log.Printf("Failed to clear user's cart: %v", err)
 	}
 
 	return order, nil
