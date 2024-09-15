@@ -246,6 +246,44 @@ func (h *OrderHandler) UpdateOrderStatus(w http.ResponseWriter, r *http.Request)
 	api.SendResponse(w, http.StatusOK, "Order status updated successfully", result, "")
 }
 
+func (h *OrderHandler) PlaceOrderRazorpay(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	if !ok {
+		api.SendResponse(w, http.StatusUnauthorized, "Failed to place order", nil, "User not authenticated")
+		return
+	}
+
+	vars := mux.Vars(r)
+	checkoutID, err := strconv.ParseInt(vars["checkout_id"], 10, 64)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to place order", nil, "Invalid checkout ID")
+		return
+	}
+
+	order, err := h.orderUseCase.PlaceOrderRazorpay(r.Context(), userID, checkoutID)
+	if err != nil {
+		switch err {
+		case utils.ErrCheckoutNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Failed to place order", nil, "Checkout not found")
+		case utils.ErrUnauthorized:
+			api.SendResponse(w, http.StatusForbidden, "Failed to place order", nil, "Unauthorized access to this checkout")
+		case utils.ErrEmptyCart:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to place order", nil, "Cannot place order with empty cart")
+		case utils.ErrInsufficientStock:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to place order", nil, "Insufficient stock for one or more items")
+		case utils.ErrInvalidAddress:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to place order", nil, "Invalid or missing delivery address")
+		case utils.ErrOrderAlreadyPlaced:
+			api.SendResponse(w, http.StatusConflict, "Failed to place order", nil, "Order has already been placed for this checkout")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to place order", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	api.SendResponse(w, http.StatusCreated, "Order placed successfully", order, "")
+}
+
 func (h *OrderHandler) InitiateReturn(w http.ResponseWriter, r *http.Request) {
 	// Extract user ID from context (set by auth middleware)
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
@@ -294,42 +332,4 @@ func (h *OrderHandler) InitiateReturn(w http.ResponseWriter, r *http.Request) {
 	}
 
 	api.SendResponse(w, http.StatusCreated, "Return request initiated successfully", returnRequest, "")
-}
-
-func (h *OrderHandler) PlaceOrderRazorpay(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
-	if !ok {
-		api.SendResponse(w, http.StatusUnauthorized, "Failed to place order", nil, "User not authenticated")
-		return
-	}
-
-	vars := mux.Vars(r)
-	checkoutID, err := strconv.ParseInt(vars["checkout_id"], 10, 64)
-	if err != nil {
-		api.SendResponse(w, http.StatusBadRequest, "Failed to place order", nil, "Invalid checkout ID")
-		return
-	}
-
-	order, err := h.orderUseCase.PlaceOrderRazorpay(r.Context(), userID, checkoutID)
-	if err != nil {
-		switch err {
-		case utils.ErrCheckoutNotFound:
-			api.SendResponse(w, http.StatusNotFound, "Failed to place order", nil, "Checkout not found")
-		case utils.ErrUnauthorized:
-			api.SendResponse(w, http.StatusForbidden, "Failed to place order", nil, "Unauthorized access to this checkout")
-		case utils.ErrEmptyCart:
-			api.SendResponse(w, http.StatusBadRequest, "Failed to place order", nil, "Cannot place order with empty cart")
-		case utils.ErrInsufficientStock:
-			api.SendResponse(w, http.StatusBadRequest, "Failed to place order", nil, "Insufficient stock for one or more items")
-		case utils.ErrInvalidAddress:
-			api.SendResponse(w, http.StatusBadRequest, "Failed to place order", nil, "Invalid or missing delivery address")
-		case utils.ErrOrderAlreadyPlaced:
-			api.SendResponse(w, http.StatusConflict, "Failed to place order", nil, "Order has already been placed for this checkout")
-		default:
-			api.SendResponse(w, http.StatusInternalServerError, "Failed to place order", nil, "An unexpected error occurred")
-		}
-		return
-	}
-
-	api.SendResponse(w, http.StatusCreated, "Order placed successfully", order, "")
 }

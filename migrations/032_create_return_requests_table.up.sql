@@ -1,3 +1,6 @@
+DROP INDEX IF EXISTS idx_return_requests_order_id;
+DROP TABLE IF EXISTS return_requests;
+
 CREATE TABLE return_requests (
     id BIGSERIAL PRIMARY KEY,
     order_id BIGINT NOT NULL,

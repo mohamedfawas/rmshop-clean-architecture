@@ -141,8 +141,6 @@ type OrderRepository interface {
 	GetPaymentByOrderID(ctx context.Context, orderID int64) (*domain.Payment, error)
 	UpdatePayment(ctx context.Context, payment *domain.Payment) error
 	GetPaymentByRazorpayOrderID(ctx context.Context, razorpayOrderID string) (*domain.Payment, error)
-	GetReturnRequestByOrderID(ctx context.Context, orderID int64) (*domain.ReturnRequest, error)
-	CreateReturnRequest(ctx context.Context, returnRequest *domain.ReturnRequest) error
 	SetOrderDeliveredAt(ctx context.Context, orderID int64, deliveredAt *time.Time) error
 	CreateRefundTx(ctx context.Context, tx *sql.Tx, refund *domain.Refund) error
 	UpdateRefundStatusTx(ctx context.Context, tx *sql.Tx, orderID int64, refundStatus sql.NullString) error
@@ -153,6 +151,7 @@ type OrderRepository interface {
 	CreatePayment(ctx context.Context, tx *sql.Tx, payment *domain.Payment) error
 	AddOrderItem(ctx context.Context, tx *sql.Tx, item *domain.OrderItem) error
 	UpdateOrderRazorpayID(ctx context.Context, orderID int64, razorpayOrderID string) error
+	UpdateOrderHasReturnRequestTx(ctx context.Context, tx *sql.Tx, orderID int64, hasReturnRequest bool) error
 }
 
 type InventoryRepository interface {

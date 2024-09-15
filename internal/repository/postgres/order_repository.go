@@ -131,7 +131,7 @@ func (r *orderRepository) GetOrders(ctx context.Context, params domain.OrderQuer
 	} else {
 		// Otherwise, select all fields
 		query += `o.id, o.user_id, o.total_amount, o.delivery_status, 
-                  o.order_status, o.refund_status, o.address_id, o.created_at, o.updated_at`
+                  o.order_status, o.has_return_request, o.address_id, o.created_at, o.updated_at`
 	}
 	query += ` FROM orders o WHERE 1=1` // o is an alias, 1=1 : used in dynamic querying where it is always true
 	// user to simplify the process of adding additional WHERE conditions dynamically
@@ -203,7 +203,7 @@ func (r *orderRepository) GetOrders(ctx context.Context, params domain.OrderQuer
 	for rows.Next() {
 		var o domain.Order
 		err := rows.Scan(&o.ID, &o.UserID, &o.TotalAmount,
-			&o.DeliveryStatus, &o.OrderStatus, &o.RefundStatus, &o.ShippingAddressID, &o.CreatedAt, &o.UpdatedAt)
+			&o.DeliveryStatus, &o.OrderStatus, &o.HasReturnRequest, &o.ShippingAddressID, &o.CreatedAt, &o.UpdatedAt)
 		if err != nil {
 			log.Printf("db error : %v", err)
 			return nil, 0, err
@@ -262,46 +262,6 @@ func (r *orderRepository) UpdatePayment(ctx context.Context, payment *domain.Pay
 	return err
 }
 
-func (r *orderRepository) GetReturnRequestByOrderID(ctx context.Context, orderID int64) (*domain.ReturnRequest, error) {
-	query := `
-		SELECT id, order_id, reason, status, created_at, updated_at
-		FROM return_requests
-		WHERE order_id = $1
-	`
-	var returnRequest domain.ReturnRequest
-	err := r.db.QueryRowContext(ctx, query, orderID).Scan(
-		&returnRequest.ID,
-		&returnRequest.OrderID,
-		&returnRequest.Reason,
-		&returnRequest.Status,
-		&returnRequest.CreatedAt,
-		&returnRequest.UpdatedAt,
-	)
-	if err == sql.ErrNoRows {
-		return nil, utils.ErrReturnRequestNotFound
-	}
-	if err != nil {
-		return nil, err
-	}
-	return &returnRequest, nil
-}
-
-func (r *orderRepository) CreateReturnRequest(ctx context.Context, returnRequest *domain.ReturnRequest) error {
-	query := `
-		INSERT INTO return_requests (order_id, reason, status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id
-	`
-	err := r.db.QueryRowContext(ctx, query,
-		returnRequest.OrderID,
-		returnRequest.Reason,
-		returnRequest.Status,
-		returnRequest.CreatedAt,
-		returnRequest.UpdatedAt,
-	).Scan(&returnRequest.ID)
-	return err
-}
-
 func (r *orderRepository) SetOrderDeliveredAt(ctx context.Context, orderID int64, deliveredAt *time.Time) error {
 	query := `
         UPDATE orders
@@ -316,22 +276,6 @@ func (r *orderRepository) BeginTx(ctx context.Context) (*sql.Tx, error) {
 	return r.db.BeginTx(ctx, nil)
 }
 
-func (r *orderRepository) CreateReturnRequestTx(ctx context.Context, tx *sql.Tx, returnRequest *domain.ReturnRequest) error {
-	query := `
-        INSERT INTO return_requests (order_id, reason, status, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING id
-    `
-	err := tx.QueryRowContext(ctx, query,
-		returnRequest.OrderID,
-		returnRequest.Reason,
-		returnRequest.Status,
-		returnRequest.CreatedAt,
-		returnRequest.UpdatedAt,
-	).Scan(&returnRequest.ID)
-	return err
-}
-
 func (r *orderRepository) UpdateOrderStatusTx(ctx context.Context, tx *sql.Tx, orderID int64, status string) error {
 	query := `
         UPDATE orders
@@ -339,6 +283,9 @@ func (r *orderRepository) UpdateOrderStatusTx(ctx context.Context, tx *sql.Tx, o
         WHERE id = $2
     `
 	_, err := tx.ExecContext(ctx, query, status, orderID)
+	if err != nil {
+		log.Printf("error while updating order status : %v", err)
+	}
 	return err
 }
 
@@ -464,7 +411,7 @@ func (r *orderRepository) GetPaymentByRazorpayOrderID(ctx context.Context, razor
 func (r *orderRepository) GetByID(ctx context.Context, id int64) (*domain.Order, error) {
 	query := `
         SELECT id, user_id, total_amount, discount_amount, final_amount, delivery_status, 
-               order_status, refund_status, shipping_address_id, coupon_applied,
+               order_status, has_return_request, shipping_address_id, coupon_applied,
                created_at, updated_at, delivered_at
         FROM orders
         WHERE id = $1
@@ -480,7 +427,7 @@ func (r *orderRepository) GetByID(ctx context.Context, id int64) (*domain.Order,
 		&order.FinalAmount,
 		&order.DeliveryStatus,
 		&order.OrderStatus,
-		&order.RefundStatus,
+		&order.HasReturnRequest,
 		&order.ShippingAddressID,
 		&order.CouponApplied,
 		&order.CreatedAt,
@@ -529,4 +476,30 @@ func (r *orderRepository) GetByID(ctx context.Context, id int64) (*domain.Order,
 
 	order.Items = items
 	return &order, nil
+}
+
+func (r *orderRepository) CreateReturnRequestTx(ctx context.Context, tx *sql.Tx, returnRequest *domain.ReturnRequest) error {
+	query := `
+		INSERT INTO return_requests (order_id, user_id, return_reason, is_approved, requested_date)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id
+	`
+	err := tx.QueryRowContext(ctx, query,
+		returnRequest.OrderID,
+		returnRequest.UserID,
+		returnRequest.ReturnReason,
+		returnRequest.IsApproved,
+		returnRequest.RequestedDate,
+	).Scan(&returnRequest.ID)
+	return err
+}
+
+func (r *orderRepository) UpdateOrderHasReturnRequestTx(ctx context.Context, tx *sql.Tx, orderID int64, hasReturnRequest bool) error {
+	query := `
+		UPDATE orders
+		SET has_return_request = $1
+		WHERE id = $2
+	`
+	_, err := tx.ExecContext(ctx, query, hasReturnRequest, orderID)
+	return err
 }

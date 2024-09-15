@@ -1,25 +1,24 @@
 package domain
 
 import (
-	"database/sql"
 	"time"
 )
 
 type Order struct {
-	ID                int64          `json:"id"`
-	UserID            int64          `json:"user_id"`
-	TotalAmount       float64        `json:"total_amount"`
-	DiscountAmount    float64        `json:"discount_amount"`
-	FinalAmount       float64        `json:"final_amount"`
-	DeliveryStatus    string         `json:"delivery_status"`
-	OrderStatus       string         `json:"order_status"`
-	RefundStatus      sql.NullString `json:"refund_status"`
-	ShippingAddressID int64          `json:"shipping_address_id"`
-	CouponApplied     bool           `json:"coupon_applied"`
-	CreatedAt         time.Time      `json:"created_at"`
-	UpdatedAt         time.Time      `json:"updated_at"`
-	DeliveredAt       *time.Time     `json:"delivered_at,omitempty"`
-	Items             []OrderItem    `json:"items"`
+	ID                int64       `json:"id"`
+	UserID            int64       `json:"user_id"`
+	TotalAmount       float64     `json:"total_amount"`
+	DiscountAmount    float64     `json:"discount_amount"`
+	FinalAmount       float64     `json:"final_amount"`
+	DeliveryStatus    string      `json:"delivery_status"`
+	OrderStatus       string      `json:"order_status"`
+	HasReturnRequest  bool        `json:"has_return_request"`
+	ShippingAddressID int64       `json:"shipping_address_id"`
+	CouponApplied     bool        `json:"coupon_applied"`
+	CreatedAt         time.Time   `json:"created_at"`
+	UpdatedAt         time.Time   `json:"updated_at"`
+	DeliveredAt       *time.Time  `json:"delivered_at,omitempty"`
+	Items             []OrderItem `json:"items"`
 }
 
 type OrderItem struct {
@@ -79,13 +78,4 @@ type RazorpayPaymentInput struct {
 	OrderID   string `json:"razorpay_order_id"`
 	PaymentID string `json:"razorpay_payment_id"`
 	Signature string `json:"razorpay_signature"`
-}
-
-type ReturnRequest struct {
-	ID        int64     `json:"id"`
-	OrderID   int64     `json:"order_id"`
-	Reason    string    `json:"reason"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
 }

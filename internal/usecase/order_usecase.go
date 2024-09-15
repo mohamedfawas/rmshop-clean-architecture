@@ -25,9 +25,9 @@ type OrderUseCase interface {
 	UpdatePayment(ctx context.Context, payment *domain.Payment) error
 	ProcessPayment(ctx context.Context, tx *sql.Tx, orderID int64, paymentMethod string, amount float64) (*domain.Payment, error)
 	VerifyAndUpdateRazorpayPayment(ctx context.Context, input domain.RazorpayPaymentInput) error
-	InitiateReturn(ctx context.Context, userID, orderID int64, reason string) (*domain.ReturnRequest, error)
 	PlaceOrderRazorpay(ctx context.Context, userID, checkoutID int64) (*domain.Order, error)
 	UpdateOrderRazorpayID(ctx context.Context, orderID int64, razorpayOrderID string) error
+	InitiateReturn(ctx context.Context, userID, orderID int64, reason string) (*domain.ReturnRequest, error)
 }
 
 type orderUseCase struct {
@@ -291,130 +291,6 @@ func (u *orderUseCase) ProcessPayment(ctx context.Context, tx *sql.Tx, orderID i
 	return payment, nil
 }
 
-func (u *orderUseCase) InitiateReturn(ctx context.Context, userID, orderID int64, reason string) (*domain.ReturnRequest, error) {
-	// Get the order
-	order, err := u.orderRepo.GetByID(ctx, orderID)
-	if err != nil {
-		if err == utils.ErrOrderNotFound {
-			return nil, utils.ErrOrderNotFound
-		}
-		return nil, err
-	}
-
-	// Check if the order belongs to the user
-	if order.UserID != userID {
-		return nil, utils.ErrUnauthorized
-	}
-
-	// Check if the order is in 'delivered' status
-	if order.OrderStatus != "delivered" {
-		log.Printf("different order status ")
-		return nil, utils.ErrOrderNotEligibleForReturn
-	}
-
-	// Check if the return window has expired (e.g., 14 days)
-	if order.DeliveredAt == nil {
-		return nil, utils.ErrOrderNotEligibleForReturn
-	}
-	if time.Since(*order.DeliveredAt) > 14*24*time.Hour {
-		return nil, utils.ErrReturnWindowExpired
-	}
-
-	// Check if a return request already exists
-	existingRequest, err := u.orderRepo.GetReturnRequestByOrderID(ctx, orderID)
-	if err != nil && err != utils.ErrReturnRequestNotFound {
-		log.Printf("error while get return request id : %v", err)
-		return nil, err
-	}
-	if existingRequest != nil {
-		return nil, utils.ErrReturnAlreadyRequested
-	}
-
-	// Validate return reason
-	if reason == "" {
-		return nil, utils.ErrInvalidReturnReason
-	}
-
-	// Start a database transaction
-	tx, err := u.orderRepo.BeginTx(ctx)
-	if err != nil {
-		log.Printf("error while beginning transaction : %v", err)
-		return nil, fmt.Errorf("failed to start transaction: %w", err)
-	}
-	defer tx.Rollback()
-
-	// Create return request
-	returnRequest := &domain.ReturnRequest{
-		OrderID:   orderID,
-		Reason:    reason,
-		Status:    "pending",
-		CreatedAt: time.Now().UTC(),
-		UpdatedAt: time.Now().UTC(),
-	}
-
-	// Save return request
-	err = u.orderRepo.CreateReturnRequestTx(ctx, tx, returnRequest)
-	if err != nil {
-		log.Printf("error while create return request transaction : %v", err)
-		return nil, fmt.Errorf("failed to create return request: %w", err)
-	}
-
-	// Update order status
-	err = u.orderRepo.UpdateOrderStatusTx(ctx, tx, orderID, "return_requested")
-	if err != nil {
-		log.Printf("error while update order transaction : %v", err)
-		return nil, fmt.Errorf("failed to update order status: %w", err)
-	}
-
-	// If the order was paid, initiate refund process
-	payment, err := u.orderRepo.GetPaymentByOrderID(ctx, orderID)
-	if err != nil {
-		log.Printf("error while get payment by order id : %v", err)
-		return nil, fmt.Errorf("failed to get payment info: %w", err)
-	}
-
-	if payment.Status == "paid" {
-		err = u.initiateRefund(ctx, tx, payment)
-		if err != nil {
-			log.Printf("error while get return request id : %v", err)
-			return nil, fmt.Errorf("failed to initiate refund: %w", err)
-		}
-	}
-
-	// Commit the transaction
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	return returnRequest, nil
-}
-
-func (u *orderUseCase) initiateRefund(ctx context.Context, tx *sql.Tx, payment *domain.Payment) error {
-	// Here you would typically call your payment gateway's API to initiate a refund
-	// For this example, we'll just update the refund status
-
-	refundStatus := "initiated"
-	err := u.orderRepo.UpdateRefundStatusTx(ctx, tx, payment.OrderID, sql.NullString{String: refundStatus, Valid: true})
-	if err != nil {
-		return fmt.Errorf("failed to update refund status: %w", err)
-	}
-
-	// You might also want to create a refund record in a separate table
-	refund := &domain.Refund{
-		OrderID:   payment.OrderID,
-		Amount:    payment.Amount,
-		Status:    "initiated",
-		CreatedAt: time.Now().UTC(),
-		UpdatedAt: time.Now().UTC(),
-	}
-	err = u.orderRepo.CreateRefundTx(ctx, tx, refund)
-	if err != nil {
-		return fmt.Errorf("failed to create refund record: %w", err)
-	}
-
-	return nil
-}
-
 func (u *orderUseCase) UpdateOrderRazorpayID(ctx context.Context, orderID int64, razorpayOrderID string) error {
 	return u.orderRepo.UpdateOrderRazorpayID(ctx, orderID, razorpayOrderID)
 }
@@ -579,4 +455,78 @@ func (u *orderUseCase) VerifyAndUpdateRazorpayPayment(ctx context.Context, input
 
 	log.Printf("Payment successfully verified and updated for order ID: %s", input.OrderID)
 	return nil
+}
+
+func (u *orderUseCase) InitiateReturn(ctx context.Context, userID, orderID int64, reason string) (*domain.ReturnRequest, error) {
+	// Get the order
+	order, err := u.orderRepo.GetByID(ctx, orderID)
+	if err != nil {
+		if err == utils.ErrOrderNotFound {
+			return nil, utils.ErrOrderNotFound
+		}
+		return nil, err
+	}
+
+	// Check if the order belongs to the user
+	if order.UserID != userID {
+		return nil, utils.ErrUnauthorized
+	}
+
+	// Check if the order is in 'delivered' status
+	if order.OrderStatus != "delivered" {
+		return nil, utils.ErrOrderNotEligibleForReturn
+	}
+
+	// Check if the return window has expired (e.g., 14 days)
+	if order.DeliveredAt == nil {
+		return nil, utils.ErrOrderNotEligibleForReturn
+	}
+	if time.Since(*order.DeliveredAt) > 14*24*time.Hour {
+		return nil, utils.ErrReturnWindowExpired
+	}
+
+	// Check if a return request already exists
+	if order.HasReturnRequest {
+		return nil, utils.ErrReturnAlreadyRequested
+	}
+
+	// Validate return reason
+	if reason == "" {
+		return nil, utils.ErrInvalidReturnReason
+	}
+
+	// Start a database transaction
+	tx, err := u.orderRepo.BeginTx(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Create return request
+	returnRequest := &domain.ReturnRequest{
+		OrderID:       orderID,
+		UserID:        userID,
+		ReturnReason:  reason,
+		IsApproved:    false,
+		RequestedDate: time.Now().UTC(),
+	}
+
+	// Save return request
+	err = u.orderRepo.CreateReturnRequestTx(ctx, tx, returnRequest)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create return request: %w", err)
+	}
+
+	// Update order's has_return_request flag
+	err = u.orderRepo.UpdateOrderHasReturnRequestTx(ctx, tx, orderID, true)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update order return request status: %w", err)
+	}
+
+	// Commit the transaction
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return returnRequest, nil
 }
