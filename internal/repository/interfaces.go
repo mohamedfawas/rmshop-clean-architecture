@@ -169,3 +169,8 @@ type WishlistRepository interface {
 type WalletRepository interface {
 	GetByUserID(ctx context.Context, userID int64) (*domain.Wallet, error)
 }
+
+type SalesRepository interface {
+	GetSalesData(ctx context.Context, startDate, endDate time.Time, couponApplied bool) ([]domain.DailySalesData, error)
+	GetTopSellingProducts(ctx context.Context, startDate, endDate time.Time, limit int) ([]domain.TopSellingProduct, error)
+}

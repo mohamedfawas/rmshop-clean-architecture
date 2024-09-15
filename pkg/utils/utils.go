@@ -267,6 +267,9 @@ var (
 	ErrWalletNotFound       = errors.New("wallet not found")
 	ErrWalletNotInitialized = errors.New("wallet not initialized")
 
+	// sales report
+	ErrInvalidDateRange = errors.New("invalid date range")
+
 	ErrInternalServer = errors.New("internal server error")
 )
 

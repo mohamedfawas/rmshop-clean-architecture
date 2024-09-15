@@ -91,6 +91,7 @@ func NewRouter(userHandler *handlers.UserHandler,
 	paymentHandler *handlers.PaymentHandler,
 	wishlistHandler *handlers.WishlistHandler,
 	walletHandler *handlers.WalletHandler,
+	salesHandler *handlers.SalesHandler,
 	templates *template.Template) http.Handler {
 	log.Println("Setting up router...")
 
@@ -217,6 +218,9 @@ func NewRouter(userHandler *handlers.UserHandler,
 
 	r.HandleFunc("/home/payment", paymentHandler.RenderPaymentPage).Methods("GET")
 	r.HandleFunc("/home/razorpay-payment", paymentHandler.ProcessRazorpayPayment).Methods("POST")
+
+	// sales report
+	r.HandleFunc("/admin/sales-report", chainMiddleware(jwtAuth, adminAuth)(salesHandler.GetSalesReport)).Methods("GET")
 
 	log.Println("Router setup complete")
 	return r
