@@ -9,10 +9,13 @@ type Order struct {
 	ID                int64          `json:"id"`
 	UserID            int64          `json:"user_id"`
 	TotalAmount       float64        `json:"total_amount"`
+	DiscountAmount    float64        `json:"discount_amount"`
+	FinalAmount       float64        `json:"final_amount"`
 	DeliveryStatus    string         `json:"delivery_status"`
 	OrderStatus       string         `json:"order_status"`
 	RefundStatus      sql.NullString `json:"refund_status"`
 	ShippingAddressID int64          `json:"shipping_address_id"`
+	CouponApplied     bool           `json:"coupon_applied"`
 	CreatedAt         time.Time      `json:"created_at"`
 	UpdatedAt         time.Time      `json:"updated_at"`
 	DeliveredAt       *time.Time     `json:"delivered_at,omitempty"`

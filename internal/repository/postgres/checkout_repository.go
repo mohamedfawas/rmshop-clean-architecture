@@ -408,12 +408,13 @@ func (r *checkoutRepository) GetCheckoutByID(ctx context.Context, checkoutID int
         FROM checkout_sessions
         WHERE id = $1
     `
+	var shippingAddrID sql.NullInt64
 	var checkout domain.CheckoutSession
 	var couponCode sql.NullString
 	err := r.db.QueryRowContext(ctx, query, checkoutID).Scan(
 		&checkout.ID, &checkout.UserID, &checkout.TotalAmount, &checkout.DiscountAmount,
 		&checkout.FinalAmount, &checkout.ItemCount, &checkout.CreatedAt, &checkout.UpdatedAt,
-		&checkout.Status, &couponCode, &checkout.CouponApplied, &checkout.ShippingAddressID,
+		&checkout.Status, &couponCode, &checkout.CouponApplied, &shippingAddrID,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -424,6 +425,10 @@ func (r *checkoutRepository) GetCheckoutByID(ctx context.Context, checkoutID int
 
 	if couponCode.Valid {
 		checkout.CouponCode = couponCode.String
+	}
+
+	if shippingAddrID.Valid {
+		checkout.ShippingAddressID = shippingAddrID.Int64
 	}
 
 	return &checkout, nil

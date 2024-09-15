@@ -77,7 +77,7 @@ func (h *PaymentHandler) RenderPaymentPage(w http.ResponseWriter, r *http.Reques
 		RazorpayOrderID string
 	}{
 		OrderID:         strconv.FormatInt(order.ID, 10),
-		FinalPrice:      order.TotalAmount,
+		FinalPrice:      order.FinalAmount,
 		RazorpayKeyID:   h.razorpayKeyID,
 		RazorpayOrderID: razorpayOrder.ID,
 	}

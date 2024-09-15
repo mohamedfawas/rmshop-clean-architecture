@@ -467,10 +467,13 @@ func (u *orderUseCase) PlaceOrderRazorpay(ctx context.Context, userID, checkoutI
 
 	order := &domain.Order{
 		UserID:            userID,
-		TotalAmount:       checkout.FinalAmount,
+		TotalAmount:       checkout.TotalAmount,
+		DiscountAmount:    checkout.DiscountAmount,
+		FinalAmount:       checkout.FinalAmount,
 		OrderStatus:       "pending",
 		DeliveryStatus:    "processing",
 		ShippingAddressID: checkout.ShippingAddressID,
+		CouponApplied:     checkout.CouponApplied,
 	}
 
 	orderID, err := u.orderRepo.CreateOrder(ctx, tx, order)

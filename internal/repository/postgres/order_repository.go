@@ -21,66 +21,6 @@ func NewOrderRepository(db *sql.DB) *orderRepository {
 	return &orderRepository{db: db}
 }
 
-func (r *orderRepository) GetByID(ctx context.Context, id int64) (*domain.Order, error) {
-	query := `
-        SELECT id, user_id, total_amount, delivery_status, 
-               order_status, refund_status, shipping_address_id, created_at, updated_at, delivered_at
-        FROM orders
-        WHERE id = $1
-    `
-	var order domain.Order
-	err := r.db.QueryRowContext(ctx, query, id).Scan(
-		&order.ID,
-		&order.UserID,
-		&order.TotalAmount,
-		&order.DeliveryStatus,
-		&order.OrderStatus,
-		&order.RefundStatus,
-		&order.ShippingAddressID,
-		&order.CreatedAt,
-		&order.UpdatedAt,
-		&order.DeliveredAt,
-	)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, utils.ErrOrderNotFound
-		}
-		log.Printf("Error retrieving order: %v", err)
-		return nil, err
-	}
-
-	// Fetch order items
-	itemsQuery := `
-        SELECT id, product_id, quantity, price
-        FROM order_items
-        WHERE order_id = $1
-    `
-	rows, err := r.db.QueryContext(ctx, itemsQuery, id)
-	if err != nil {
-		log.Printf("Error retrieving order items: %v", err)
-		return nil, err
-	}
-	defer rows.Close()
-
-	var items []domain.OrderItem
-	for rows.Next() {
-		var item domain.OrderItem
-		err := rows.Scan(&item.ID, &item.ProductID, &item.Quantity, &item.Price)
-		if err != nil {
-			log.Printf("Error scanning order item: %v", err)
-			return nil, err
-		}
-		items = append(items, item)
-	}
-	if err = rows.Err(); err != nil {
-		log.Printf("Error iterating order items: %v", err)
-		return nil, err
-	}
-
-	order.Items = items
-	return &order, nil
-}
-
 func (r *orderRepository) GetUserOrders(ctx context.Context, userID int64, page, limit int, sortBy, order, status string) ([]*domain.Order, int64, error) {
 	offset := (page - 1) * limit
 
@@ -430,13 +370,16 @@ func (r *orderRepository) CreateRefundTx(ctx context.Context, tx *sql.Tx, refund
 
 func (r *orderRepository) CreateOrder(ctx context.Context, tx *sql.Tx, order *domain.Order) (int64, error) {
 	query := `
-        INSERT INTO orders (user_id, total_amount, delivery_status, shipping_address_id, order_status, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        INSERT INTO orders (user_id, total_amount, discount_amount, final_amount, delivery_status, 
+                            shipping_address_id, order_status, coupon_applied, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         RETURNING id, created_at
     `
 	var orderID int64
 	err := tx.QueryRowContext(ctx, query,
-		order.UserID, order.TotalAmount, order.DeliveryStatus, order.ShippingAddressID, order.OrderStatus, time.Now().UTC(), time.Now().UTC(),
+		order.UserID, order.TotalAmount, order.DiscountAmount, order.FinalAmount,
+		order.DeliveryStatus, order.ShippingAddressID, order.OrderStatus, order.CouponApplied,
+		time.Now().UTC(), time.Now().UTC(),
 	).Scan(&orderID, &order.CreatedAt)
 	if err != nil {
 		log.Printf("error while adding the order entry : %v", err)
@@ -516,4 +459,74 @@ func (r *orderRepository) GetPaymentByRazorpayOrderID(ctx context.Context, razor
 	}
 
 	return &payment, nil
+}
+
+func (r *orderRepository) GetByID(ctx context.Context, id int64) (*domain.Order, error) {
+	query := `
+        SELECT id, user_id, total_amount, discount_amount, final_amount, delivery_status, 
+               order_status, refund_status, shipping_address_id, coupon_applied,
+               created_at, updated_at, delivered_at
+        FROM orders
+        WHERE id = $1
+    `
+	var order domain.Order
+	var deliveredAt sql.NullTime
+
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&order.ID,
+		&order.UserID,
+		&order.TotalAmount,
+		&order.DiscountAmount,
+		&order.FinalAmount,
+		&order.DeliveryStatus,
+		&order.OrderStatus,
+		&order.RefundStatus,
+		&order.ShippingAddressID,
+		&order.CouponApplied,
+		&order.CreatedAt,
+		&order.UpdatedAt,
+		&deliveredAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, utils.ErrOrderNotFound
+		}
+		log.Printf("Error retrieving order: %v", err)
+		return nil, err
+	}
+
+	if deliveredAt.Valid {
+		order.DeliveredAt = &deliveredAt.Time
+	}
+
+	// Fetch order items
+	itemsQuery := `
+        SELECT id, product_id, quantity, price
+        FROM order_items
+        WHERE order_id = $1
+    `
+	rows, err := r.db.QueryContext(ctx, itemsQuery, id)
+	if err != nil {
+		log.Printf("Error retrieving order items: %v", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []domain.OrderItem
+	for rows.Next() {
+		var item domain.OrderItem
+		err := rows.Scan(&item.ID, &item.ProductID, &item.Quantity, &item.Price)
+		if err != nil {
+			log.Printf("Error scanning order item: %v", err)
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err = rows.Err(); err != nil {
+		log.Printf("Error iterating order items: %v", err)
+		return nil, err
+	}
+
+	order.Items = items
+	return &order, nil
 }
