@@ -28,6 +28,7 @@ type OrderUseCase interface {
 	PlaceOrderRazorpay(ctx context.Context, userID, checkoutID int64) (*domain.Order, error)
 	UpdateOrderRazorpayID(ctx context.Context, orderID int64, razorpayOrderID string) error
 	InitiateReturn(ctx context.Context, userID, orderID int64, reason string) (*domain.ReturnRequest, error)
+	PlaceOrderCOD(ctx context.Context, userID, checkoutID int64) (*domain.Order, error)
 }
 
 type orderUseCase struct {
@@ -529,4 +530,133 @@ func (u *orderUseCase) InitiateReturn(ctx context.Context, userID, orderID int64
 	}
 
 	return returnRequest, nil
+}
+
+func (u *orderUseCase) PlaceOrderCOD(ctx context.Context, userID, checkoutID int64) (*domain.Order, error) {
+	// Start a database transaction
+	tx, err := u.orderRepo.BeginTx(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Get the checkout session
+	checkout, err := u.checkoutRepo.GetCheckoutByID(ctx, checkoutID)
+	if err != nil {
+		if err == utils.ErrCheckoutNotFound {
+			return nil, utils.ErrCheckoutNotFound
+		}
+		return nil, err
+	}
+
+	// Verify the checkout belongs to the user
+	if checkout.UserID != userID {
+		return nil, utils.ErrUnauthorized
+	}
+
+	// Check if the checkout is in a valid state to place an order
+	if checkout.Status != "pending" {
+		return nil, utils.ErrOrderAlreadyPlaced
+	}
+
+	// Get checkout items
+	items, err := u.checkoutRepo.GetCheckoutItems(ctx, checkoutID)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(items) == 0 {
+		return nil, utils.ErrEmptyCart
+	}
+
+	// Verify that all items have sufficient stock
+	for _, item := range items {
+		product, err := u.productRepo.GetByID(ctx, item.ProductID)
+		if err != nil {
+			return nil, err
+		}
+		if product.StockQuantity < item.Quantity {
+			return nil, utils.ErrInsufficientStock
+		}
+	}
+
+	// Verify that a valid address is associated with the checkout
+	if checkout.ShippingAddressID == 0 {
+		return nil, utils.ErrInvalidAddress
+	}
+
+	// Create the order
+	order := &domain.Order{
+		UserID:            userID,
+		TotalAmount:       checkout.FinalAmount,
+		DiscountAmount:    checkout.DiscountAmount,
+		FinalAmount:       checkout.FinalAmount,
+		OrderStatus:       "pending",
+		DeliveryStatus:    "processing",
+		ShippingAddressID: checkout.ShippingAddressID,
+		CouponApplied:     checkout.CouponApplied,
+		CreatedAt:         time.Now().UTC(),
+		UpdatedAt:         time.Now().UTC(),
+	}
+
+	// Create the order in the database
+	orderID, err := u.orderRepo.CreateOrder(ctx, tx, order)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create order: %w", err)
+	}
+	order.ID = orderID
+
+	// Create a payment record
+	payment := &domain.Payment{
+		OrderID:       order.ID,
+		Amount:        order.FinalAmount,
+		PaymentMethod: "cod",
+		Status:        "pending",
+		CreatedAt:     time.Now().UTC(),
+		UpdatedAt:     time.Now().UTC(),
+	}
+	err = u.orderRepo.CreatePayment(ctx, tx, payment)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create payment record: %w", err)
+	}
+
+	// Create order items and update product stock
+	for _, item := range items {
+		orderItem := &domain.OrderItem{
+			OrderID:   order.ID,
+			ProductID: item.ProductID,
+			Quantity:  item.Quantity,
+			Price:     item.Price,
+		}
+		err = u.orderRepo.AddOrderItem(ctx, tx, orderItem)
+		if err != nil {
+			return nil, fmt.Errorf("failed to add order item: %w", err)
+		}
+
+		// Update product stock
+		err = u.productRepo.UpdateStock(ctx, tx, item.ProductID, -item.Quantity)
+		if err != nil {
+			return nil, fmt.Errorf("failed to update product stock: %w", err)
+		}
+	}
+
+	// Update checkout status
+	checkout.Status = "completed"
+	err = u.checkoutRepo.UpdateCheckoutStatus(ctx, tx, checkout)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update checkout status: %w", err)
+	}
+
+	// Clear the user's cart
+	err = u.cartRepo.ClearCart(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to clear user's cart: %w", err)
+	}
+
+	// Commit the transaction
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return order, nil
 }
