@@ -28,7 +28,7 @@ func (h *SalesHandler) GetSalesReport(w http.ResponseWriter, r *http.Request) {
 	year := r.URL.Query().Get("year")
 	couponApplied := r.URL.Query().Get("coupon_applied")
 	includeMetrics := r.URL.Query().Get("include_metrics")
-	format := r.URL.Query().Get("format") // New parameter for output format
+	format := r.URL.Query().Get("format")
 
 	// Validate report type
 	if !isValidReportType(reportType) {

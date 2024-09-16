@@ -202,6 +202,7 @@ func NewRouter(userHandler *handlers.UserHandler,
 	// User routes : Order management
 	// place order using razorpay
 	r.HandleFunc("/user/checkout/{checkout_id}/place-order/razorpay", chainMiddleware(jwtAuth, userAuth)(orderHandler.PlaceOrderRazorpay)).Methods("POST")
+	// place order using cod
 	r.HandleFunc("/user/checkout/{checkout_id}/place-order/cod", chainMiddleware(jwtAuth, userAuth)(orderHandler.PlaceOrderCOD)).Methods("POST")
 
 	r.HandleFunc("/user/orders/{order_id}", chainMiddleware(jwtAuth, userAuth)(orderHandler.GetOrderConfirmation)).Methods("GET")
