@@ -219,6 +219,8 @@ var (
 	ErrCouponAlreadyApplied      = errors.New("coupon already applied")
 	ErrCouponAlreadyDeleted      = errors.New("coupon is already soft deleted")
 	ErrCouponInUse               = errors.New("coupon is currently in use")
+	ErrNoCouponApplied           = errors.New("no coupon is applied to this checkout")
+	ErrCheckoutCompleted         = errors.New("checkout is already completed")
 
 	// checkout
 	ErrCheckoutNotFound      = errors.New("checkout session not found")

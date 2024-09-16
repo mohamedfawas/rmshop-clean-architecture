@@ -243,3 +243,40 @@ func (h *CheckoutHandler) PlaceOrder(w http.ResponseWriter, r *http.Request) {
 
 	api.SendResponse(w, http.StatusCreated, "Order placed successfully", order, "")
 }
+
+func (h *CheckoutHandler) RemoveAppliedCoupon(w http.ResponseWriter, r *http.Request) {
+	// Extract user ID from context (set by auth middleware)
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	if !ok {
+		api.SendResponse(w, http.StatusUnauthorized, "Failed to remove coupon", nil, "User not authenticated")
+		return
+	}
+
+	// Extract checkout ID from URL
+	vars := mux.Vars(r)
+	checkoutID, err := strconv.ParseInt(vars["checkout_id"], 10, 64)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to remove coupon", nil, "Invalid checkout ID")
+		return
+	}
+
+	// Call use case method to remove the coupon
+	updatedCheckout, err := h.checkoutUseCase.RemoveAppliedCoupon(r.Context(), userID, checkoutID)
+	if err != nil {
+		switch err {
+		case utils.ErrCheckoutNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Failed to remove coupon", nil, "Checkout not found")
+		case utils.ErrUnauthorized:
+			api.SendResponse(w, http.StatusForbidden, "Failed to remove coupon", nil, "Unauthorized access to this checkout")
+		case utils.ErrNoCouponApplied:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to remove coupon", nil, "No coupon is applied to this checkout")
+		case utils.ErrCheckoutCompleted:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to remove coupon", nil, "Checkout is already completed")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to remove coupon", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	api.SendResponse(w, http.StatusOK, "Coupon removed successfully", updatedCheckout, "")
+}

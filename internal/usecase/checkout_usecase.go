@@ -19,6 +19,7 @@ type CheckoutUseCase interface {
 	UpdateCheckoutAddress(ctx context.Context, userID, checkoutID, addressID int64) (*domain.CheckoutSession, error)
 	GetCheckoutSummary(ctx context.Context, userID, checkoutID int64) (*domain.CheckoutSummary, error)
 	PlaceOrder(ctx context.Context, userID, checkoutID int64, paymentMethod string) (*domain.Order, error)
+	RemoveAppliedCoupon(ctx context.Context, userID, checkoutID int64) (*domain.CheckoutSession, error)
 }
 
 type checkoutUseCase struct {
@@ -431,4 +432,44 @@ func (u *checkoutUseCase) PlaceOrder(ctx context.Context, userID, checkoutID int
 	}
 
 	return order, nil
+}
+
+func (u *checkoutUseCase) RemoveAppliedCoupon(ctx context.Context, userID, checkoutID int64) (*domain.CheckoutSession, error) {
+	// Get the checkout session
+	checkout, err := u.checkoutRepo.GetCheckoutByID(ctx, checkoutID)
+	if err != nil {
+		if err == utils.ErrCheckoutNotFound {
+			return nil, utils.ErrCheckoutNotFound
+		}
+		return nil, err
+	}
+
+	// Verify the checkout belongs to the user
+	if checkout.UserID != userID {
+		return nil, utils.ErrUnauthorized
+	}
+
+	// Check if the checkout is in a valid state to remove coupon
+	if checkout.Status == "completed" {
+		return nil, utils.ErrCheckoutCompleted
+	}
+
+	// Check if a coupon is applied
+	if !checkout.CouponApplied {
+		return nil, utils.ErrNoCouponApplied
+	}
+
+	// Remove the coupon
+	checkout.CouponApplied = false
+	checkout.CouponCode = ""
+	checkout.DiscountAmount = 0
+	checkout.FinalAmount = checkout.TotalAmount
+
+	// Update the checkout in the repository
+	err = u.checkoutRepo.UpdateCheckoutDetails(ctx, checkout)
+	if err != nil {
+		return nil, err
+	}
+
+	return checkout, nil
 }

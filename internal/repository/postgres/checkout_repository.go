@@ -275,14 +275,24 @@ func (r *checkoutRepository) UpdateCheckoutDetails(ctx context.Context, checkout
             coupon_code = $5, coupon_applied = $6
         WHERE id = $7
     `
-	_, err := r.db.ExecContext(ctx, query,
-		checkout.TotalAmount, checkout.DiscountAmount, checkout.FinalAmount, time.Now(),
+	result, err := r.db.ExecContext(ctx, query,
+		checkout.TotalAmount, checkout.DiscountAmount, checkout.FinalAmount, time.Now().UTC(),
 		checkout.CouponCode, checkout.CouponApplied, checkout.ID,
 	)
 	if err != nil {
 		log.Printf("error while updating checkout session details: %v", err)
+		return err
 	}
-	return err
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return utils.ErrCheckoutNotFound
+	}
+
+	return nil
 }
 
 func (r *checkoutRepository) UpdateCheckoutStatus(ctx context.Context, tx *sql.Tx, checkout *domain.CheckoutSession) error {

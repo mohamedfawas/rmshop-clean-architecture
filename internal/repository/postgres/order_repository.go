@@ -26,7 +26,7 @@ func (r *orderRepository) GetUserOrders(ctx context.Context, userID int64, page,
 
 	// Build the base query
 	query := `
-		SELECT o.id, o.total_amount, o.delivery_status, o.address_id, o.created_at
+		SELECT o.id, o.total_amount, o.delivery_status, o.shipping_address_id, o.created_at
 		FROM orders o
 		WHERE o.user_id = $1
 	`

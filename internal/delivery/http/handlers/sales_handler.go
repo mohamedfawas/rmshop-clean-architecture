@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -27,6 +28,7 @@ func (h *SalesHandler) GetSalesReport(w http.ResponseWriter, r *http.Request) {
 	year := r.URL.Query().Get("year")
 	couponApplied := r.URL.Query().Get("coupon_applied")
 	includeMetrics := r.URL.Query().Get("include_metrics")
+	format := r.URL.Query().Get("format") // New parameter for output format
 
 	// Validate report type
 	if !isValidReportType(reportType) {
@@ -68,14 +70,47 @@ func (h *SalesHandler) GetSalesReport(w http.ResponseWriter, r *http.Request) {
 	// Parse boolean parameters
 	couponAppliedBool, _ := strconv.ParseBool(couponApplied)
 
-	// Call use case
+	// Generate the report
 	report, err := h.salesUseCase.GenerateSalesReport(r.Context(), reportType, startTime, endTime, couponAppliedBool, includeMetrics)
 	if err != nil {
 		api.SendResponse(w, http.StatusInternalServerError, "Failed to generate report", nil, "An unexpected error occurred")
 		return
 	}
 
-	api.SendResponse(w, http.StatusOK, "Sales report generated successfully", report, "")
+	// Handle different output formats
+	switch format {
+	case "pdf":
+		pdfData, err := h.salesUseCase.GeneratePDFReport(report)
+		if err != nil {
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to generate PDF", nil, "An unexpected error occurred")
+			return
+		}
+		w.Header().Set("Content-Type", "application/pdf")
+		w.Header().Set("Content-Disposition", "attachment; filename=sales_report.pdf")
+		_, err = w.Write(pdfData)
+		if err != nil {
+			log.Printf("Error writing PDF data to response: %v", err)
+		}
+		return
+	case "excel":
+		excelData, err := h.salesUseCase.GenerateExcelReport(report)
+		if err != nil {
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to generate Excel file", nil, "An unexpected error occurred")
+			return
+		}
+		w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+		w.Header().Set("Content-Disposition", "attachment; filename=sales_report.xlsx")
+		_, err = w.Write(excelData)
+		if err != nil {
+			log.Printf("Error writing Excel data to response: %v", err)
+		}
+		return
+	case "json", "":
+		// Default to JSON if no format is specified
+		api.SendResponse(w, http.StatusOK, "Sales report generated successfully", report, "")
+	default:
+		api.SendResponse(w, http.StatusBadRequest, "Invalid format", nil, "Supported formats: json, pdf, excel")
+	}
 }
 
 func isValidReportType(reportType string) bool {
