@@ -374,3 +374,52 @@ func (h *OrderHandler) PlaceOrderCOD(w http.ResponseWriter, r *http.Request) {
 
 	api.SendResponse(w, http.StatusCreated, "Order placed successfully", order, "")
 }
+
+func (h *OrderHandler) GetOrderInvoice(w http.ResponseWriter, r *http.Request) {
+	// Extract user ID from context (set by auth middleware)
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	if !ok {
+		api.SendResponse(w, http.StatusUnauthorized, "Failed to generate invoice", nil, "User not authenticated")
+		return
+	}
+
+	// Extract order ID from URL
+	vars := mux.Vars(r)
+	orderID, err := strconv.ParseInt(vars["orderId"], 10, 64)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to generate invoice", nil, "Invalid order ID")
+		return
+	}
+
+	// Generate invoice
+	pdfBytes, err := h.orderUseCase.GenerateInvoice(r.Context(), userID, orderID)
+	if err != nil {
+		switch err {
+		case utils.ErrOrderNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Failed to generate invoice", nil, "Order not found")
+		case utils.ErrUnauthorized:
+			api.SendResponse(w, http.StatusForbidden, "Failed to generate invoice", nil, "You don't have permission to access this order")
+		case utils.ErrCancelledOrder:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to generate invoice", nil, "Cannot generate invoice for a cancelled order")
+		case utils.ErrUnpaidOrder:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to generate invoice", nil, "Cannot generate invoice for an unpaid order")
+		case utils.ErrEmptyOrder:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to generate invoice", nil, "Cannot generate invoice for an empty order")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to generate invoice", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	// Set headers for PDF download
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=invoice_%d.pdf", orderID))
+	w.Header().Set("Content-Length", strconv.Itoa(len(pdfBytes)))
+
+	// Write PDF bytes to response
+	_, err = w.Write(pdfBytes)
+	if err != nil {
+		api.SendResponse(w, http.StatusInternalServerError, "Failed to send invoice", nil, "Error writing response")
+		return
+	}
+}

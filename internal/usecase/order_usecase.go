@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/jung-kurt/gofpdf"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/repository"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/payment/razorpay"
@@ -29,6 +31,7 @@ type OrderUseCase interface {
 	UpdateOrderRazorpayID(ctx context.Context, orderID int64, razorpayOrderID string) error
 	InitiateReturn(ctx context.Context, userID, orderID int64, reason string) (*domain.ReturnRequest, error)
 	PlaceOrderCOD(ctx context.Context, userID, checkoutID int64) (*domain.Order, error)
+	GenerateInvoice(ctx context.Context, userID, orderID int64) ([]byte, error)
 }
 
 type orderUseCase struct {
@@ -659,4 +662,74 @@ func (u *orderUseCase) PlaceOrderCOD(ctx context.Context, userID, checkoutID int
 	}
 
 	return order, nil
+}
+
+func (u *orderUseCase) GenerateInvoice(ctx context.Context, userID, orderID int64) ([]byte, error) {
+	order, err := u.orderRepo.GetOrderWithItems(ctx, orderID)
+	if err != nil {
+		return nil, err
+	}
+
+	if order.UserID != userID {
+		return nil, utils.ErrUnauthorized
+	}
+
+	if order.OrderStatus == "cancelled" {
+		return nil, utils.ErrCancelledOrder
+	}
+
+	if order.OrderStatus != "delivered" && order.OrderStatus != "completed" {
+		return nil, utils.ErrUnpaidOrder
+	}
+
+	if len(order.Items) == 0 {
+		return nil, utils.ErrEmptyOrder
+	}
+
+	// Generate PDF
+	pdf := gofpdf.New("P", "mm", "A4", "")
+	pdf.AddPage()
+
+	// Add header
+	pdf.SetFont("Arial", "B", 16)
+	pdf.Cell(40, 10, "Invoice")
+
+	// Add order details
+	pdf.Ln(10)
+	pdf.SetFont("Arial", "", 12)
+	pdf.Cell(40, 10, fmt.Sprintf("Order ID: %d", order.ID))
+	pdf.Ln(10)
+	pdf.Cell(40, 10, fmt.Sprintf("Date: %s", order.CreatedAt.Format("2006-01-02 15:04:05")))
+
+	// Add items
+	pdf.Ln(10)
+	pdf.SetFont("Arial", "B", 12)
+	pdf.Cell(80, 10, "Product")
+	pdf.Cell(40, 10, "Quantity")
+	pdf.Cell(40, 10, "Price")
+	pdf.Cell(40, 10, "Subtotal")
+
+	for _, item := range order.Items {
+		pdf.Ln(10)
+		pdf.SetFont("Arial", "", 12)
+		pdf.Cell(80, 10, fmt.Sprintf("Product ID: %d", item.ProductID))
+		pdf.Cell(40, 10, fmt.Sprintf("%d", item.Quantity))
+		pdf.Cell(40, 10, fmt.Sprintf("$%.2f", item.Price))
+		pdf.Cell(40, 10, fmt.Sprintf("$%.2f", float64(item.Quantity)*item.Price))
+	}
+
+	// Add total
+	pdf.Ln(10)
+	pdf.SetFont("Arial", "B", 12)
+	pdf.Cell(160, 10, "Total")
+	pdf.Cell(40, 10, fmt.Sprintf("$%.2f", order.FinalAmount))
+
+	// Get PDF as bytes
+	var buf bytes.Buffer
+	err = pdf.Output(&buf)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate PDF: %w", err)
+	}
+
+	return buf.Bytes(), nil
 }

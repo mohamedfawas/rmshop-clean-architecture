@@ -8,24 +8,31 @@ import (
 	"golang.org/x/time/rate"
 )
 
+// IPRateLimiter is a struct that handles rate limiting based on IP addresses.
+// It maintains a map of IP addresses to their rate limiters, a mutex for concurrent access,
+// and rate limit configurations.
 type IPRateLimiter struct {
-	ips map[string]*rate.Limiter
-	mu  *sync.RWMutex
-	r   rate.Limit
-	b   int
+	ips map[string]*rate.Limiter // A map to hold the rate limiters for each IP address
+	mu  *sync.RWMutex            // A mutex to allow safe concurrent access to the map
+	r   rate.Limit               // The rate limit (requests per second)
+	b   int                      // The burst size (maximum number of requests allowed at once)
 }
 
+// NewIPRateLimiter initializes and returns an IPRateLimiter.
+// It takes the rate limit and burst size as arguments.
 func NewIPRateLimiter(r rate.Limit, b int) *IPRateLimiter {
 	i := &IPRateLimiter{
-		ips: make(map[string]*rate.Limiter),
-		mu:  &sync.RWMutex{},
-		r:   r,
-		b:   b,
+		ips: make(map[string]*rate.Limiter), // Initialize the map to hold IPs and their rate limiters
+		mu:  &sync.RWMutex{},                // Initialize the mutex for concurrent access
+		r:   r,                              // Set the rate limit
+		b:   b,                              // Set the burst size
 	}
 
-	return i
+	return i // Return the new instance of IPRateLimiter
 }
 
+// AddIP creates a new rate limiter for the given IP address and adds it to the map.
+// It acquires a write lock on the mutex to ensure safe access.
 func (i *IPRateLimiter) AddIP(ip string) *rate.Limiter {
 	i.mu.Lock()
 	defer i.mu.Unlock()

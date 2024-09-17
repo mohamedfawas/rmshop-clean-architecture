@@ -212,6 +212,9 @@ func NewRouter(userHandler *handlers.UserHandler,
 	// order return
 	r.HandleFunc("/user/orders/{orderId}/return", chainMiddleware(jwtAuth, userAuth)(orderHandler.InitiateReturn)).Methods("POST")
 
+	// order invoice
+	r.HandleFunc("/user/orders/{orderId}/invoice", chainMiddleware(jwtAuth, userAuth)(orderHandler.GetOrderInvoice)).Methods("GET")
+
 	// Public routes
 	r.HandleFunc("/user/forgot-password", middleware.RateLimitMiddleware(userHandler.ForgotPassword, otpResendLimiter)).Methods("POST")
 	r.HandleFunc("/user/reset-password", userHandler.ResetPassword).Methods("POST")

@@ -152,6 +152,7 @@ type OrderRepository interface {
 	AddOrderItem(ctx context.Context, tx *sql.Tx, item *domain.OrderItem) error
 	UpdateOrderRazorpayID(ctx context.Context, orderID int64, razorpayOrderID string) error
 	UpdateOrderHasReturnRequestTx(ctx context.Context, tx *sql.Tx, orderID int64, hasReturnRequest bool) error
+	GetOrderWithItems(ctx context.Context, orderID int64) (*domain.Order, error)
 }
 
 type InventoryRepository interface {

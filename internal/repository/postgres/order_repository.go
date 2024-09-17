@@ -503,3 +503,60 @@ func (r *orderRepository) UpdateOrderHasReturnRequestTx(ctx context.Context, tx 
 	_, err := tx.ExecContext(ctx, query, hasReturnRequest, orderID)
 	return err
 }
+
+func (r *orderRepository) GetOrderWithItems(ctx context.Context, orderID int64) (*domain.Order, error) {
+	query := `
+        SELECT o.id, o.user_id, o.total_amount, o.discount_amount, o.final_amount, 
+               o.delivery_status, o.order_status, o.has_return_request, 
+               o.shipping_address_id, o.coupon_applied, o.created_at, o.updated_at, o.delivered_at,
+               oi.id, oi.product_id, oi.quantity, oi.price,
+               p.name
+        FROM orders o
+        LEFT JOIN order_items oi ON o.id = oi.order_id
+        LEFT JOIN products p ON oi.product_id = p.id
+        WHERE o.id = $1
+    `
+	rows, err := r.db.QueryContext(ctx, query, orderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var order *domain.Order
+	itemMap := make(map[int64]*domain.OrderItem)
+
+	for rows.Next() {
+		if order == nil {
+			order = &domain.Order{}
+		}
+		var item domain.OrderItem
+		var productName string
+		var deliveredAt sql.NullTime
+		err := rows.Scan(
+			&order.ID, &order.UserID, &order.TotalAmount, &order.DiscountAmount, &order.FinalAmount,
+			&order.DeliveryStatus, &order.OrderStatus, &order.HasReturnRequest,
+			&order.ShippingAddressID, &order.CouponApplied, &order.CreatedAt, &order.UpdatedAt, &deliveredAt,
+			&item.ID, &item.ProductID, &item.Quantity, &item.Price,
+			&productName,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if deliveredAt.Valid {
+			order.DeliveredAt = &deliveredAt.Time
+		}
+		item.OrderID = order.ID
+		itemMap[item.ID] = &item
+	}
+
+	if order == nil {
+		return nil, utils.ErrOrderNotFound
+	}
+
+	order.Items = make([]domain.OrderItem, 0, len(itemMap))
+	for _, item := range itemMap {
+		order.Items = append(order.Items, *item)
+	}
+
+	return order, nil
+}

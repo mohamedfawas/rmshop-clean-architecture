@@ -241,6 +241,9 @@ var (
 	ErrOrderAlreadyPaid          = errors.New("order already paid")
 	ErrOrderCancelled            = errors.New("order cancelled")
 	ErrInvalidOrderAmount        = errors.New("invalid order amount")
+	ErrEmptyOrder                = errors.New("empty order")
+	ErrUnpaidOrder               = errors.New("unpaid order")
+	ErrCancelledOrder            = errors.New("cancelled order")
 
 	// shipping address
 	ErrAddressNotBelongToUser = errors.New("address don't belong to user")
