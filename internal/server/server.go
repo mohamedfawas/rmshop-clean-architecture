@@ -107,6 +107,10 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 	salesHandler := handlers.NewSalesHandler(salesUseCase)
 	log.Println("Sales components initialized")
 
+	analyticsRepo := postgres.NewAnalyticsRepository(db)
+	analyticsUseCase := usecase.NewAnalyticsUseCase(analyticsRepo)
+	analyticsHandler := handlers.NewAnalyticsHandler(analyticsUseCase)
+
 	templates := setupTemplates()
 	paymentHandler := handlers.NewPaymentHandler(orderUseCase, cfg.Razorpay.KeyID, cfg.Razorpay.KeySecret, templates)
 
@@ -127,6 +131,7 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 		wishlistHandler,
 		walletHandler,
 		salesHandler,
+		analyticsHandler,
 		templates,
 	)
 	log.Println("Router initialized")

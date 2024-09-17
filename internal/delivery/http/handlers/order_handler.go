@@ -366,6 +366,8 @@ func (h *OrderHandler) PlaceOrderCOD(w http.ResponseWriter, r *http.Request) {
 			api.SendResponse(w, http.StatusBadRequest, "Failed to place order", nil, "Invalid or missing delivery address")
 		case utils.ErrOrderAlreadyPlaced:
 			api.SendResponse(w, http.StatusConflict, "Failed to place order", nil, "Order has already been placed for this checkout")
+		case utils.ErrCODLimitExceeded:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to place order", nil, "COD is not available for orders above Rs 1000")
 		default:
 			api.SendResponse(w, http.StatusInternalServerError, "Failed to place order", nil, "An unexpected error occurred")
 		}

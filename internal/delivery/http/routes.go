@@ -92,6 +92,7 @@ func NewRouter(userHandler *handlers.UserHandler,
 	wishlistHandler *handlers.WishlistHandler,
 	walletHandler *handlers.WalletHandler,
 	salesHandler *handlers.SalesHandler,
+	analyticsHandler *handlers.AnalyticsHandler,
 	templates *template.Template) http.Handler {
 	log.Println("Setting up router...")
 
@@ -229,6 +230,9 @@ func NewRouter(userHandler *handlers.UserHandler,
 
 	// sales report
 	r.HandleFunc("/admin/sales-report", chainMiddleware(jwtAuth, adminAuth)(salesHandler.GetSalesReport)).Methods("GET")
+
+	// admin : analytics
+	r.HandleFunc("/admin/analytics/top-products", chainMiddleware(jwtAuth, adminAuth)(analyticsHandler.GetTopProducts)).Methods("GET")
 
 	log.Println("Router setup complete")
 	return r

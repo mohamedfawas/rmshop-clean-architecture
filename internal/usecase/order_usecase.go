@@ -562,6 +562,11 @@ func (u *orderUseCase) PlaceOrderCOD(ctx context.Context, userID, checkoutID int
 		return nil, utils.ErrOrderAlreadyPlaced
 	}
 
+	// Check if the order total exceeds the COD limit
+	if checkout.FinalAmount > utils.CODLimit {
+		return nil, utils.ErrCODLimitExceeded
+	}
+
 	// Get checkout items
 	items, err := u.checkoutRepo.GetCheckoutItems(ctx, checkoutID)
 	if err != nil {

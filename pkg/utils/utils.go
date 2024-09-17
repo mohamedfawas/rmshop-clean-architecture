@@ -19,6 +19,7 @@ const (
 	MaxFileSize         = 10 * 1024 * 1024 // 10 MB
 	MaxCartItemQuantity = 10
 	MaxDiscountAmount   = 5000
+	CODLimit            = 1000.0 // cash on delivery order limit
 )
 
 const (
@@ -244,6 +245,7 @@ var (
 	ErrEmptyOrder                = errors.New("empty order")
 	ErrUnpaidOrder               = errors.New("unpaid order")
 	ErrCancelledOrder            = errors.New("cancelled order")
+	ErrCODLimitExceeded          = errors.New("cod limit exceeded")
 
 	// shipping address
 	ErrAddressNotBelongToUser = errors.New("address don't belong to user")
