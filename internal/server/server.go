@@ -107,6 +107,12 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 	salesHandler := handlers.NewSalesHandler(salesUseCase)
 	log.Println("Sales components initialized")
 
+	// Initialize return components
+	returnRepo := postgres.NewReturnRepository(db)
+	returnUseCase := usecase.NewReturnUseCase(returnRepo, orderRepo)
+	returnHandler := handlers.NewReturnHandler(returnUseCase)
+	log.Println("Return components initialized")
+
 	analyticsRepo := postgres.NewAnalyticsRepository(db)
 	analyticsUseCase := usecase.NewAnalyticsUseCase(analyticsRepo)
 	analyticsHandler := handlers.NewAnalyticsHandler(analyticsUseCase)
@@ -132,6 +138,7 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 		walletHandler,
 		salesHandler,
 		analyticsHandler,
+		returnHandler,
 		templates,
 	)
 	log.Println("Router initialized")

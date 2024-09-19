@@ -1,0 +1,125 @@
+package postgres
+
+import (
+	"context"
+	"database/sql"
+	"time"
+
+	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/utils"
+)
+
+type returnRepository struct {
+	db *sql.DB
+}
+
+func NewReturnRepository(db *sql.DB) *returnRepository {
+	return &returnRepository{db: db}
+}
+
+func (r *returnRepository) CreateReturnRequest(ctx context.Context, returnRequest *domain.ReturnRequest) error {
+	query := `
+		INSERT INTO return_requests (order_id, user_id, return_reason, is_approved, requested_date)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id
+	`
+	err := r.db.QueryRowContext(ctx, query,
+		returnRequest.OrderID,
+		returnRequest.UserID,
+		returnRequest.ReturnReason,
+		returnRequest.IsApproved,
+		returnRequest.RequestedDate,
+	).Scan(&returnRequest.ID)
+	return err
+}
+
+func (r *returnRepository) GetReturnRequestByOrderID(ctx context.Context, orderID int64) (*domain.ReturnRequest, error) {
+	query := `
+		SELECT id, order_id, user_id, return_reason, is_approved, requested_date, approved_at, rejected_at
+		FROM return_requests
+		WHERE order_id = $1
+	`
+	var returnRequest domain.ReturnRequest
+	var approvedAt, rejectedAt sql.NullTime
+	err := r.db.QueryRowContext(ctx, query, orderID).Scan(
+		&returnRequest.ID,
+		&returnRequest.OrderID,
+		&returnRequest.UserID,
+		&returnRequest.ReturnReason,
+		&returnRequest.IsApproved,
+		&returnRequest.RequestedDate,
+		&approvedAt,
+		&rejectedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, utils.ErrReturnRequestNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if approvedAt.Valid {
+		returnRequest.ApprovedAt = &approvedAt.Time
+	}
+	if rejectedAt.Valid {
+		returnRequest.RejectedAt = &rejectedAt.Time
+	}
+	return &returnRequest, nil
+}
+
+func (r *returnRepository) UpdateReturnRequestStatus(ctx context.Context, returnID int64, isApproved bool) error {
+	var query string
+	var args []interface{}
+	if isApproved {
+		query = `UPDATE return_requests SET is_approved = $1, approved_at = $2 WHERE id = $3`
+		args = []interface{}{true, time.Now(), returnID}
+	} else {
+		query = `UPDATE return_requests SET is_approved = $1, rejected_at = $2 WHERE id = $3`
+		args = []interface{}{false, time.Now(), returnID}
+	}
+	_, err := r.db.ExecContext(ctx, query, args...)
+	return err
+}
+
+func (r *returnRepository) GetUserReturnRequests(ctx context.Context, userID int64) ([]*domain.ReturnRequest, error) {
+	query := `
+		SELECT id, order_id, user_id, return_reason, is_approved, requested_date, approved_at, rejected_at
+		FROM return_requests
+		WHERE user_id = $1
+		ORDER BY requested_date DESC
+	`
+	rows, err := r.db.QueryContext(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var returnRequests []*domain.ReturnRequest
+	for rows.Next() {
+		var returnRequest domain.ReturnRequest
+		var approvedAt, rejectedAt sql.NullTime
+		err := rows.Scan(
+			&returnRequest.ID,
+			&returnRequest.OrderID,
+			&returnRequest.UserID,
+			&returnRequest.ReturnReason,
+			&returnRequest.IsApproved,
+			&returnRequest.RequestedDate,
+			&approvedAt,
+			&rejectedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if approvedAt.Valid {
+			returnRequest.ApprovedAt = &approvedAt.Time
+		}
+		if rejectedAt.Valid {
+			returnRequest.RejectedAt = &rejectedAt.Time
+		}
+		returnRequests = append(returnRequests, &returnRequest)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	return returnRequests, nil
+}

@@ -20,6 +20,22 @@ const (
 	MaxCartItemQuantity = 10
 	MaxDiscountAmount   = 5000
 	CODLimit            = 1000.0 // cash on delivery order limit
+
+	// order status constants
+	OrderStatusPending    = "pending_payment"
+	OrderStatusProcessing = "processing"
+	OrderStatusShipped    = "shipped"
+	OrderStatusCompleted  = "completed"
+	OrderStatusCancelled  = "cancelled"
+	OrderStatusRefunded   = "refunded"
+
+	// Delivery status constants
+	DeliveryStatusPending               = "pending"
+	DeliveryStatusDelivered             = "delivered"
+	DeliveryStatusInTransit             = "in_transit"
+	DeliveryStatusOutForDelivery        = "out_for_delivery"
+	DeliveryStatusFailedDeliveryAttempt = "failed_delivery_attempt"
+	DeliveryStatusReturnedToSender      = "returned_to_sender"
 )
 
 const (

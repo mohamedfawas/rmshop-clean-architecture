@@ -560,3 +560,16 @@ func (r *orderRepository) GetOrderWithItems(ctx context.Context, orderID int64) 
 
 	return order, nil
 }
+
+func (r *orderRepository) UpdateOrderHasReturnRequest(ctx context.Context, orderID int64, hasReturnRequest bool) error {
+	query := `
+		UPDATE orders
+		SET has_return_request = $1, updated_at = NOW()
+		WHERE id = $2
+	`
+	_, err := r.db.ExecContext(ctx, query, hasReturnRequest, orderID)
+	if err != nil {
+		return err
+	}
+	return nil
+}

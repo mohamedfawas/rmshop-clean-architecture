@@ -153,6 +153,7 @@ type OrderRepository interface {
 	UpdateOrderRazorpayID(ctx context.Context, orderID int64, razorpayOrderID string) error
 	UpdateOrderHasReturnRequestTx(ctx context.Context, tx *sql.Tx, orderID int64, hasReturnRequest bool) error
 	GetOrderWithItems(ctx context.Context, orderID int64) (*domain.Order, error)
+	UpdateOrderHasReturnRequest(ctx context.Context, orderID int64, hasReturnRequest bool) error
 }
 
 type InventoryRepository interface {
@@ -178,4 +179,13 @@ type SalesRepository interface {
 
 type AnalyticsRepository interface {
 	GetTopProducts(ctx context.Context, startDate, endDate time.Time, limit int, sortBy string) ([]domain.TopProduct, error)
+	GetTopCategories(ctx context.Context, params domain.TopCategoriesParams) ([]domain.TopCategory, error)
+	GetTopSubcategories(ctx context.Context, params domain.SubcategoryAnalyticsParams) ([]domain.TopSubcategory, error)
+}
+
+type ReturnRepository interface {
+	CreateReturnRequest(ctx context.Context, returnRequest *domain.ReturnRequest) error
+	GetReturnRequestByOrderID(ctx context.Context, orderID int64) (*domain.ReturnRequest, error)
+	UpdateReturnRequestStatus(ctx context.Context, returnID int64, isApproved bool) error
+	GetUserReturnRequests(ctx context.Context, userID int64) ([]*domain.ReturnRequest, error)
 }
