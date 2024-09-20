@@ -573,3 +573,23 @@ func (r *orderRepository) UpdateOrderHasReturnRequest(ctx context.Context, order
 	}
 	return nil
 }
+
+func (r *orderRepository) UpdateOrderDeliveryStatus(ctx context.Context, orderID int64, deliveryStatus, orderStatus string, deliveredAt *time.Time) error {
+	query := `
+        UPDATE orders
+        SET delivery_status = $1, order_status = $2, delivered_at = $3, updated_at = NOW()
+        WHERE id = $4
+    `
+	_, err := r.db.ExecContext(ctx, query, deliveryStatus, orderStatus, deliveredAt, orderID)
+	return err
+}
+
+func (r *orderRepository) IsOrderDelivered(ctx context.Context, orderID int64) (bool, error) {
+	query := `SELECT delivery_status = 'delivered' FROM orders WHERE id = $1`
+	var isDelivered bool
+	err := r.db.QueryRowContext(ctx, query, orderID).Scan(&isDelivered)
+	if err == sql.ErrNoRows {
+		return false, utils.ErrOrderNotFound
+	}
+	return isDelivered, err
+}

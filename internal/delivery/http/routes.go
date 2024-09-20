@@ -219,6 +219,9 @@ func NewRouter(userHandler *handlers.UserHandler,
 	r.HandleFunc("/admin/returns/{returnId}/approve", chainMiddleware(jwtAuth, adminAuth)(returnHandler.ApproveReturnRequest)).Methods("POST")
 	r.HandleFunc("/admin/returns/{returnId}/reject", chainMiddleware(jwtAuth, adminAuth)(returnHandler.RejectReturnRequest)).Methods("POST")
 
+	// admin : order delivery update
+	r.HandleFunc("/admin/orders/{orderId}/delivery-status", chainMiddleware(jwtAuth, adminAuth)(orderHandler.UpdateOrderDeliveryStatus)).Methods("PATCH")
+
 	// order return : admin approve/reject
 	r.HandleFunc("/admin/returns/{returnId}", chainMiddleware(jwtAuth, adminAuth)(returnHandler.UpdateReturnRequest)).Methods("PATCH")
 	// order return : admin initiate refund

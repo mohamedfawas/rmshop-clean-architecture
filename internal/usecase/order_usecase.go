@@ -32,6 +32,7 @@ type OrderUseCase interface {
 	InitiateReturn(ctx context.Context, userID, orderID int64, reason string) (*domain.ReturnRequest, error)
 	PlaceOrderCOD(ctx context.Context, userID, checkoutID int64) (*domain.Order, error)
 	GenerateInvoice(ctx context.Context, userID, orderID int64) ([]byte, error)
+	UpdateOrderDeliveryStatus(ctx context.Context, orderID int64, deliveryStatus, orderStatus string) error
 }
 
 type orderUseCase struct {
@@ -231,16 +232,6 @@ func (u *orderUseCase) UpdateOrderStatus(ctx context.Context, orderID int64, new
 		NewStatus:    newStatus,
 		RefundStatus: refundStatus,
 	}, nil
-}
-
-func isValidOrderStatus(status string) bool {
-	validStatuses := []string{"pending", "processing", "shipped", "delivered", "cancelled"}
-	for _, s := range validStatuses {
-		if status == s {
-			return true
-		}
-	}
-	return false
 }
 
 func isCancellable(status string) bool {
@@ -449,7 +440,7 @@ func (u *orderUseCase) VerifyAndUpdateRazorpayPayment(ctx context.Context, input
 	log.Printf("Payment updated successfully: %+v", payment)
 
 	// Update order status
-	err = u.orderRepo.UpdateOrderStatus(ctx, payment.OrderID, utils.OrderStatusProcessing)
+	err = u.orderRepo.UpdateOrderStatus(ctx, payment.OrderID, utils.OrderStatusCompleted)
 	if err != nil {
 		log.Printf("Failed to update order status: %v", err)
 		// Don't return the error here, as the payment was successful
@@ -737,4 +728,56 @@ func (u *orderUseCase) GenerateInvoice(ctx context.Context, userID, orderID int6
 	}
 
 	return buf.Bytes(), nil
+}
+
+func (u *orderUseCase) UpdateOrderDeliveryStatus(ctx context.Context, orderID int64, deliveryStatus, orderStatus string) error {
+	// Validate delivery status
+	if !isValidDeliveryStatus(deliveryStatus) {
+		return utils.ErrInvalidDeliveryStatus
+	}
+
+	// Validate order status
+	if orderStatus != "" && !isValidOrderStatus(orderStatus) {
+		return utils.ErrInvalidOrderStatus
+	}
+
+	// Check if the order exists and is not already delivered
+	isDelivered, err := u.orderRepo.IsOrderDelivered(ctx, orderID)
+	if err != nil {
+		return err
+	}
+	if isDelivered {
+		return utils.ErrOrderAlreadyDelivered
+	}
+
+	var deliveredAt *time.Time
+	if deliveryStatus == "delivered" {
+		now := time.Now().UTC()
+		deliveredAt = &now
+		if orderStatus == "" {
+			orderStatus = "completed"
+		}
+	}
+
+	return u.orderRepo.UpdateOrderDeliveryStatus(ctx, orderID, deliveryStatus, orderStatus, deliveredAt)
+}
+
+func isValidDeliveryStatus(status string) bool {
+	validStatuses := []string{"pending", "in_transit", "out_for_delivery", "delivered", "failed_attempt", "returned_to_sender"}
+	for _, s := range validStatuses {
+		if status == s {
+			return true
+		}
+	}
+	return false
+}
+
+func isValidOrderStatus(status string) bool {
+	validStatuses := []string{"pending", "processing", "shipped", "completed", "cancelled"}
+	for _, s := range validStatuses {
+		if status == s {
+			return true
+		}
+	}
+	return false
 }

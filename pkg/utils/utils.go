@@ -282,6 +282,8 @@ var (
 	ErrUnpaidOrder               = errors.New("unpaid order")
 	ErrCancelledOrder            = errors.New("cancelled order")
 	ErrCODLimitExceeded          = errors.New("cod limit exceeded")
+	ErrInvalidDeliveryStatus     = errors.New("invalid delivery status")
+	ErrOrderAlreadyDelivered     = errors.New("order is already delivered")
 
 	// shipping address
 	ErrAddressNotBelongToUser = errors.New("address don't belong to user")

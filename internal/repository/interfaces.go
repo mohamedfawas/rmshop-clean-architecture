@@ -154,6 +154,8 @@ type OrderRepository interface {
 	UpdateOrderHasReturnRequestTx(ctx context.Context, tx *sql.Tx, orderID int64, hasReturnRequest bool) error
 	GetOrderWithItems(ctx context.Context, orderID int64) (*domain.Order, error)
 	UpdateOrderHasReturnRequest(ctx context.Context, orderID int64, hasReturnRequest bool) error
+	UpdateOrderDeliveryStatus(ctx context.Context, orderID int64, deliveryStatus, orderStatus string, deliveredAt *time.Time) error
+	IsOrderDelivered(ctx context.Context, orderID int64) (bool, error)
 }
 
 type InventoryRepository interface {

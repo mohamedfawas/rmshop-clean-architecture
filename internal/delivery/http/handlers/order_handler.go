@@ -425,3 +425,40 @@ func (h *OrderHandler) GetOrderInvoice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+func (h *OrderHandler) UpdateOrderDeliveryStatus(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	orderID, err := strconv.ParseInt(vars["orderId"], 10, 64)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to update delivery status", nil, "Invalid order ID")
+		return
+	}
+
+	var input struct {
+		DeliveryStatus string `json:"delivery_status"`
+		OrderStatus    string `json:"order_status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to update delivery status", nil, "Invalid request body")
+		return
+	}
+
+	err = h.orderUseCase.UpdateOrderDeliveryStatus(r.Context(), orderID, input.DeliveryStatus, input.OrderStatus)
+	if err != nil {
+		switch err {
+		case utils.ErrInvalidDeliveryStatus:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update delivery status", nil, "Invalid delivery status")
+		case utils.ErrInvalidOrderStatus:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update delivery status", nil, "Invalid order status")
+		case utils.ErrOrderNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Failed to update delivery status", nil, "Order not found")
+		case utils.ErrOrderAlreadyDelivered:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update delivery status", nil, "Order is already delivered")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to update delivery status", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	api.SendResponse(w, http.StatusOK, "Delivery status updated successfully", nil, "")
+}
