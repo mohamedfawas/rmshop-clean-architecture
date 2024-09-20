@@ -191,6 +191,15 @@ func (u *returnUseCase) InitiateRefund(ctx context.Context, returnID int64) (*do
 	// Calculate refund amount (you might want to implement a more sophisticated calculation)
 	refundAmount := order.FinalAmount
 
+	// Get current wallet balance
+	wallet, err := u.walletRepo.GetByUserID(ctx, order.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Calculate new balance
+	newBalance := wallet.Balance + refundAmount
+
 	// Update return request
 	returnRequest.RefundInitiated = true
 	returnRequest.RefundAmount = &refundAmount
@@ -202,9 +211,21 @@ func (u *returnUseCase) InitiateRefund(ctx context.Context, returnID int64) (*do
 	// Add amount to user's wallet
 	err = u.walletRepo.AddBalance(ctx, tx, order.UserID, refundAmount)
 	if err != nil {
-		if err == utils.ErrInsufficientBalance {
-			return nil, utils.ErrInsufficientBalance
-		}
+		return nil, err
+	}
+
+	// Create wallet transaction
+	walletTransaction := &domain.WalletTransaction{
+		UserID:          order.UserID,
+		Amount:          refundAmount,
+		TransactionType: "REFUND",
+		ReferenceID:     &returnID,
+		ReferenceType:   utils.Ptr("RETURN"),
+		BalanceAfter:    newBalance,
+		CreatedAt:       time.Now().UTC(),
+	}
+	err = u.walletRepo.CreateTransaction(ctx, tx, walletTransaction)
+	if err != nil {
 		return nil, err
 	}
 
@@ -220,11 +241,12 @@ func (u *returnUseCase) InitiateRefund(ctx context.Context, returnID int64) (*do
 	}
 
 	refundDetails := &domain.RefundDetails{
-		ReturnID:     returnID,
-		OrderID:      order.ID,
-		RefundAmount: refundAmount,
-		RefundStatus: "completed",
-		RefundedAt:   time.Now().UTC(),
+		ReturnID:      returnID,
+		OrderID:       order.ID,
+		RefundAmount:  refundAmount,
+		RefundStatus:  "completed",
+		RefundedAt:    time.Now().UTC(),
+		TransactionID: walletTransaction.ID,
 	}
 
 	return refundDetails, nil

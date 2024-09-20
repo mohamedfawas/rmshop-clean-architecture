@@ -12,9 +12,10 @@ type Refund struct {
 }
 
 type RefundDetails struct {
-	ReturnID     int64     `json:"return_id"`
-	OrderID      int64     `json:"order_id"`
-	RefundAmount float64   `json:"refund_amount"`
-	RefundStatus string    `json:"refund_status"`
-	RefundedAt   time.Time `json:"refunded_at"`
+	ReturnID      int64     `json:"return_id"`
+	OrderID       int64     `json:"order_id"`
+	RefundAmount  float64   `json:"refund_amount"`
+	RefundStatus  string    `json:"refund_status"`
+	RefundedAt    time.Time `json:"refunded_at"`
+	TransactionID int64     `json:"transaction_id"`
 }

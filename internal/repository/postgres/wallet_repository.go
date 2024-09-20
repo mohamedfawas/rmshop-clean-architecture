@@ -50,3 +50,21 @@ func (r *walletRepository) AddBalance(ctx context.Context, tx *sql.Tx, userID in
 	_, err := tx.ExecContext(ctx, query, userID, amount)
 	return err
 }
+
+func (r *walletRepository) CreateTransaction(ctx context.Context, tx *sql.Tx, transaction *domain.WalletTransaction) error {
+    query := `
+        INSERT INTO wallet_transactions (user_id, amount, transaction_type, reference_id, reference_type, balance_after, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id
+    `
+    err := tx.QueryRowContext(ctx, query,
+        transaction.UserID,
+        transaction.Amount,
+        transaction.TransactionType,
+        transaction.ReferenceID,
+        transaction.ReferenceType,
+        transaction.BalanceAfter,
+        transaction.CreatedAt,
+    ).Scan(&transaction.ID)
+    return err
+}

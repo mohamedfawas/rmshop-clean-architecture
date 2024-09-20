@@ -36,6 +36,26 @@ const (
 	DeliveryStatusOutForDelivery        = "out_for_delivery"
 	DeliveryStatusFailedDeliveryAttempt = "failed_delivery_attempt"
 	DeliveryStatusReturnedToSender      = "returned_to_sender"
+
+	// Checkout session constants
+	CheckoutStatusPending   = "pending"
+	CheckoutStatusCompleted = "completed"
+	CheckoutStatusAbondoned = "abandoned"
+	CheckoutStatusExpired   = "expired"
+
+	// Payment method
+	PaymentMethodRazorpay = "razorpay"
+	PaymentMethodCOD      = "cod"
+
+	// Payment
+	PaymentStatusPending         = "pending"
+	PaymentStatusProcessing      = "processing"
+	PaymentStatusSucessful       = "successful"
+	PaymentStatusFailed          = "failed"
+	PaymentStatusRefunded        = "refunded"
+	PaymentStatusCancelled       = "cancelled"
+	PaymentStatusAwaitingPayment = "awaiting_payment"
+	PaymentStatusPaid            = "paid"
 )
 
 const (
@@ -346,4 +366,8 @@ func IsDuplicateKeyError(err error) bool {
 
 	// Generic check (less reliable, but can work as a fallback)
 	return strings.Contains(err.Error(), "duplicate key value violates unique constraint")
+}
+
+func Ptr[T any](v T) *T {
+	return &v
 }

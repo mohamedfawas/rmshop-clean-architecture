@@ -268,19 +268,19 @@ func (u *orderUseCase) ProcessPayment(ctx context.Context, tx *sql.Tx, orderID i
 		OrderID:       orderID,
 		Amount:        amount,
 		PaymentMethod: paymentMethod,
-		Status:        "pending",
+		Status:        utils.PaymentStatusPending,
 		CreatedAt:     time.Now().UTC(),
 		UpdatedAt:     time.Now().UTC(),
 	}
 
-	if paymentMethod == "razorpay" {
+	if paymentMethod == utils.PaymentMethodRazorpay {
 		razorpayOrder, err := u.razorpayService.CreateOrder(int64(amount*100), "INR")
 		if err != nil {
 			return nil, fmt.Errorf("failed to create Razorpay order: %w", err)
 		}
 		payment.RazorpayOrderID = razorpayOrder.ID
-		payment.Status = "awaiting_payment"
-	} else if paymentMethod != "cod" {
+		payment.Status = utils.PaymentStatusAwaitingPayment
+	} else if paymentMethod != utils.PaymentMethodCOD {
 		return nil, fmt.Errorf("unsupported payment method: %s", paymentMethod)
 	}
 
@@ -318,7 +318,7 @@ func (u *orderUseCase) PlaceOrderRazorpay(ctx context.Context, userID, checkoutI
 		return nil, utils.ErrUnauthorized
 	}
 
-	if checkout.Status != "pending" {
+	if checkout.Status != utils.CheckoutStatusPending {
 		return nil, utils.ErrOrderAlreadyPlaced
 	}
 
@@ -350,8 +350,8 @@ func (u *orderUseCase) PlaceOrderRazorpay(ctx context.Context, userID, checkoutI
 		TotalAmount:       checkout.TotalAmount,
 		DiscountAmount:    checkout.DiscountAmount,
 		FinalAmount:       checkout.FinalAmount,
-		OrderStatus:       "pending",
-		DeliveryStatus:    "processing",
+		OrderStatus:       utils.OrderStatusPending,
+		DeliveryStatus:    utils.DeliveryStatusPending,
 		ShippingAddressID: checkout.ShippingAddressID,
 		CouponApplied:     checkout.CouponApplied,
 	}
@@ -365,8 +365,8 @@ func (u *orderUseCase) PlaceOrderRazorpay(ctx context.Context, userID, checkoutI
 	payment := &domain.Payment{
 		OrderID:       order.ID,
 		Amount:        checkout.FinalAmount,
-		PaymentMethod: "razorpay",
-		Status:        "pending",
+		PaymentMethod: utils.PaymentMethodRazorpay,
+		Status:        utils.PaymentStatusPending,
 	}
 
 	err = u.orderRepo.CreatePayment(ctx, tx, payment)
@@ -392,7 +392,7 @@ func (u *orderUseCase) PlaceOrderRazorpay(ctx context.Context, userID, checkoutI
 		}
 	}
 
-	checkout.Status = "completed"
+	checkout.Status = utils.CheckoutStatusCompleted
 	err = u.checkoutRepo.UpdateCheckoutStatus(ctx, tx, checkout)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update checkout status: %w", err)
@@ -436,7 +436,7 @@ func (u *orderUseCase) VerifyAndUpdateRazorpayPayment(ctx context.Context, input
 		return errors.New("invalid signature")
 	}
 
-	payment.Status = "paid"
+	payment.Status = utils.PaymentStatusPaid
 	payment.RazorpayPaymentID = input.PaymentID
 	payment.RazorpaySignature = input.Signature
 
@@ -449,7 +449,7 @@ func (u *orderUseCase) VerifyAndUpdateRazorpayPayment(ctx context.Context, input
 	log.Printf("Payment updated successfully: %+v", payment)
 
 	// Update order status
-	err = u.orderRepo.UpdateOrderStatus(ctx, payment.OrderID, "paid")
+	err = u.orderRepo.UpdateOrderStatus(ctx, payment.OrderID, utils.OrderStatusProcessing)
 	if err != nil {
 		log.Printf("Failed to update order status: %v", err)
 		// Don't return the error here, as the payment was successful

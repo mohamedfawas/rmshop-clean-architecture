@@ -171,6 +171,7 @@ type WishlistRepository interface {
 type WalletRepository interface {
 	GetByUserID(ctx context.Context, userID int64) (*domain.Wallet, error)
 	AddBalance(ctx context.Context, tx *sql.Tx, userID int64, amount float64) error
+	CreateTransaction(ctx context.Context, tx *sql.Tx, transaction *domain.WalletTransaction) error
 }
 
 type SalesRepository interface {
