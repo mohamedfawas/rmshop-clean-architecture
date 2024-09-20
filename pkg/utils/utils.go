@@ -306,6 +306,8 @@ var (
 	ErrRefundAlreadyInitiated        = errors.New("refund already initiated")
 	ErrInsufficientBalance           = errors.New("insufficient balance")
 	ErrInvalidRefundAmount           = errors.New("invalid refund amount")
+	ErrRefundNotInitiated            = errors.New("refund not initiated")
+	ErrRefundAlreadyCompleted        = errors.New("refund already completed")
 
 	// wishlist
 	ErrProductOutOfStock     = errors.New("product is out of stock")

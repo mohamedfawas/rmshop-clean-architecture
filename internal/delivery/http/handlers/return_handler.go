@@ -216,3 +216,33 @@ func (h *ReturnHandler) InitiateRefund(w http.ResponseWriter, r *http.Request) {
 
 	api.SendResponse(w, http.StatusOK, "Refund initiated successfully", refundDetails, "")
 }
+
+func (h *ReturnHandler) CompleteRefund(w http.ResponseWriter, r *http.Request) {
+	// Get return ID from URL
+	vars := mux.Vars(r)
+	returnID, err := strconv.ParseInt(vars["returnId"], 10, 64)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Invalid return ID", nil, "Return ID must be a number")
+		return
+	}
+
+	// Call use case to complete the refund
+	updatedReturn, err := h.returnUseCase.CompleteRefund(r.Context(), returnID)
+	if err != nil {
+		switch err {
+		case utils.ErrReturnRequestNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Return request not found", nil, "The specified return request does not exist")
+		case utils.ErrRefundNotInitiated:
+			api.SendResponse(w, http.StatusBadRequest, "Refund not initiated", nil, "The refund has not been initiated for this return")
+		case utils.ErrRefundAlreadyCompleted:
+			api.SendResponse(w, http.StatusBadRequest, "Refund already completed", nil, "The refund has already been completed for this return")
+		case utils.ErrInsufficientBalance:
+			api.SendResponse(w, http.StatusInternalServerError, "Insufficient balance", nil, "Unable to complete refund due to insufficient balance")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to complete refund", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	api.SendResponse(w, http.StatusOK, "Refund completed successfully", updatedReturn, "")
+}

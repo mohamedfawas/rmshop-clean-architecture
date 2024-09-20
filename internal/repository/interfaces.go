@@ -174,6 +174,7 @@ type WalletRepository interface {
 	GetByUserID(ctx context.Context, userID int64) (*domain.Wallet, error)
 	AddBalance(ctx context.Context, tx *sql.Tx, userID int64, amount float64) error
 	CreateTransaction(ctx context.Context, tx *sql.Tx, transaction *domain.WalletTransaction) error
+	UpdateBalance(ctx context.Context, tx *sql.Tx, userID int64, newBalance float64) error
 }
 
 type SalesRepository interface {
@@ -195,4 +196,6 @@ type ReturnRepository interface {
 	UpdateApprovedOrRejected(ctx context.Context, returnRequest *domain.ReturnRequest) error
 	GetByID(ctx context.Context, id int64) (*domain.ReturnRequest, error)
 	UpdateRefundDetails(ctx context.Context, returnRequest *domain.ReturnRequest) error
+	BeginTx(ctx context.Context) (*sql.Tx, error)
+	UpdateRefundStatus(ctx context.Context, tx *sql.Tx, returnRequest *domain.ReturnRequest) error
 }

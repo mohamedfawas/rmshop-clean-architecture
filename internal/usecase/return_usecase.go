@@ -19,6 +19,7 @@ type ReturnUseCase interface {
 	RejectReturnRequest(ctx context.Context, returnID int64) error
 	UpdateReturnRequest(ctx context.Context, returnID int64, isApproved bool) (*domain.ReturnRequest, error)
 	InitiateRefund(ctx context.Context, returnID int64) (*domain.RefundDetails, error)
+	CompleteRefund(ctx context.Context, returnID int64) (*domain.ReturnRequest, error)
 }
 
 type returnUseCase struct {
@@ -250,4 +251,76 @@ func (u *returnUseCase) InitiateRefund(ctx context.Context, returnID int64) (*do
 	}
 
 	return refundDetails, nil
+}
+
+func (u *returnUseCase) CompleteRefund(ctx context.Context, returnID int64) (*domain.ReturnRequest, error) {
+	// Start a database transaction
+	tx, err := u.returnRepo.BeginTx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	// Get the return request
+	returnRequest, err := u.returnRepo.GetByID(ctx, returnID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, utils.ErrReturnRequestNotFound
+		}
+		return nil, err
+	}
+
+	log.Printf("return id : %v", returnRequest.ID)
+	log.Printf("refund request value : %v", returnRequest.RefundInitiated)
+	// Check if refund was initiated
+	if !returnRequest.RefundInitiated {
+		return nil, utils.ErrRefundNotInitiated
+	}
+
+	// Check if refund is already completed
+	if returnRequest.RefundCompleted {
+		return nil, utils.ErrRefundAlreadyCompleted
+	}
+
+	// Get the user's wallet
+	wallet, err := u.walletRepo.GetByUserID(ctx, returnRequest.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update user's wallet balance
+	newBalance := wallet.Balance + *returnRequest.RefundAmount
+	err = u.walletRepo.UpdateBalance(ctx, tx, returnRequest.UserID, newBalance)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create wallet transaction
+	walletTransaction := &domain.WalletTransaction{
+		UserID:          returnRequest.UserID,
+		Amount:          *returnRequest.RefundAmount,
+		TransactionType: "REFUND",
+		ReferenceID:     &returnRequest.ID,
+		ReferenceType:   utils.Ptr("RETURN"),
+		BalanceAfter:    newBalance,
+		CreatedAt:       time.Now().UTC(),
+	}
+	err = u.walletRepo.CreateTransaction(ctx, tx, walletTransaction)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update return request
+	returnRequest.RefundCompleted = true
+	err = u.returnRepo.UpdateRefundStatus(ctx, tx, returnRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	// Commit the transaction
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return returnRequest, nil
 }
