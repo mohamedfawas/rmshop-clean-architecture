@@ -274,11 +274,12 @@ var (
 	ErrStockQuantityTooLarge = errors.New("stock quantity too large")
 
 	// order return
-	ErrOrderNotEligibleForReturn = errors.New("order is not eligible for return")
-	ErrReturnWindowExpired       = errors.New("return window has expired")
-	ErrReturnAlreadyRequested    = errors.New("return already requested for this order")
-	ErrInvalidReturnReason       = errors.New("invalid return reason")
-	ErrReturnRequestNotFound     = errors.New("return request not found")
+	ErrOrderNotEligibleForReturn     = errors.New("order is not eligible for return")
+	ErrReturnWindowExpired           = errors.New("return window has expired")
+	ErrReturnAlreadyRequested        = errors.New("return already requested for this order")
+	ErrInvalidReturnReason           = errors.New("invalid return reason")
+	ErrReturnRequestNotFound         = errors.New("return request not found")
+	ErrReturnRequestAlreadyProcessed = errors.New("return request already processed")
 
 	// wishlist
 	ErrProductOutOfStock     = errors.New("product is out of stock")

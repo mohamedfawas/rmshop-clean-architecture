@@ -114,8 +114,6 @@ func (h *ReturnHandler) GetUserReturnRequests(w http.ResponseWriter, r *http.Req
 	api.SendResponse(w, http.StatusOK, "Return requests retrieved successfully", returnRequests, "")
 }
 
-// Admin handlers
-
 func (h *ReturnHandler) ApproveReturnRequest(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	returnID, err := strconv.ParseInt(vars["returnId"], 10, 64)
@@ -148,4 +146,41 @@ func (h *ReturnHandler) RejectReturnRequest(w http.ResponseWriter, r *http.Reque
 	}
 
 	api.SendResponse(w, http.StatusOK, "Return request rejected successfully", nil, "")
+}
+
+func (h *ReturnHandler) UpdateReturnRequest(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	returnID, err := strconv.ParseInt(vars["returnId"], 10, 64)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to update return request", nil, "Invalid return request ID")
+		return
+	}
+
+	var input struct {
+		IsApproved bool `json:"is_approved"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to update return request", nil, "Invalid request body")
+		return
+	}
+
+	updatedReturn, err := h.returnUseCase.UpdateReturnRequest(r.Context(), returnID, input.IsApproved)
+	if err != nil {
+		switch err {
+		case utils.ErrReturnRequestNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Failed to update return request", nil, "Return request not found")
+		case utils.ErrReturnRequestAlreadyProcessed:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update return request", nil, "Return request has already been processed")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to update return request", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	message := "Return request approved successfully"
+	if !input.IsApproved {
+		message = "Return request rejected"
+	}
+
+	api.SendResponse(w, http.StatusOK, message, updatedReturn, "")
 }

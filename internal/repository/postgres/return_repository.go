@@ -123,3 +123,46 @@ func (r *returnRepository) GetUserReturnRequests(ctx context.Context, userID int
 	}
 	return returnRequests, nil
 }
+
+func (r *returnRepository) Update(ctx context.Context, returnRequest *domain.ReturnRequest) error {
+	query := `
+        UPDATE return_requests
+        SET is_approved = $1, approved_at = $2, rejected_at = $3
+        WHERE id = $4
+    `
+	_, err := r.db.ExecContext(ctx, query,
+		returnRequest.IsApproved, returnRequest.ApprovedAt, returnRequest.RejectedAt,
+		returnRequest.ID)
+	return err
+}
+
+func (r *returnRepository) GetByID(ctx context.Context, id int64) (*domain.ReturnRequest, error) {
+	query := `
+        SELECT id, order_id, user_id, return_reason, is_approved, requested_date, approved_at, rejected_at
+        FROM return_requests
+        WHERE id = $1
+    `
+	var returnRequest domain.ReturnRequest
+	var isApproved sql.NullBool
+	var approvedAt, rejectedAt sql.NullTime
+
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&returnRequest.ID, &returnRequest.OrderID, &returnRequest.UserID, &returnRequest.ReturnReason,
+		&isApproved, &returnRequest.RequestedDate, &approvedAt, &rejectedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if isApproved.Valid {
+		returnRequest.IsApproved = isApproved.Bool
+	}
+	if approvedAt.Valid {
+		returnRequest.ApprovedAt = &approvedAt.Time
+	}
+	if rejectedAt.Valid {
+		returnRequest.RejectedAt = &rejectedAt.Time
+	}
+
+	return &returnRequest, nil
+}

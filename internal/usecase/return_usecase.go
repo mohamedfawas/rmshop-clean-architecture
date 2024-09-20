@@ -2,6 +2,8 @@ package usecase
 
 import (
 	"context"
+	"database/sql"
+	"log"
 	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
@@ -15,6 +17,7 @@ type ReturnUseCase interface {
 	GetUserReturnRequests(ctx context.Context, userID int64) ([]*domain.ReturnRequest, error)
 	ApproveReturnRequest(ctx context.Context, returnID int64) error
 	RejectReturnRequest(ctx context.Context, returnID int64) error
+	UpdateReturnRequest(ctx context.Context, returnID int64, isApproved bool) (*domain.ReturnRequest, error)
 }
 
 type returnUseCase struct {
@@ -102,4 +105,42 @@ func (u *returnUseCase) ApproveReturnRequest(ctx context.Context, returnID int64
 
 func (u *returnUseCase) RejectReturnRequest(ctx context.Context, returnID int64) error {
 	return u.returnRepo.UpdateReturnRequestStatus(ctx, returnID, false)
+}
+
+func (u *returnUseCase) UpdateReturnRequest(ctx context.Context, returnID int64, isApproved bool) (*domain.ReturnRequest, error) {
+	returnRequest, err := u.returnRepo.GetByID(ctx, returnID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, utils.ErrReturnRequestNotFound
+		}
+		return nil, err
+	}
+
+	if returnRequest.ApprovedAt != nil || returnRequest.RejectedAt != nil {
+		return nil, utils.ErrReturnRequestAlreadyProcessed
+	}
+
+	now := time.Now().UTC()
+	returnRequest.IsApproved = isApproved
+	if isApproved {
+		returnRequest.ApprovedAt = &now
+	} else {
+		returnRequest.RejectedAt = &now
+	}
+
+	err = u.returnRepo.Update(ctx, returnRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update the order's status if the return is approved
+	if isApproved {
+		err = u.orderRepo.UpdateOrderStatus(ctx, returnRequest.OrderID, "return_approved")
+		if err != nil {
+			// Log this error, but don't fail the return request update
+			log.Printf("Failed to update order status: %v", err)
+		}
+	}
+
+	return returnRequest, nil
 }
