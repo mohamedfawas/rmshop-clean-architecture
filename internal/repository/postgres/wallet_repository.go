@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/repository"
@@ -77,4 +78,58 @@ func (r *walletRepository) UpdateBalance(ctx context.Context, tx *sql.Tx, userID
 	`
 	_, err := tx.ExecContext(ctx, query, newBalance, userID)
 	return err
+}
+
+func (r *walletRepository) GetTransactions(ctx context.Context, userID int64, page, limit int, sort, order, transactionType string) ([]*domain.WalletTransaction, int64, error) {
+	query := `
+        SELECT id, user_id, amount, transaction_type, reference_id, reference_type, balance_after, created_at
+        FROM wallet_transactions
+        WHERE user_id = $1
+    `
+	countQuery := `SELECT COUNT(*) FROM wallet_transactions WHERE user_id = $1`
+	args := []interface{}{userID}
+
+	// Add type filter if provided
+	if transactionType != "" {
+		query += ` AND transaction_type = $2`
+		countQuery += ` AND transaction_type = $2`
+		args = append(args, transactionType)
+	}
+
+	// Add sorting
+	query += fmt.Sprintf(` ORDER BY %s %s`, sort, order)
+
+	// Add pagination
+	query += fmt.Sprintf(` LIMIT $%d OFFSET $%d`, len(args)+1, len(args)+2)
+	args = append(args, limit, (page-1)*limit)
+
+	// Get total count
+	var totalCount int64
+	err := r.db.QueryRowContext(ctx, countQuery, args[:len(args)-2]...).Scan(&totalCount)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Execute main query
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var transactions []*domain.WalletTransaction
+	for rows.Next() {
+		var t domain.WalletTransaction
+		err := rows.Scan(&t.ID, &t.UserID, &t.Amount, &t.TransactionType, &t.ReferenceID, &t.ReferenceType, &t.BalanceAfter, &t.CreatedAt)
+		if err != nil {
+			return nil, 0, err
+		}
+		transactions = append(transactions, &t)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, 0, err
+	}
+
+	return transactions, totalCount, nil
 }

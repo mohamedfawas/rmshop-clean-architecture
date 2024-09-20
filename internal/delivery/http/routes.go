@@ -181,6 +181,7 @@ func NewRouter(userHandler *handlers.UserHandler,
 
 	// user wallet
 	r.HandleFunc("/user/wallet/balance", chainMiddleware(jwtAuth, userAuth)(walletHandler.GetWalletBalance)).Methods("GET")
+	r.HandleFunc("/user/wallet/transactions", chainMiddleware(jwtAuth, userAuth)(walletHandler.GetWalletTransactions)).Methods("GET")
 
 	// User routes : Cart management
 	r.HandleFunc("/user/cart/items", chainMiddleware(jwtAuth, userAuth)(cartHandler.AddToCart)).Methods("POST")

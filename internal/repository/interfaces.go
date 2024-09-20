@@ -175,6 +175,7 @@ type WalletRepository interface {
 	AddBalance(ctx context.Context, tx *sql.Tx, userID int64, amount float64) error
 	CreateTransaction(ctx context.Context, tx *sql.Tx, transaction *domain.WalletTransaction) error
 	UpdateBalance(ctx context.Context, tx *sql.Tx, userID int64, newBalance float64) error
+	GetTransactions(ctx context.Context, userID int64, page, limit int, sort, order, transactionType string) ([]*domain.WalletTransaction, int64, error)
 }
 
 type SalesRepository interface {
