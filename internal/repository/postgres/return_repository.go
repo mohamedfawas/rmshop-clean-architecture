@@ -124,7 +124,7 @@ func (r *returnRepository) GetUserReturnRequests(ctx context.Context, userID int
 	return returnRequests, nil
 }
 
-func (r *returnRepository) Update(ctx context.Context, returnRequest *domain.ReturnRequest) error {
+func (r *returnRepository) UpdateApprovedOrRejected(ctx context.Context, returnRequest *domain.ReturnRequest) error {
 	query := `
         UPDATE return_requests
         SET is_approved = $1, approved_at = $2, rejected_at = $3
@@ -165,4 +165,18 @@ func (r *returnRepository) GetByID(ctx context.Context, id int64) (*domain.Retur
 	}
 
 	return &returnRequest, nil
+}
+
+func (r *returnRepository) UpdateRefundDetails(ctx context.Context, returnRequest *domain.ReturnRequest) error {
+	query := `
+        UPDATE return_requests
+        SET is_approved = $1, refund_initiated = $2, refund_amount = $3
+        WHERE id = $4
+    `
+	_, err := r.db.ExecContext(ctx, query,
+		returnRequest.IsApproved,
+		returnRequest.RefundInitiated,
+		returnRequest.RefundAmount,
+		returnRequest.ID)
+	return err
 }

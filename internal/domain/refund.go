@@ -10,3 +10,11 @@ type Refund struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
+
+type RefundDetails struct {
+	ReturnID     int64     `json:"return_id"`
+	OrderID      int64     `json:"order_id"`
+	RefundAmount float64   `json:"refund_amount"`
+	RefundStatus string    `json:"refund_status"`
+	RefundedAt   time.Time `json:"refunded_at"`
+}

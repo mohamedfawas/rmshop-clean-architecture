@@ -170,6 +170,7 @@ type WishlistRepository interface {
 
 type WalletRepository interface {
 	GetByUserID(ctx context.Context, userID int64) (*domain.Wallet, error)
+	AddBalance(ctx context.Context, tx *sql.Tx, userID int64, amount float64) error
 }
 
 type SalesRepository interface {
@@ -188,6 +189,7 @@ type ReturnRepository interface {
 	GetReturnRequestByOrderID(ctx context.Context, orderID int64) (*domain.ReturnRequest, error)
 	UpdateReturnRequestStatus(ctx context.Context, returnID int64, isApproved bool) error
 	GetUserReturnRequests(ctx context.Context, userID int64) ([]*domain.ReturnRequest, error)
-	Update(ctx context.Context, returnRequest *domain.ReturnRequest) error
+	UpdateApprovedOrRejected(ctx context.Context, returnRequest *domain.ReturnRequest) error
 	GetByID(ctx context.Context, id int64) (*domain.ReturnRequest, error)
+	UpdateRefundDetails(ctx context.Context, returnRequest *domain.ReturnRequest) error
 }

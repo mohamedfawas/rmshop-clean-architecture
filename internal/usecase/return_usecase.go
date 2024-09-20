@@ -18,17 +18,22 @@ type ReturnUseCase interface {
 	ApproveReturnRequest(ctx context.Context, returnID int64) error
 	RejectReturnRequest(ctx context.Context, returnID int64) error
 	UpdateReturnRequest(ctx context.Context, returnID int64, isApproved bool) (*domain.ReturnRequest, error)
+	InitiateRefund(ctx context.Context, returnID int64) (*domain.RefundDetails, error)
 }
 
 type returnUseCase struct {
 	returnRepo repository.ReturnRepository
 	orderRepo  repository.OrderRepository
+	walletRepo repository.WalletRepository
 }
 
-func NewReturnUseCase(returnRepo repository.ReturnRepository, orderRepo repository.OrderRepository) ReturnUseCase {
+func NewReturnUseCase(returnRepo repository.ReturnRepository,
+	orderRepo repository.OrderRepository,
+	walletRepo repository.WalletRepository) ReturnUseCase {
 	return &returnUseCase{
 		returnRepo: returnRepo,
 		orderRepo:  orderRepo,
+		walletRepo: walletRepo,
 	}
 }
 
@@ -128,7 +133,7 @@ func (u *returnUseCase) UpdateReturnRequest(ctx context.Context, returnID int64,
 		returnRequest.RejectedAt = &now
 	}
 
-	err = u.returnRepo.Update(ctx, returnRequest)
+	err = u.returnRepo.UpdateApprovedOrRejected(ctx, returnRequest)
 	if err != nil {
 		return nil, err
 	}
@@ -143,4 +148,84 @@ func (u *returnUseCase) UpdateReturnRequest(ctx context.Context, returnID int64,
 	}
 
 	return returnRequest, nil
+}
+
+func (u *returnUseCase) InitiateRefund(ctx context.Context, returnID int64) (*domain.RefundDetails, error) {
+	// Start a database transaction
+	tx, err := u.orderRepo.BeginTx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	// Get the return request
+	returnRequest, err := u.returnRepo.GetByID(ctx, returnID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, utils.ErrReturnRequestNotFound
+		}
+		return nil, err
+	}
+
+	// Check if the return is approved
+	if !returnRequest.IsApproved {
+		return nil, utils.ErrReturnRequestNotApproved
+	}
+
+	// Check if refund is already initiated
+	if returnRequest.RefundInitiated {
+		return nil, utils.ErrRefundAlreadyInitiated
+	}
+
+	// Get the order details
+	order, err := u.orderRepo.GetByID(ctx, returnRequest.OrderID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if the order was cancelled
+	if order.OrderStatus == "cancelled" {
+		return nil, utils.ErrOrderCancelled
+	}
+
+	// Calculate refund amount (you might want to implement a more sophisticated calculation)
+	refundAmount := order.FinalAmount
+
+	// Update return request
+	returnRequest.RefundInitiated = true
+	returnRequest.RefundAmount = &refundAmount
+	err = u.returnRepo.UpdateRefundDetails(ctx, returnRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add amount to user's wallet
+	err = u.walletRepo.AddBalance(ctx, tx, order.UserID, refundAmount)
+	if err != nil {
+		if err == utils.ErrInsufficientBalance {
+			return nil, utils.ErrInsufficientBalance
+		}
+		return nil, err
+	}
+
+	// Update order status
+	err = u.orderRepo.UpdateOrderStatusTx(ctx, tx, order.ID, "refunded")
+	if err != nil {
+		return nil, err
+	}
+
+	// Commit the transaction
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	refundDetails := &domain.RefundDetails{
+		ReturnID:     returnID,
+		OrderID:      order.ID,
+		RefundAmount: refundAmount,
+		RefundStatus: "completed",
+		RefundedAt:   time.Now().UTC(),
+	}
+
+	return refundDetails, nil
 }

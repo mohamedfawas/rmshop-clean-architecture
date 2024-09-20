@@ -109,7 +109,7 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 
 	// Initialize return components
 	returnRepo := postgres.NewReturnRepository(db)
-	returnUseCase := usecase.NewReturnUseCase(returnRepo, orderRepo)
+	returnUseCase := usecase.NewReturnUseCase(returnRepo, orderRepo, walletRepo)
 	returnHandler := handlers.NewReturnHandler(returnUseCase)
 	log.Println("Return components initialized")
 

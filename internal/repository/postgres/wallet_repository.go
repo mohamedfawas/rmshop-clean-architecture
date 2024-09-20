@@ -39,3 +39,14 @@ func (r *walletRepository) GetByUserID(ctx context.Context, userID int64) (*doma
 	}
 	return wallet, nil
 }
+
+func (r *walletRepository) AddBalance(ctx context.Context, tx *sql.Tx, userID int64, amount float64) error {
+	query := `
+        INSERT INTO wallets (user_id, balance)
+        VALUES ($1, $2)
+        ON CONFLICT (user_id)
+        DO UPDATE SET balance = wallets.balance + $2
+    `
+	_, err := tx.ExecContext(ctx, query, userID, amount)
+	return err
+}

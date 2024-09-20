@@ -184,3 +184,35 @@ func (h *ReturnHandler) UpdateReturnRequest(w http.ResponseWriter, r *http.Reque
 
 	api.SendResponse(w, http.StatusOK, message, updatedReturn, "")
 }
+
+func (h *ReturnHandler) InitiateRefund(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	returnID, err := strconv.ParseInt(vars["returnId"], 10, 64)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to initiate refund", nil, "Invalid return request ID")
+		return
+	}
+
+	refundDetails, err := h.returnUseCase.InitiateRefund(r.Context(), returnID)
+	if err != nil {
+		switch err {
+		case utils.ErrReturnRequestNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Failed to initiate refund", nil, "Return request not found")
+		case utils.ErrReturnRequestNotApproved:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to initiate refund", nil, "Return request not approved")
+		case utils.ErrRefundAlreadyInitiated:
+			api.SendResponse(w, http.StatusConflict, "Failed to initiate refund", nil, "Refund already initiated for this return request")
+		case utils.ErrInsufficientBalance:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to initiate refund", nil, "Insufficient balance to process refund")
+		case utils.ErrInvalidRefundAmount:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to initiate refund", nil, "Invalid refund amount")
+		case utils.ErrOrderCancelled:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to initiate refund", nil, "Cannot refund a cancelled order")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to initiate refund", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	api.SendResponse(w, http.StatusOK, "Refund initiated successfully", refundDetails, "")
+}

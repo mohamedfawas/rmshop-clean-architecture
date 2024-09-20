@@ -280,6 +280,10 @@ var (
 	ErrInvalidReturnReason           = errors.New("invalid return reason")
 	ErrReturnRequestNotFound         = errors.New("return request not found")
 	ErrReturnRequestAlreadyProcessed = errors.New("return request already processed")
+	ErrReturnRequestNotApproved      = errors.New("return request not approved")
+	ErrRefundAlreadyInitiated        = errors.New("refund already initiated")
+	ErrInsufficientBalance           = errors.New("insufficient balance")
+	ErrInvalidRefundAmount           = errors.New("invalid refund amount")
 
 	// wishlist
 	ErrProductOutOfStock     = errors.New("product is out of stock")
