@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"database/sql"
-	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/utils"
@@ -64,20 +63,6 @@ func (r *returnRepository) GetReturnRequestByOrderID(ctx context.Context, orderI
 		returnRequest.RejectedAt = &rejectedAt.Time
 	}
 	return &returnRequest, nil
-}
-
-func (r *returnRepository) UpdateReturnRequestStatus(ctx context.Context, returnID int64, isApproved bool) error {
-	var query string
-	var args []interface{}
-	if isApproved {
-		query = `UPDATE return_requests SET is_approved = $1, approved_at = $2 WHERE id = $3`
-		args = []interface{}{true, time.Now(), returnID}
-	} else {
-		query = `UPDATE return_requests SET is_approved = $1, rejected_at = $2 WHERE id = $3`
-		args = []interface{}{false, time.Now(), returnID}
-	}
-	_, err := r.db.ExecContext(ctx, query, args...)
-	return err
 }
 
 func (r *returnRepository) GetUserReturnRequests(ctx context.Context, userID int64) ([]*domain.ReturnRequest, error) {

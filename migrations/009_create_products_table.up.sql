@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS products (
     deleted_at TIMESTAMP WITH TIME ZONE,
     slug VARCHAR(255) UNIQUE NOT NULL,
     primary_image_id INTEGER,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
     CONSTRAINT fk_sub_category
         FOREIGN KEY (sub_category_id)
         REFERENCES sub_categories(id)

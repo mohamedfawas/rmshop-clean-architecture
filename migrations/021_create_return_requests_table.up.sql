@@ -1,7 +1,5 @@
-DROP INDEX IF EXISTS idx_return_requests_order_id;
-DROP TABLE IF EXISTS return_requests;
-
-CREATE TABLE return_requests (
+-- Create return_requests table
+CREATE TABLE IF NOT EXISTS return_requests (
     id BIGSERIAL PRIMARY KEY,
     order_id BIGINT NOT NULL,
     user_id BIGINT NOT NULL,
@@ -23,7 +21,7 @@ CREATE TABLE return_requests (
         ON DELETE CASCADE
 );
 
--- Indexes
+-- Create indexes
 CREATE INDEX idx_return_requests_order_id ON return_requests(order_id);
 CREATE INDEX idx_return_requests_user_id ON return_requests(user_id);
 CREATE INDEX idx_return_requests_is_approved ON return_requests(is_approved);

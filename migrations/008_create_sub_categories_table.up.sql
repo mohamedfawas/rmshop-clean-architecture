@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS sub_categories (
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at TIMESTAMP WITH TIME ZONE,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
     CONSTRAINT fk_parent_category
         FOREIGN KEY (parent_category_id)
         REFERENCES categories(id)

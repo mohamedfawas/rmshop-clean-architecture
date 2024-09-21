@@ -9,17 +9,20 @@ import (
 	"github.com/razorpay/razorpay-go"
 )
 
+// Service struct encapsulates the Razorpay client and secret key for payment operations.
 type Service struct {
-	client    *razorpay.Client
-	secretKey string
+	client    *razorpay.Client // Razorpay client instance for making API calls
+	secretKey string           // Secret key for verifying payment signatures
 }
 
+// Order struct represents a payment order with relevant details.
 type Order struct {
-	ID       string `json:"id"`
+	ID       string `json:"id"` // Unique identifier for the order
 	Amount   int64  `json:"amount"`
 	Currency string `json:"currency"`
 }
 
+// creates a Razorpay client that will be used for subsequent API calls.
 func NewService(keyID, keySecret string) *Service {
 	client := razorpay.NewClient(keyID, keySecret)
 	return &Service{

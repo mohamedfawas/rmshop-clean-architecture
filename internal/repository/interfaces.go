@@ -156,6 +156,9 @@ type OrderRepository interface {
 	UpdateOrderHasReturnRequest(ctx context.Context, orderID int64, hasReturnRequest bool) error
 	UpdateOrderDeliveryStatus(ctx context.Context, orderID int64, deliveryStatus, orderStatus string, deliveredAt *time.Time) error
 	IsOrderDelivered(ctx context.Context, orderID int64) (bool, error)
+	GetCancellationRequest(ctx context.Context, orderID int64) (*domain.CancellationRequest, error)
+	CreateCancellationRequest(ctx context.Context, orderID, userID int64) error
+	GetOrderByID(ctx context.Context, id int64) (*domain.Order, error)
 }
 
 type InventoryRepository interface {
@@ -192,11 +195,15 @@ type AnalyticsRepository interface {
 type ReturnRepository interface {
 	CreateReturnRequest(ctx context.Context, returnRequest *domain.ReturnRequest) error
 	GetReturnRequestByOrderID(ctx context.Context, orderID int64) (*domain.ReturnRequest, error)
-	UpdateReturnRequestStatus(ctx context.Context, returnID int64, isApproved bool) error
 	GetUserReturnRequests(ctx context.Context, userID int64) ([]*domain.ReturnRequest, error)
 	UpdateApprovedOrRejected(ctx context.Context, returnRequest *domain.ReturnRequest) error
 	GetByID(ctx context.Context, id int64) (*domain.ReturnRequest, error)
 	UpdateRefundDetails(ctx context.Context, returnRequest *domain.ReturnRequest) error
 	BeginTx(ctx context.Context) (*sql.Tx, error)
 	UpdateRefundStatus(ctx context.Context, tx *sql.Tx, returnRequest *domain.ReturnRequest) error
+}
+
+type PaymentRepository interface {
+	GetByOrderID(ctx context.Context, orderID int64) (*domain.Payment, error)
+	InitiateRefund(ctx context.Context, paymentID int64) error
 }

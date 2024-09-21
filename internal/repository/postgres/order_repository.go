@@ -131,7 +131,7 @@ func (r *orderRepository) GetOrders(ctx context.Context, params domain.OrderQuer
 	} else {
 		// Otherwise, select all fields
 		query += `o.id, o.user_id, o.total_amount, o.delivery_status, 
-                  o.order_status, o.has_return_request, o.address_id, o.created_at, o.updated_at`
+                  o.order_status, o.has_return_request, o.shipping_address_id, o.created_at, o.updated_at`
 	}
 	query += ` FROM orders o WHERE 1=1` // o is an alias, 1=1 : used in dynamic querying where it is always true
 	// user to simplify the process of adding additional WHERE conditions dynamically
@@ -510,10 +510,12 @@ func (r *orderRepository) GetOrderWithItems(ctx context.Context, orderID int64) 
                o.delivery_status, o.order_status, o.has_return_request, 
                o.shipping_address_id, o.coupon_applied, o.created_at, o.updated_at, o.delivered_at,
                oi.id, oi.product_id, oi.quantity, oi.price,
-               p.name
+               p.name AS product_name,
+               sa.address_line1, sa.address_line2, sa.city, sa.state, sa.pincode, sa.phone_number
         FROM orders o
         LEFT JOIN order_items oi ON o.id = oi.order_id
         LEFT JOIN products p ON oi.product_id = p.id
+        LEFT JOIN shipping_addresses sa ON o.shipping_address_id = sa.id
         WHERE o.id = $1
     `
 	rows, err := r.db.QueryContext(ctx, query, orderID)
@@ -532,12 +534,14 @@ func (r *orderRepository) GetOrderWithItems(ctx context.Context, orderID int64) 
 		var item domain.OrderItem
 		var productName string
 		var deliveredAt sql.NullTime
+		var addressLine1, addressLine2, city, state, pincode, phoneNumber sql.NullString
 		err := rows.Scan(
 			&order.ID, &order.UserID, &order.TotalAmount, &order.DiscountAmount, &order.FinalAmount,
 			&order.DeliveryStatus, &order.OrderStatus, &order.HasReturnRequest,
 			&order.ShippingAddressID, &order.CouponApplied, &order.CreatedAt, &order.UpdatedAt, &deliveredAt,
 			&item.ID, &item.ProductID, &item.Quantity, &item.Price,
 			&productName,
+			&addressLine1, &addressLine2, &city, &state, &pincode, &phoneNumber,
 		)
 		if err != nil {
 			return nil, err
@@ -546,7 +550,19 @@ func (r *orderRepository) GetOrderWithItems(ctx context.Context, orderID int64) 
 			order.DeliveredAt = &deliveredAt.Time
 		}
 		item.OrderID = order.ID
+		item.ProductName = productName
 		itemMap[item.ID] = &item
+
+		if order.ShippingAddress == nil && addressLine1.Valid {
+			order.ShippingAddress = &domain.ShippingAddress{
+				AddressLine1: addressLine1.String,
+				AddressLine2: addressLine2.String,
+				City:         city.String,
+				State:        state.String,
+				PinCode:      pincode.String,
+				PhoneNumber:  phoneNumber.String,
+			}
+		}
 	}
 
 	if order == nil {
@@ -592,4 +608,69 @@ func (r *orderRepository) IsOrderDelivered(ctx context.Context, orderID int64) (
 		return false, utils.ErrOrderNotFound
 	}
 	return isDelivered, err
+}
+
+func (r *orderRepository) GetOrderByID(ctx context.Context, id int64) (*domain.Order, error) {
+	query := `
+        SELECT id, user_id, total_amount, discount_amount, final_amount, delivery_status, 
+               order_status, has_return_request, shipping_address_id, coupon_applied, 
+               created_at, updated_at, delivered_at
+        FROM orders
+        WHERE id = $1
+    `
+	var order domain.Order
+	var deliveredAt sql.NullTime
+
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&order.ID, &order.UserID, &order.TotalAmount, &order.DiscountAmount, &order.FinalAmount,
+		&order.DeliveryStatus, &order.OrderStatus, &order.HasReturnRequest, &order.ShippingAddressID,
+		&order.CouponApplied, &order.CreatedAt, &order.UpdatedAt, &deliveredAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, utils.ErrOrderNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if deliveredAt.Valid {
+		order.DeliveredAt = &deliveredAt.Time
+	}
+
+	return &order, nil
+}
+
+func (r *orderRepository) CreateCancellationRequest(ctx context.Context, orderID, userID int64) error {
+	query := `
+        INSERT INTO cancellation_requests (order_id, user_id, created_at, status)
+        VALUES ($1, $2, $3, $4)
+    `
+	_, err := r.db.ExecContext(ctx, query, orderID, userID, time.Now(), "pending_review")
+	if err != nil {
+		log.Printf("error while adding values to cancellation requests table : %v", err)
+	}
+	return err
+}
+
+func (r *orderRepository) GetCancellationRequest(ctx context.Context, orderID int64) (*domain.CancellationRequest, error) {
+	query := `
+        SELECT id, order_id, user_id, created_at, status
+        FROM cancellation_requests
+        WHERE order_id = $1
+    `
+	var request domain.CancellationRequest
+	err := r.db.QueryRowContext(ctx, query, orderID).Scan(
+		&request.ID, &request.OrderID, &request.UserID, &request.CreatedAt, &request.CancellationRequestStatus,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		log.Printf("error while retrieving values from cancellation_requests table : %v", err)
+		return nil, err
+	}
+
+	return &request, nil
 }

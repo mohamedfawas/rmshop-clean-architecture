@@ -15,8 +15,6 @@ type ReturnUseCase interface {
 	InitiateReturn(ctx context.Context, userID, orderID int64, reason string) (*domain.ReturnRequest, error)
 	GetReturnRequestByOrderID(ctx context.Context, userID, orderID int64) (*domain.ReturnRequest, error)
 	GetUserReturnRequests(ctx context.Context, userID int64) ([]*domain.ReturnRequest, error)
-	ApproveReturnRequest(ctx context.Context, returnID int64) error
-	RejectReturnRequest(ctx context.Context, returnID int64) error
 	UpdateReturnRequest(ctx context.Context, returnID int64, isApproved bool) (*domain.ReturnRequest, error)
 	InitiateRefund(ctx context.Context, returnID int64) (*domain.RefundDetails, error)
 	CompleteRefund(ctx context.Context, returnID int64) (*domain.ReturnRequest, error)
@@ -103,14 +101,6 @@ func (u *returnUseCase) GetReturnRequestByOrderID(ctx context.Context, userID, o
 
 func (u *returnUseCase) GetUserReturnRequests(ctx context.Context, userID int64) ([]*domain.ReturnRequest, error) {
 	return u.returnRepo.GetUserReturnRequests(ctx, userID)
-}
-
-func (u *returnUseCase) ApproveReturnRequest(ctx context.Context, returnID int64) error {
-	return u.returnRepo.UpdateReturnRequestStatus(ctx, returnID, true)
-}
-
-func (u *returnUseCase) RejectReturnRequest(ctx context.Context, returnID int64) error {
-	return u.returnRepo.UpdateReturnRequestStatus(ctx, returnID, false)
 }
 
 func (u *returnUseCase) UpdateReturnRequest(ctx context.Context, returnID int64, isApproved bool) (*domain.ReturnRequest, error) {

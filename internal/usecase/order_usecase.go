@@ -19,9 +19,7 @@ import (
 type OrderUseCase interface {
 	GetOrderByID(ctx context.Context, userID, orderID int64) (*domain.Order, error)
 	GetUserOrders(ctx context.Context, userID int64, page, limit int, sortBy, order, status string) ([]*domain.Order, int64, error)
-	CancelOrder(ctx context.Context, userID, orderID int64) (*domain.OrderCancellationResult, error)
 	GetOrders(ctx context.Context, params domain.OrderQueryParams) ([]*domain.Order, int64, error)
-	UpdateOrderStatus(ctx context.Context, orderID int64, newStatus string) (*domain.OrderStatusUpdateResult, error)
 	GetPaymentByOrderID(ctx context.Context, orderID int64) (*domain.Payment, error)
 	CreatePayment(ctx context.Context, tx *sql.Tx, payment *domain.Payment) error
 	UpdatePayment(ctx context.Context, payment *domain.Payment) error
@@ -33,6 +31,7 @@ type OrderUseCase interface {
 	PlaceOrderCOD(ctx context.Context, userID, checkoutID int64) (*domain.Order, error)
 	GenerateInvoice(ctx context.Context, userID, orderID int64) ([]byte, error)
 	UpdateOrderDeliveryStatus(ctx context.Context, orderID int64, deliveryStatus, orderStatus string) error
+	InitiateCancellation(ctx context.Context, userID, orderID int64) (*domain.OrderCancellationResult, error)
 }
 
 type orderUseCase struct {
@@ -40,6 +39,8 @@ type orderUseCase struct {
 	checkoutRepo    repository.CheckoutRepository
 	productRepo     repository.ProductRepository
 	cartRepo        repository.CartRepository
+	walletRepo      repository.WalletRepository
+	paymentRepo     repository.PaymentRepository
 	razorpayService *razorpay.Service
 }
 
@@ -47,12 +48,15 @@ func NewOrderUseCase(orderRepo repository.OrderRepository,
 	checkoutRepo repository.CheckoutRepository,
 	productRepo repository.ProductRepository,
 	cartRepo repository.CartRepository,
+	walletRepo repository.WalletRepository,
+	paymentRepo repository.PaymentRepository,
 	razorpayKeyID, razorpaySecret string) OrderUseCase {
 	return &orderUseCase{
 		orderRepo:       orderRepo,
 		checkoutRepo:    checkoutRepo,
 		productRepo:     productRepo,
 		cartRepo:        cartRepo,
+		paymentRepo:     paymentRepo,
 		razorpayService: razorpay.NewService(razorpayKeyID, razorpaySecret),
 	}
 }
@@ -100,65 +104,6 @@ func (u *orderUseCase) GetUserOrders(ctx context.Context, userID int64, page, li
 	return orders, totalCount, nil
 }
 
-func (u *orderUseCase) CancelOrder(ctx context.Context, userID, orderID int64) (*domain.OrderCancellationResult, error) {
-	// Get the order
-	order, err := u.orderRepo.GetByID(ctx, orderID)
-	if err != nil {
-		if err == utils.ErrOrderNotFound {
-			return nil, utils.ErrOrderNotFound
-		}
-		return nil, err
-	}
-
-	// Check if the order belongs to the user
-	if order.UserID != userID {
-		return nil, utils.ErrUnauthorized
-	}
-
-	// Check if the order is already cancelled
-	if order.OrderStatus == "cancelled" {
-		return nil, utils.ErrOrderAlreadyCancelled
-	}
-
-	// Check if the order is in a cancellable state
-	if !isCancellable(order.OrderStatus) {
-		return nil, utils.ErrOrderNotCancellable
-	}
-
-	// Check if the cancellation period has expired
-	if time.Since(order.CreatedAt) > 24*time.Hour {
-		return nil, utils.ErrCancellationPeriodExpired
-	}
-
-	// Perform the cancellation
-	err = u.orderRepo.UpdateOrderStatus(ctx, orderID, "cancelled")
-	if err != nil {
-		return nil, err
-	}
-
-	// Initiate refund if necessary
-	refundStatus := "not_applicable"
-	payment, err := u.orderRepo.GetPaymentByOrderID(ctx, orderID)
-	if err != nil {
-		// Log the error but continue, as we don't want to fail the cancellation due to payment retrieval issues
-		log.Printf("Error retrieving payment for order %d: %v", orderID, err)
-	} else if payment != nil && payment.Status == "paid" {
-		refundStatus = "initiated"
-		// Here you would typically call a payment service to initiate the refund
-		// For now, we'll just update the status
-		err = u.orderRepo.UpdateRefundStatus(ctx, orderID, sql.NullString{String: refundStatus, Valid: true})
-		if err != nil {
-			// Log the error, but don't fail the cancellation
-			log.Printf("Error updating refund status for order %d: %v", orderID, err)
-		}
-	}
-
-	return &domain.OrderCancellationResult{
-		OrderID:      orderID,
-		RefundStatus: refundStatus,
-	}, nil
-}
-
 func (u *orderUseCase) GetOrders(ctx context.Context, params domain.OrderQueryParams) ([]*domain.Order, int64, error) {
 	// Validate and set default values
 	if params.Page < 1 {
@@ -181,65 +126,6 @@ func (u *orderUseCase) GetOrders(ctx context.Context, params domain.OrderQueryPa
 
 	// Call repository method
 	return u.orderRepo.GetOrders(ctx, params)
-}
-
-func (u *orderUseCase) UpdateOrderStatus(ctx context.Context, orderID int64, newStatus string) (*domain.OrderStatusUpdateResult, error) {
-	order, err := u.orderRepo.GetByID(ctx, orderID)
-	if err != nil {
-		return nil, err
-	}
-
-	if !isValidOrderStatus(newStatus) {
-		return nil, utils.ErrInvalidOrderStatus
-	}
-
-	var refundStatus string
-	if newStatus == "cancelled" {
-		if order.OrderStatus == "cancelled" {
-			return nil, utils.ErrOrderAlreadyCancelled
-		}
-		if !isCancellable(order.OrderStatus) {
-			return nil, utils.ErrOrderNotCancellable
-		}
-		refundStatus = "not_applicable"
-		payment, err := u.orderRepo.GetPaymentByOrderID(ctx, orderID)
-		if err != nil {
-			log.Printf("Error retrieving payment for order %d: %v", orderID, err)
-		} else if payment != nil && payment.Status == "paid" {
-			refundStatus = "initiated"
-			err = u.orderRepo.UpdateRefundStatus(ctx, orderID, sql.NullString{String: refundStatus, Valid: true})
-			if err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	if newStatus == "delivered" {
-		now := time.Now().UTC()
-		err = u.orderRepo.SetOrderDeliveredAt(ctx, orderID, &now)
-		if err != nil {
-			return nil, fmt.Errorf("failed to set delivered at time: %w", err)
-		}
-	}
-
-	err = u.orderRepo.UpdateOrderStatus(ctx, orderID, newStatus)
-	if err != nil {
-		return nil, err
-	}
-
-	return &domain.OrderStatusUpdateResult{
-		OrderID:      orderID,
-		NewStatus:    newStatus,
-		RefundStatus: refundStatus,
-	}, nil
-}
-
-func isCancellable(status string) bool {
-	cancellableStatuses := map[string]bool{
-		"pending":    true,
-		"processing": true,
-	}
-	return cancellableStatuses[status]
 }
 
 func (u *orderUseCase) GetPaymentByOrderID(ctx context.Context, orderID int64) (*domain.Payment, error) {
@@ -440,7 +326,7 @@ func (u *orderUseCase) VerifyAndUpdateRazorpayPayment(ctx context.Context, input
 	log.Printf("Payment updated successfully: %+v", payment)
 
 	// Update order status
-	err = u.orderRepo.UpdateOrderStatus(ctx, payment.OrderID, utils.OrderStatusCompleted)
+	err = u.orderRepo.UpdateOrderStatus(ctx, payment.OrderID, utils.OrderStatusConfirmed)
 	if err != nil {
 		log.Printf("Failed to update order status: %v", err)
 		// Don't return the error here, as the payment was successful
@@ -670,11 +556,11 @@ func (u *orderUseCase) GenerateInvoice(ctx context.Context, userID, orderID int6
 		return nil, utils.ErrUnauthorized
 	}
 
-	if order.OrderStatus == "cancelled" {
+	if order.OrderStatus == utils.OrderStatusCancelled {
 		return nil, utils.ErrCancelledOrder
 	}
 
-	if order.OrderStatus != "delivered" && order.OrderStatus != "completed" {
+	if order.OrderStatus != utils.OrderStatusCompleted && order.OrderStatus != utils.OrderStatusConfirmed {
 		return nil, utils.ErrUnpaidOrder
 	}
 
@@ -697,27 +583,54 @@ func (u *orderUseCase) GenerateInvoice(ctx context.Context, userID, orderID int6
 	pdf.Ln(10)
 	pdf.Cell(40, 10, fmt.Sprintf("Date: %s", order.CreatedAt.Format("2006-01-02 15:04:05")))
 
+	// Add shipping address
+	pdf.Ln(10)
+	pdf.SetFont("Arial", "B", 12)
+	pdf.Cell(40, 10, "Shipping Address:")
+	pdf.Ln(6)
+	pdf.SetFont("Arial", "", 10)
+	pdf.Cell(40, 6, order.ShippingAddress.AddressLine1)
+	if order.ShippingAddress.AddressLine2 != "" {
+		pdf.Ln(6)
+		pdf.Cell(40, 6, order.ShippingAddress.AddressLine2)
+	}
+	pdf.Ln(6)
+	pdf.Cell(40, 6, fmt.Sprintf("%s, %s, %s", order.ShippingAddress.City, order.ShippingAddress.State, order.ShippingAddress.PinCode))
+	pdf.Ln(6)
+	pdf.Cell(40, 6, fmt.Sprintf("Phone: %s", order.ShippingAddress.PhoneNumber))
+
 	// Add items
 	pdf.Ln(10)
 	pdf.SetFont("Arial", "B", 12)
 	pdf.Cell(80, 10, "Product")
-	pdf.Cell(40, 10, "Quantity")
+	pdf.Cell(30, 10, "Quantity")
 	pdf.Cell(40, 10, "Price")
 	pdf.Cell(40, 10, "Subtotal")
 
 	for _, item := range order.Items {
-		pdf.Ln(10)
-		pdf.SetFont("Arial", "", 12)
-		pdf.Cell(80, 10, fmt.Sprintf("Product ID: %d", item.ProductID))
-		pdf.Cell(40, 10, fmt.Sprintf("%d", item.Quantity))
-		pdf.Cell(40, 10, fmt.Sprintf("$%.2f", item.Price))
-		pdf.Cell(40, 10, fmt.Sprintf("$%.2f", float64(item.Quantity)*item.Price))
+		pdf.Ln(8)
+		pdf.SetFont("Arial", "", 10)
+		pdf.Cell(80, 8, fmt.Sprintf("%s (ID: %d)", item.ProductName, item.ProductID))
+		pdf.Cell(30, 8, fmt.Sprintf("%d", item.Quantity))
+		pdf.Cell(40, 8, fmt.Sprintf("$%.2f", item.Price))
+		pdf.Cell(40, 8, fmt.Sprintf("$%.2f", float64(item.Quantity)*item.Price))
 	}
 
-	// Add total
+	// Add total, discount, and final amount
 	pdf.Ln(10)
 	pdf.SetFont("Arial", "B", 12)
-	pdf.Cell(160, 10, "Total")
+	pdf.Cell(150, 8, "Total Amount")
+	pdf.Cell(40, 8, fmt.Sprintf("$%.2f", order.TotalAmount))
+
+	if order.DiscountAmount > 0 {
+		pdf.Ln(8)
+		pdf.Cell(150, 8, "Discount")
+		pdf.Cell(40, 8, fmt.Sprintf("-$%.2f", order.DiscountAmount))
+	}
+
+	pdf.Ln(8)
+	pdf.SetFont("Arial", "B", 14)
+	pdf.Cell(150, 10, "Final Amount")
 	pdf.Cell(40, 10, fmt.Sprintf("$%.2f", order.FinalAmount))
 
 	// Get PDF as bytes
@@ -780,4 +693,67 @@ func isValidOrderStatus(status string) bool {
 		}
 	}
 	return false
+}
+
+func (u *orderUseCase) InitiateCancellation(ctx context.Context, userID, orderID int64) (*domain.OrderCancellationResult, error) {
+	order, err := u.orderRepo.GetOrderByID(ctx, orderID)
+	if err != nil {
+		return nil, utils.ErrOrderNotFound
+	}
+
+	if order.UserID != userID {
+		return nil, utils.ErrUnauthorized
+	}
+
+	if order.OrderStatus == utils.OrderStatusCancelled {
+		return nil, utils.ErrOrderAlreadyCancelled
+	}
+
+	if order.DeliveryStatus == utils.DeliveryStatusInTransit || order.DeliveryStatus == utils.DeliveryStatusDelivered {
+		return nil, utils.ErrOrderNotCancellable
+	}
+
+	if time.Since(order.CreatedAt) > 24*time.Hour {
+		return nil, utils.ErrCancellationWindowExpired
+	}
+
+	existingRequest, err := u.orderRepo.GetCancellationRequest(ctx, orderID)
+	if err == nil && existingRequest != nil {
+		return nil, utils.ErrCancellationRequestExists
+	}
+
+	result := &domain.OrderCancellationResult{
+		OrderID:             orderID,
+		OrderStatus:         utils.OrderStatusPendingCancellation,
+		RequiresAdminReview: false,
+		RefundInitiated:     false,
+	}
+
+	if order.OrderStatus == utils.OrderStatusPending || order.FinalAmount > 1000 {
+		result.RequiresAdminReview = true
+		err = u.orderRepo.CreateCancellationRequest(ctx, orderID, userID)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		err = u.orderRepo.UpdateOrderStatus(ctx, orderID, utils.OrderStatusCancelled)
+		if err != nil {
+			return nil, err
+		}
+		result.OrderStatus = utils.OrderStatusCancelled
+
+		// Initiate refund
+		payment, err := u.paymentRepo.GetByOrderID(ctx, orderID)
+		if err == nil && payment != nil && payment.Status == "paid" {
+			err = u.paymentRepo.InitiateRefund(ctx, payment.ID)
+			if err != nil {
+				// Log the error, but don't fail the cancellation
+				// Consider creating a separate process to retry failed refunds
+			} else {
+				result.RefundInitiated = true
+			}
+		}
+	}
+
+	return result, nil
 }

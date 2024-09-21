@@ -217,7 +217,7 @@ func (h *ProductHandler) SoftDeleteProduct(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	api.SendResponse(w, http.StatusNoContent, "Product deleted successfully", nil, "")
+	api.SendResponse(w, http.StatusOK, "Product deleted successfully", nil, "")
 }
 
 func (h *ProductHandler) GetProductByID(w http.ResponseWriter, r *http.Request) {

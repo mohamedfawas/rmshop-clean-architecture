@@ -146,7 +146,6 @@ func NewRouter(userHandler *handlers.UserHandler,
 
 	// admin routes : order management
 	r.HandleFunc("/admin/orders", chainMiddleware(jwtAuth, adminAuth)(orderHandler.GetOrders)).Methods("GET")
-	r.HandleFunc("/admin/orders/{orderId}/status", chainMiddleware(jwtAuth, adminAuth)(orderHandler.UpdateOrderStatus)).Methods("PATCH")
 
 	// admin : inventory management
 	r.HandleFunc("/admin/inventory", chainMiddleware(jwtAuth, adminAuth)(inventoryHandler.GetInventory)).Methods("GET")
@@ -210,15 +209,14 @@ func NewRouter(userHandler *handlers.UserHandler,
 
 	r.HandleFunc("/user/orders/{order_id}", chainMiddleware(jwtAuth, userAuth)(orderHandler.GetOrderConfirmation)).Methods("GET")
 	r.HandleFunc("/user/orders", chainMiddleware(jwtAuth, userAuth)(orderHandler.GetUserOrders)).Methods("GET")
-	r.HandleFunc("/user/orders/{orderId}/cancel", chainMiddleware(jwtAuth, userAuth)(orderHandler.CancelOrder)).Methods("POST")
 
+	// order cancellation
+	r.HandleFunc("/user/orders/{orderId}/cancel", chainMiddleware(jwtAuth, userAuth)(orderHandler.UserInitiateCancellation)).Methods("POST")
+
+	// order return
 	r.HandleFunc("/user/orders/{orderId}/return", chainMiddleware(jwtAuth, userAuth)(returnHandler.InitiateReturn)).Methods("POST")
 	r.HandleFunc("/user/orders/{orderId}/return", chainMiddleware(jwtAuth, userAuth)(returnHandler.GetReturnRequestByOrderID)).Methods("GET")
 	r.HandleFunc("/user/returns", chainMiddleware(jwtAuth, userAuth)(returnHandler.GetUserReturnRequests)).Methods("GET")
-
-	// order return : remove these routes
-	r.HandleFunc("/admin/returns/{returnId}/approve", chainMiddleware(jwtAuth, adminAuth)(returnHandler.ApproveReturnRequest)).Methods("POST")
-	r.HandleFunc("/admin/returns/{returnId}/reject", chainMiddleware(jwtAuth, adminAuth)(returnHandler.RejectReturnRequest)).Methods("POST")
 
 	// admin : order delivery update
 	r.HandleFunc("/admin/orders/{orderId}/delivery-status", chainMiddleware(jwtAuth, adminAuth)(orderHandler.UpdateOrderDeliveryStatus)).Methods("PATCH")

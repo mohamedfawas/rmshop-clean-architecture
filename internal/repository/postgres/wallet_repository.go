@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
+	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/repository"
@@ -43,13 +45,22 @@ func (r *walletRepository) GetByUserID(ctx context.Context, userID int64) (*doma
 
 func (r *walletRepository) AddBalance(ctx context.Context, tx *sql.Tx, userID int64, amount float64) error {
 	query := `
-        INSERT INTO wallets (user_id, balance)
-        VALUES ($1, $2)
+        INSERT INTO wallets (user_id, balance, created_at, updated_at)
+        VALUES ($1, $2, NOW(), NOW())
         ON CONFLICT (user_id)
-        DO UPDATE SET balance = wallets.balance + $2
+        DO UPDATE SET 
+            balance = wallets.balance + $2,
+            updated_at = NOW()
+        RETURNING balance
     `
-	_, err := tx.ExecContext(ctx, query, userID, amount)
-	return err
+	var newBalance float64
+	err := tx.QueryRowContext(ctx, query, userID, amount).Scan(&newBalance)
+	if err != nil {
+		log.Printf("Error updating wallet balance: %v", err)
+		return fmt.Errorf("failed to update wallet balance: %w", err)
+	}
+	log.Printf("Updated wallet balance for user %d: %f", userID, newBalance)
+	return nil
 }
 
 func (r *walletRepository) CreateTransaction(ctx context.Context, tx *sql.Tx, transaction *domain.WalletTransaction) error {
@@ -65,9 +76,14 @@ func (r *walletRepository) CreateTransaction(ctx context.Context, tx *sql.Tx, tr
 		transaction.ReferenceID,
 		transaction.ReferenceType,
 		transaction.BalanceAfter,
-		transaction.CreatedAt,
+		time.Now().UTC(),
 	).Scan(&transaction.ID)
-	return err
+	if err != nil {
+		log.Printf("Error creating wallet transaction: %v", err)
+		return fmt.Errorf("failed to create wallet transaction: %w", err)
+	}
+	log.Printf("Created wallet transaction with ID %d for user %d", transaction.ID, transaction.UserID)
+	return nil
 }
 
 func (r *walletRepository) UpdateBalance(ctx context.Context, tx *sql.Tx, userID int64, newBalance float64) error {

@@ -1,3 +1,4 @@
+-- Create wallet_transactions table
 CREATE TABLE IF NOT EXISTS wallet_transactions (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL,

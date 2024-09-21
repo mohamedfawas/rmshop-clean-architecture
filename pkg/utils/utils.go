@@ -22,12 +22,14 @@ const (
 	CODLimit            = 1000.0 // cash on delivery order limit
 
 	// order status constants
-	OrderStatusPending    = "pending_payment"
-	OrderStatusProcessing = "processing"
-	OrderStatusShipped    = "shipped"
-	OrderStatusCompleted  = "completed"
-	OrderStatusCancelled  = "cancelled"
-	OrderStatusRefunded   = "refunded"
+	OrderStatusPending             = "pending_payment"
+	OrderStatusProcessing          = "processing"
+	OrderStatusShipped             = "shipped"
+	OrderStatusCompleted           = "completed"
+	OrderStatusCancelled           = "cancelled"
+	OrderStatusRefunded            = "refunded"
+	OrderStatusConfirmed           = "confirmed"
+	OrderStatusPendingCancellation = "pending_cancellation"
 
 	// Delivery status constants
 	DeliveryStatusPending               = "pending"
@@ -56,6 +58,10 @@ const (
 	PaymentStatusCancelled       = "cancelled"
 	PaymentStatusAwaitingPayment = "awaiting_payment"
 	PaymentStatusPaid            = "paid"
+
+	//wallet
+	WalletTransactionTypeRefund                     = "refund"
+	WalletTransactionReferenceTypeOrderCancellation = "order_cancellation"
 )
 
 const (
@@ -291,6 +297,7 @@ var (
 	// payment
 	ErrPaymentNotFound            = errors.New("payment not found")
 	ErrRazorpayServiceUnavailable = errors.New("Razorpay service unavailable")
+	ErrPaymentNotRefundable       = errors.New("payment not refundable")
 
 	// inventory
 	ErrStockQuantityTooLarge = errors.New("stock quantity too large")
@@ -321,6 +328,10 @@ var (
 
 	// sales report
 	ErrInvalidDateRange = errors.New("invalid date range")
+
+	// cancel
+	ErrCancellationWindowExpired = errors.New("cancellation window expired")
+	ErrCancellationRequestExists = errors.New("cancellation request exists")
 
 	ErrInternalServer = errors.New("internal server error")
 )

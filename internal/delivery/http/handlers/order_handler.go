@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -111,42 +112,6 @@ func (h *OrderHandler) GetUserOrders(w http.ResponseWriter, r *http.Request) {
 	api.SendResponse(w, http.StatusOK, "Orders retrieved successfully", response, "")
 }
 
-func (h *OrderHandler) CancelOrder(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
-	if !ok {
-		api.SendResponse(w, http.StatusUnauthorized, "Failed to cancel order", nil, "User not authenticated")
-		return
-	}
-
-	vars := mux.Vars(r)
-	orderID, err := strconv.ParseInt(vars["orderId"], 10, 64)
-	if err != nil {
-		api.SendResponse(w, http.StatusBadRequest, "Failed to cancel order", nil, "Invalid order ID format")
-		return
-	}
-
-	result, err := h.orderUseCase.CancelOrder(r.Context(), userID, orderID)
-	if err != nil {
-		switch err {
-		case utils.ErrOrderNotFound:
-			api.SendResponse(w, http.StatusNotFound, "Failed to cancel order", nil, "Order not found")
-		case utils.ErrUnauthorized:
-			api.SendResponse(w, http.StatusForbidden, "Failed to cancel order", nil, "You are not authorized to cancel this order")
-		case utils.ErrOrderAlreadyCancelled:
-			api.SendResponse(w, http.StatusBadRequest, "Failed to cancel order", nil, "Order is already cancelled")
-		case utils.ErrOrderNotCancellable:
-			api.SendResponse(w, http.StatusBadRequest, "Failed to cancel order", nil, "Order cannot be cancelled in its current state")
-		case utils.ErrCancellationPeriodExpired:
-			api.SendResponse(w, http.StatusBadRequest, "Failed to cancel order", nil, "Cancellation period has expired for this order")
-		default:
-			api.SendResponse(w, http.StatusInternalServerError, "Failed to cancel order", nil, "An unexpected error occurred")
-		}
-		return
-	}
-
-	api.SendResponse(w, http.StatusOK, "Order cancelled successfully", result, "")
-}
-
 func (h *OrderHandler) GetOrders(w http.ResponseWriter, r *http.Request) {
 	// Extract query parameters
 	params := domain.OrderQueryParams{
@@ -205,45 +170,6 @@ func (h *OrderHandler) GetOrders(w http.ResponseWriter, r *http.Request) {
 	}
 
 	api.SendResponse(w, http.StatusOK, "Orders retrieved successfully", response, "")
-}
-
-func (h *OrderHandler) UpdateOrderStatus(w http.ResponseWriter, r *http.Request) {
-
-	vars := mux.Vars(r)
-	orderID, err := strconv.ParseInt(vars["orderId"], 10, 64)
-	if err != nil {
-		api.SendResponse(w, http.StatusBadRequest, "Failed to update order status", nil, "Invalid order ID")
-		return
-	}
-
-	var input struct {
-		Status string `json:"order_status"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		api.SendResponse(w, http.StatusBadRequest, "Failed to update order status", nil, "Invalid request body")
-		return
-	}
-
-	result, err := h.orderUseCase.UpdateOrderStatus(r.Context(), orderID, input.Status)
-	if err != nil {
-		switch err {
-		case utils.ErrOrderNotFound:
-			api.SendResponse(w, http.StatusNotFound, "Failed to update order status", nil, "Order not found")
-		case utils.ErrUnauthorized:
-			api.SendResponse(w, http.StatusForbidden, "Failed to update order status", nil, "Unauthorized action")
-		case utils.ErrInvalidOrderStatus:
-			api.SendResponse(w, http.StatusBadRequest, "Failed to update order status", nil, "Invalid order status")
-		case utils.ErrOrderNotCancellable:
-			api.SendResponse(w, http.StatusBadRequest, "Failed to cancel order", nil, "Order cannot be cancelled in its current state")
-		case utils.ErrOrderAlreadyCancelled:
-			api.SendResponse(w, http.StatusBadRequest, "Failed to cancel order", nil, "Order is already cancelled")
-		default:
-			api.SendResponse(w, http.StatusInternalServerError, "Failed to update order status", nil, "An unexpected error occurred")
-		}
-		return
-	}
-
-	api.SendResponse(w, http.StatusOK, "Order status updated successfully", result, "")
 }
 
 func (h *OrderHandler) PlaceOrderRazorpay(w http.ResponseWriter, r *http.Request) {
@@ -461,4 +387,47 @@ func (h *OrderHandler) UpdateOrderDeliveryStatus(w http.ResponseWriter, r *http.
 	}
 
 	api.SendResponse(w, http.StatusOK, "Delivery status updated successfully", nil, "")
+}
+
+func (h *OrderHandler) UserInitiateCancellation(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	orderID, err := strconv.ParseInt(vars["orderId"], 10, 64)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Invalid order ID", nil, "Order ID must be a number")
+		return
+	}
+
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	if !ok {
+		api.SendResponse(w, http.StatusUnauthorized, "Unauthorized", nil, "User not authenticated")
+		return
+	}
+
+	result, err := h.orderUseCase.InitiateCancellation(r.Context(), userID, orderID)
+	if err != nil {
+		log.Printf("error : %v", err)
+		switch err {
+		case utils.ErrOrderNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Order not found", nil, err.Error())
+		case utils.ErrUnauthorized:
+			api.SendResponse(w, http.StatusForbidden, "Unauthorized", nil, "You don't have permission to cancel this order")
+		case utils.ErrOrderAlreadyCancelled:
+			api.SendResponse(w, http.StatusBadRequest, "Already cancelled", nil, "This order is already cancelled")
+		case utils.ErrOrderNotCancellable:
+			api.SendResponse(w, http.StatusBadRequest, "Not cancellable", nil, "This order cannot be cancelled")
+		case utils.ErrCancellationWindowExpired:
+			api.SendResponse(w, http.StatusBadRequest, "Cancellation expired", nil, "The cancellation window for this order has expired")
+		case utils.ErrCancellationRequestExists:
+			api.SendResponse(w, http.StatusBadRequest, "Request exists", nil, "A cancellation request already exists for this order")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Internal server error", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	if result.RequiresAdminReview {
+		api.SendResponse(w, http.StatusAccepted, "Cancellation request created", result, "Your cancellation request has been submitted for review")
+	} else {
+		api.SendResponse(w, http.StatusOK, "Order cancelled", result, "")
+	}
 }

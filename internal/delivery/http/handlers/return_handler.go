@@ -114,40 +114,6 @@ func (h *ReturnHandler) GetUserReturnRequests(w http.ResponseWriter, r *http.Req
 	api.SendResponse(w, http.StatusOK, "Return requests retrieved successfully", returnRequests, "")
 }
 
-func (h *ReturnHandler) ApproveReturnRequest(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	returnID, err := strconv.ParseInt(vars["returnId"], 10, 64)
-	if err != nil {
-		api.SendResponse(w, http.StatusBadRequest, "Failed to approve return request", nil, "Invalid return request ID")
-		return
-	}
-
-	err = h.returnUseCase.ApproveReturnRequest(r.Context(), returnID)
-	if err != nil {
-		api.SendResponse(w, http.StatusInternalServerError, "Failed to approve return request", nil, "An unexpected error occurred")
-		return
-	}
-
-	api.SendResponse(w, http.StatusOK, "Return request approved successfully", nil, "")
-}
-
-func (h *ReturnHandler) RejectReturnRequest(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	returnID, err := strconv.ParseInt(vars["returnId"], 10, 64)
-	if err != nil {
-		api.SendResponse(w, http.StatusBadRequest, "Failed to reject return request", nil, "Invalid return request ID")
-		return
-	}
-
-	err = h.returnUseCase.RejectReturnRequest(r.Context(), returnID)
-	if err != nil {
-		api.SendResponse(w, http.StatusInternalServerError, "Failed to reject return request", nil, "An unexpected error occurred")
-		return
-	}
-
-	api.SendResponse(w, http.StatusOK, "Return request rejected successfully", nil, "")
-}
-
 func (h *ReturnHandler) UpdateReturnRequest(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	returnID, err := strconv.ParseInt(vars["returnId"], 10, 64)

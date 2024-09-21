@@ -5,33 +5,45 @@ import (
 )
 
 type Order struct {
-	ID                int64       `json:"id"`
-	UserID            int64       `json:"user_id"`
-	TotalAmount       float64     `json:"total_amount"`
-	DiscountAmount    float64     `json:"discount_amount"`
-	FinalAmount       float64     `json:"final_amount"`
-	DeliveryStatus    string      `json:"delivery_status"`
-	OrderStatus       string      `json:"order_status"`
-	HasReturnRequest  bool        `json:"has_return_request"`
-	ShippingAddressID int64       `json:"shipping_address_id"`
-	CouponApplied     bool        `json:"coupon_applied"`
-	CreatedAt         time.Time   `json:"created_at"`
-	UpdatedAt         time.Time   `json:"updated_at"`
-	DeliveredAt       *time.Time  `json:"delivered_at,omitempty"`
-	Items             []OrderItem `json:"items"`
+	ID                int64            `json:"id"`
+	UserID            int64            `json:"user_id"`
+	TotalAmount       float64          `json:"total_amount"`
+	DiscountAmount    float64          `json:"discount_amount"`
+	FinalAmount       float64          `json:"final_amount"`
+	DeliveryStatus    string           `json:"delivery_status"`
+	OrderStatus       string           `json:"order_status"`
+	HasReturnRequest  bool             `json:"has_return_request"`
+	ShippingAddressID int64            `json:"shipping_address_id"`
+	ShippingAddress   *ShippingAddress `json:"shipping_address,omitempty"`
+	CouponApplied     bool             `json:"coupon_applied"`
+	CreatedAt         time.Time        `json:"created_at"`
+	UpdatedAt         time.Time        `json:"updated_at"`
+	DeliveredAt       *time.Time       `json:"delivered_at,omitempty"`
+	Items             []OrderItem      `json:"items"`
 }
 
 type OrderItem struct {
-	ID        int64   `json:"id"`
-	OrderID   int64   `json:"order_id"`
-	ProductID int64   `json:"product_id"`
-	Quantity  int     `json:"quantity"`
-	Price     float64 `json:"price"`
+	ID          int64   `json:"id"`
+	OrderID     int64   `json:"order_id"`
+	ProductID   int64   `json:"product_id"`
+	ProductName string  `json:"product_name"`
+	Quantity    int     `json:"quantity"`
+	Price       float64 `json:"price"`
 }
 
 type OrderCancellationResult struct {
-	OrderID      int64  `json:"order_id"`
-	RefundStatus string `json:"refund_status"`
+	OrderID             int64
+	OrderStatus         string
+	RequiresAdminReview bool
+	RefundInitiated     bool
+}
+
+type CancellationRequest struct {
+	ID                        int64
+	OrderID                   int64
+	UserID                    int64
+	CreatedAt                 time.Time
+	CancellationRequestStatus string
 }
 
 type OrderStatusUpdateResult struct {

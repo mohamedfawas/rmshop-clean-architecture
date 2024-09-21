@@ -93,7 +93,9 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 	walletHandler := handlers.NewWalletHandler(walletUseCase)
 	log.Println("wallet components initialized")
 
-	orderUseCase := usecase.NewOrderUseCase(orderRepo, checkoutRepo, productRepo, cartRepo, cfg.Razorpay.KeySecret, cfg.Razorpay.KeySecret)
+	paymentRepo := postgres.NewPaymentRepository(db)
+
+	orderUseCase := usecase.NewOrderUseCase(orderRepo, checkoutRepo, productRepo, cartRepo, walletRepo, paymentRepo, cfg.Razorpay.KeySecret, cfg.Razorpay.KeySecret)
 	orderHandler := handlers.NewOrderHandler(orderUseCase)
 	log.Println("Order components initialized")
 
