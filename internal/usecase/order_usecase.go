@@ -35,6 +35,7 @@ type OrderUseCase interface {
 	GetRazorpayKeyID() string
 	GetPaymentByRazorpayOrderID(ctx context.Context, razorpayOrderID string) (*domain.Payment, error)
 	CancelOrder(ctx context.Context, userID, orderID int64) (*domain.OrderCancellationResult, error)
+	ApproveCancellation(ctx context.Context, orderID int64) (*domain.OrderStatusUpdateResult, error)
 }
 
 type orderUseCase struct {
@@ -753,4 +754,143 @@ func (u *orderUseCase) CancelOrder(ctx context.Context, userID, orderID int64) (
 	}
 
 	return result, nil
+}
+
+func (u *orderUseCase) ApproveCancellation(ctx context.Context, orderID int64) (*domain.OrderStatusUpdateResult, error) {
+	// Start a database transaction
+	tx, err := u.orderRepo.BeginTx(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Get the order
+	order, err := u.orderRepo.GetByIDTx(ctx, tx, orderID)
+	if err != nil {
+		if err == utils.ErrOrderNotFound {
+			return nil, utils.ErrOrderNotFound
+		}
+		return nil, fmt.Errorf("failed to get order: %w", err)
+	}
+
+	// Check if the order is in pending cancellation state
+	if order.OrderStatus != "pending_cancellation" {
+		return nil, utils.ErrOrderNotPendingCancellation
+	}
+
+	// Update order status to cancelled
+	err = u.orderRepo.UpdateOrderStatusTx(ctx, tx, orderID, "cancelled")
+	if err != nil {
+		return nil, fmt.Errorf("failed to update order status: %w", err)
+	}
+
+	result := &domain.OrderStatusUpdateResult{
+		OrderID:      orderID,
+		NewStatus:    "cancelled",
+		RefundStatus: "not_applicable",
+	}
+
+	// Check if refund is needed
+	payment, err := u.paymentRepo.GetByOrderIDTx(ctx, tx, orderID)
+	if err != nil {
+		if err != utils.ErrPaymentNotFound {
+			return nil, fmt.Errorf("failed to get payment: %w", err)
+		}
+		// If payment not found, we assume no refund is needed
+		payment = nil
+	}
+
+	if payment != nil && payment.Status == "paid" && payment.PaymentMethod == "razorpay" {
+		// Process refund
+		err = u.processRefund(ctx, tx, order, payment)
+		if err != nil {
+			return nil, fmt.Errorf("failed to process refund: %w", err)
+		}
+		result.RefundStatus = "initiated"
+	}
+
+	// Update inventory (add back the quantities)
+	err = u.updateInventory(ctx, tx, orderID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update inventory: %w", err)
+	}
+
+	// Commit the transaction
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return result, nil
+}
+
+func (u *orderUseCase) processRefund(ctx context.Context, tx *sql.Tx, order *domain.Order, payment *domain.Payment) error {
+	// Get the user's wallet
+	wallet, err := u.walletRepo.GetWalletTx(ctx, tx, order.UserID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// If wallet doesn't exist, create one
+			wallet = &domain.Wallet{
+				UserID:  order.UserID,
+				Balance: 0,
+			}
+			err = u.walletRepo.CreateWalletTx(ctx, tx, wallet)
+			if err != nil {
+				return fmt.Errorf("failed to create wallet: %w", err)
+			}
+		} else {
+			return fmt.Errorf("failed to get wallet: %w", err)
+		}
+	}
+
+	// Calculate new balance
+	newBalance := wallet.Balance + payment.Amount
+
+	// Create a wallet transaction for the refund
+	referenceType := "order_cancellation"
+	walletTx := &domain.WalletTransaction{
+		UserID:          order.UserID,
+		Amount:          payment.Amount,
+		TransactionType: "refund",
+		ReferenceID:     &order.ID,
+		ReferenceType:   &referenceType,
+		BalanceAfter:    newBalance,
+		CreatedAt:       time.Now().UTC(),
+	}
+
+	err = u.walletRepo.CreateWalletTransactionTx(ctx, tx, walletTx)
+	if err != nil {
+		return fmt.Errorf("failed to create wallet transaction: %w", err)
+	}
+
+	// Update user's wallet balance
+	err = u.walletRepo.UpdateWalletBalanceTx(ctx, tx, order.UserID, newBalance)
+	if err != nil {
+		return fmt.Errorf("failed to update wallet balance: %w", err)
+	}
+
+	// Update payment status
+	err = u.paymentRepo.UpdateStatusTx(ctx, tx, payment.ID, "refunded")
+	if err != nil {
+		return fmt.Errorf("failed to update payment status: %w", err)
+	}
+
+	return nil
+}
+
+func (u *orderUseCase) updateInventory(ctx context.Context, tx *sql.Tx, orderID int64) error {
+	// Get order items
+	orderItems, err := u.orderRepo.GetOrderItemsTx(ctx, tx, orderID)
+	if err != nil {
+		return fmt.Errorf("failed to get order items: %w", err)
+	}
+
+	// Update inventory for each item
+	for _, item := range orderItems {
+		err = u.productRepo.UpdateStockTx(ctx, tx, item.ProductID, item.Quantity)
+		if err != nil {
+			return fmt.Errorf("failed to update stock for product %d: %w", item.ProductID, err)
+		}
+	}
+
+	return nil
 }

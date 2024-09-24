@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -424,4 +425,38 @@ func (h *OrderHandler) CancelOrder(w http.ResponseWriter, r *http.Request) {
 	} else {
 		api.SendResponse(w, http.StatusOK, "Order cancelled successfully", result, "")
 	}
+}
+
+func (h *OrderHandler) AdminApproveCancellation(w http.ResponseWriter, r *http.Request) {
+	// Extract order ID from URL
+	vars := mux.Vars(r)
+	orderID, err := strconv.ParseInt(vars["orderId"], 10, 64)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to approve cancellation", nil, "Invalid order ID format")
+		return
+	}
+
+	// Call use case method to approve cancellation
+	result, err := h.orderUseCase.ApproveCancellation(r.Context(), orderID)
+	if err != nil {
+		log.Printf("error : %v", err)
+		switch err {
+		case utils.ErrOrderNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Failed to approve cancellation", nil, "Order not found")
+		case utils.ErrOrderNotPendingCancellation:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to approve cancellation", nil, "Order is not in pending cancellation state")
+		case utils.ErrUnauthorized:
+			api.SendResponse(w, http.StatusForbidden, "Failed to approve cancellation", nil, "Unauthorized access")
+		case utils.ErrRefundFailed:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to process refund", map[string]interface{}{
+				"order_id":   orderID,
+				"new_status": "cancelled",
+			}, "Failed to process refund")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to approve cancellation", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	api.SendResponse(w, http.StatusOK, "Order cancellation approved successfully", result, "")
 }

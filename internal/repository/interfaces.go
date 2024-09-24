@@ -88,6 +88,7 @@ type ProductRepository interface {
 	UpdateStockQuantity(ctx context.Context, productID int64, quantity int) error
 	GetProducts(ctx context.Context, params domain.ProductQueryParams) ([]*domain.Product, int64, error)
 	GetPublicProductByID(ctx context.Context, id int64) (*domain.PublicProduct, error)
+	UpdateStockTx(ctx context.Context, tx *sql.Tx, productID int64, quantity int) error
 }
 
 type CartRepository interface {
@@ -158,6 +159,8 @@ type OrderRepository interface {
 	IsOrderDelivered(ctx context.Context, orderID int64) (bool, error)
 	GetOrderByID(ctx context.Context, id int64) (*domain.Order, error)
 	CreateCancellationRequest(ctx context.Context, orderID, userID int64) error
+	GetByIDTx(ctx context.Context, tx *sql.Tx, id int64) (*domain.Order, error)
+	GetOrderItemsTx(ctx context.Context, tx *sql.Tx, orderID int64) ([]*domain.OrderItem, error)
 }
 
 type InventoryRepository interface {
@@ -178,6 +181,13 @@ type WalletRepository interface {
 	CreateTransaction(ctx context.Context, tx *sql.Tx, transaction *domain.WalletTransaction) error
 	UpdateBalance(ctx context.Context, tx *sql.Tx, userID int64, newBalance float64) error
 	GetTransactions(ctx context.Context, userID int64, page, limit int, sort, order, transactionType string) ([]*domain.WalletTransaction, int64, error)
+	CreateTransactionTx(ctx context.Context, tx *sql.Tx, transaction *domain.WalletTransaction) error
+	UpdateBalanceTx(ctx context.Context, tx *sql.Tx, userID int64, amount float64) error
+	GetBalanceTx(ctx context.Context, tx *sql.Tx, userID int64) (float64, error)
+	GetWalletTx(ctx context.Context, tx *sql.Tx, userID int64) (*domain.Wallet, error)
+	UpdateWalletBalanceTx(ctx context.Context, tx *sql.Tx, userID int64, newBalance float64) error
+	CreateWalletTransactionTx(ctx context.Context, tx *sql.Tx, transaction *domain.WalletTransaction) error
+	CreateWalletTx(ctx context.Context, tx *sql.Tx, wallet *domain.Wallet) error
 }
 
 type SalesRepository interface {
@@ -209,4 +219,6 @@ type PaymentRepository interface {
 	InitiateRefund(ctx context.Context, paymentID int64) error
 	GetByRazorpayOrderID(ctx context.Context, razorpayOrderID string) (*domain.Payment, error)
 	UpdatePayment(ctx context.Context, payment *domain.Payment) error
+	GetByOrderIDTx(ctx context.Context, tx *sql.Tx, orderID int64) (*domain.Payment, error)
+	UpdateStatusTx(ctx context.Context, tx *sql.Tx, paymentID int64, status string) error
 }

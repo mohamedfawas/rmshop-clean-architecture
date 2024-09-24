@@ -149,3 +149,101 @@ func (r *walletRepository) GetTransactions(ctx context.Context, userID int64, pa
 
 	return transactions, totalCount, nil
 }
+
+func (r *walletRepository) CreateTransactionTx(ctx context.Context, tx *sql.Tx, transaction *domain.WalletTransaction) error {
+	query := `
+        INSERT INTO wallet_transactions (user_id, amount, transaction_type, reference_id, reference_type, balance_after, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id
+    `
+	err := tx.QueryRowContext(ctx, query,
+		transaction.UserID,
+		transaction.Amount,
+		transaction.TransactionType,
+		transaction.ReferenceID,
+		transaction.ReferenceType,
+		transaction.BalanceAfter,
+		transaction.CreatedAt,
+	).Scan(&transaction.ID)
+
+	if err != nil {
+		return fmt.Errorf("failed to create wallet transaction: %w", err)
+	}
+	return nil
+}
+
+func (r *walletRepository) UpdateBalanceTx(ctx context.Context, tx *sql.Tx, userID int64, newBalance float64) error {
+	query := `
+        INSERT INTO wallets (user_id, balance, updated_at)
+        VALUES ($1, $2, NOW())
+        ON CONFLICT (user_id) DO UPDATE
+        SET balance = $2, updated_at = NOW()
+    `
+	_, err := tx.ExecContext(ctx, query, userID, newBalance)
+	if err != nil {
+		return fmt.Errorf("failed to update wallet balance: %w", err)
+	}
+	return nil
+}
+
+func (r *walletRepository) GetBalanceTx(ctx context.Context, tx *sql.Tx, userID int64) (float64, error) {
+	var balance float64
+	err := tx.QueryRowContext(ctx, "SELECT balance FROM wallets WHERE user_id = $1", userID).Scan(&balance)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// If no wallet exists, return 0 balance
+			return 0, nil
+		}
+		return 0, fmt.Errorf("failed to get balance: %w", err)
+	}
+	return balance, nil
+}
+
+func (r *walletRepository) GetWalletTx(ctx context.Context, tx *sql.Tx, userID int64) (*domain.Wallet, error) {
+	var wallet domain.Wallet
+	err := tx.QueryRowContext(ctx, "SELECT id, user_id, balance, created_at, updated_at FROM wallets WHERE user_id = $1", userID).
+		Scan(&wallet.ID, &wallet.UserID, &wallet.Balance, &wallet.CreatedAt, &wallet.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &wallet, nil
+}
+
+func (r *walletRepository) CreateWalletTx(ctx context.Context, tx *sql.Tx, wallet *domain.Wallet) error {
+	query := `
+        INSERT INTO wallets (user_id, balance, created_at, updated_at)
+        VALUES ($1, $2, $3, $3)
+        RETURNING id
+    `
+	now := time.Now().UTC()
+	err := tx.QueryRowContext(ctx, query, wallet.UserID, wallet.Balance, now).Scan(&wallet.ID)
+	if err != nil {
+		return err
+	}
+	wallet.CreatedAt = now
+	wallet.UpdatedAt = now
+	return nil
+}
+
+func (r *walletRepository) UpdateWalletBalanceTx(ctx context.Context, tx *sql.Tx, userID int64, newBalance float64) error {
+	_, err := tx.ExecContext(ctx, "UPDATE wallets SET balance = $1, updated_at = $2 WHERE user_id = $3", newBalance, time.Now().UTC(), userID)
+	return err
+}
+
+func (r *walletRepository) CreateWalletTransactionTx(ctx context.Context, tx *sql.Tx, transaction *domain.WalletTransaction) error {
+	query := `
+        INSERT INTO wallet_transactions (user_id, amount, transaction_type, reference_id, reference_type, balance_after, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id
+    `
+	err := tx.QueryRowContext(ctx, query,
+		transaction.UserID,
+		transaction.Amount,
+		transaction.TransactionType,
+		transaction.ReferenceID,
+		transaction.ReferenceType,
+		transaction.BalanceAfter,
+		transaction.CreatedAt,
+	).Scan(&transaction.ID)
+	return err
+}

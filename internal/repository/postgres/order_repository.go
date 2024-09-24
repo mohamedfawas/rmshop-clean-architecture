@@ -726,3 +726,62 @@ func (r *orderRepository) CreateCancellationRequest(ctx context.Context, orderID
 
 	return nil
 }
+
+func (r *orderRepository) GetByIDTx(ctx context.Context, tx *sql.Tx, id int64) (*domain.Order, error) {
+	query := `
+        SELECT id, user_id, total_amount, discount_amount, final_amount, delivery_status, 
+               order_status, has_return_request, shipping_address_id, coupon_applied, 
+               created_at, updated_at, delivered_at
+        FROM orders
+        WHERE id = $1
+    `
+	var order domain.Order
+	var deliveredAt sql.NullTime
+
+	err := tx.QueryRowContext(ctx, query, id).Scan(
+		&order.ID, &order.UserID, &order.TotalAmount, &order.DiscountAmount, &order.FinalAmount,
+		&order.DeliveryStatus, &order.OrderStatus, &order.HasReturnRequest, &order.ShippingAddressID,
+		&order.CouponApplied, &order.CreatedAt, &order.UpdatedAt, &deliveredAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, utils.ErrOrderNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get order: %w", err)
+	}
+
+	if deliveredAt.Valid {
+		order.DeliveredAt = &deliveredAt.Time
+	}
+
+	return &order, nil
+}
+
+func (r *orderRepository) GetOrderItemsTx(ctx context.Context, tx *sql.Tx, orderID int64) ([]*domain.OrderItem, error) {
+	query := `
+        SELECT id, order_id, product_id, quantity, price
+        FROM order_items
+        WHERE order_id = $1
+    `
+	rows, err := tx.QueryContext(ctx, query, orderID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query order items: %w", err)
+	}
+	defer rows.Close()
+
+	var items []*domain.OrderItem
+	for rows.Next() {
+		item := &domain.OrderItem{}
+		if err := rows.Scan(&item.ID, &item.OrderID, &item.ProductID, &item.Quantity, &item.Price); err != nil {
+			return nil, fmt.Errorf("failed to scan order item: %w", err)
+		}
+		items = append(items, item)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating order items: %w", err)
+	}
+
+	return items, nil
+}

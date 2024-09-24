@@ -629,3 +629,17 @@ func (r *productRepository) GetPublicProductByID(ctx context.Context, id int64) 
 
 	return &product, nil
 }
+
+func (r *productRepository) UpdateStockTx(ctx context.Context, tx *sql.Tx, productID int64, quantity int) error {
+	query := `
+        UPDATE products
+        SET stock_quantity = stock_quantity + $1,
+            updated_at = NOW()
+        WHERE id = $2
+    `
+	_, err := tx.ExecContext(ctx, query, quantity, productID)
+	if err != nil {
+		return fmt.Errorf("failed to update product stock: %w", err)
+	}
+	return nil
+}

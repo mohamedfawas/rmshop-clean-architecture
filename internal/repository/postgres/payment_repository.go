@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
@@ -194,4 +195,50 @@ func (r *paymentRepository) GetByRazorpayOrderID(ctx context.Context, razorpayOr
 	}
 
 	return &payment, nil
+}
+
+func (r *paymentRepository) GetByOrderIDTx(ctx context.Context, tx *sql.Tx, orderID int64) (*domain.Payment, error) {
+	query := `
+        SELECT id, order_id, amount, payment_method, payment_status, created_at, updated_at, 
+               razorpay_order_id, razorpay_payment_id, razorpay_signature
+        FROM payments
+        WHERE order_id = $1
+    `
+	var payment domain.Payment
+	var razorpayPaymentID, razorpaySignature sql.NullString
+
+	err := tx.QueryRowContext(ctx, query, orderID).Scan(
+		&payment.ID, &payment.OrderID, &payment.Amount, &payment.PaymentMethod, &payment.Status,
+		&payment.CreatedAt, &payment.UpdatedAt, &payment.RazorpayOrderID,
+		&razorpayPaymentID, &razorpaySignature,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, utils.ErrPaymentNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get payment: %w", err)
+	}
+
+	if razorpayPaymentID.Valid {
+		payment.RazorpayPaymentID = razorpayPaymentID.String
+	}
+	if razorpaySignature.Valid {
+		payment.RazorpaySignature = razorpaySignature.String
+	}
+
+	return &payment, nil
+}
+
+func (r *paymentRepository) UpdateStatusTx(ctx context.Context, tx *sql.Tx, paymentID int64, status string) error {
+	query := `
+        UPDATE payments
+        SET payment_status = $1, updated_at = NOW()
+        WHERE id = $2
+    `
+	_, err := tx.ExecContext(ctx, query, status, paymentID)
+	if err != nil {
+		return fmt.Errorf("failed to update payment status: %w", err)
+	}
+	return nil
 }

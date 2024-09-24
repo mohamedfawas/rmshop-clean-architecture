@@ -333,8 +333,10 @@ var (
 	ErrFailedToGeneratePDF = errors.New("failed to generate pdf")
 
 	// cancel
-	ErrCancellationWindowExpired = errors.New("cancellation window expired")
-	ErrCancellationRequestExists = errors.New("cancellation request exists")
+	ErrCancellationWindowExpired   = errors.New("cancellation window expired")
+	ErrCancellationRequestExists   = errors.New("cancellation request exists")
+	ErrRefundFailed                = errors.New("refund failed")
+	ErrOrderNotPendingCancellation = errors.New("order not pending cancellation")
 
 	ErrInternalServer = errors.New("internal server error")
 )

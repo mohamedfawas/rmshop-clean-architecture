@@ -227,6 +227,8 @@ func NewRouter(userHandler *handlers.UserHandler,
 	// Order cancellation
 	// user initiate order cancellation
 	r.HandleFunc("/user/orders/{orderId}/cancel", chainMiddleware(jwtAuth, userAuth)(orderHandler.CancelOrder)).Methods("POST")
+	// Admin approve order cancellation
+	r.HandleFunc("/admin/orders/{orderId}/cancellation", chainMiddleware(jwtAuth, adminAuth)(orderHandler.AdminApproveCancellation)).Methods("PATCH")
 
 	// order invoice
 	r.HandleFunc("/user/orders/{orderId}/invoice", chainMiddleware(jwtAuth, userAuth)(orderHandler.GetOrderInvoice)).Methods("GET")
