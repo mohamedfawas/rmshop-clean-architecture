@@ -18,6 +18,37 @@ func NewAnalyticsRepository(db *sql.DB) *analyticsRepository {
 }
 
 func (r *analyticsRepository) GetTopProducts(ctx context.Context, startDate, endDate time.Time, limit int, sortBy string) ([]domain.TopProduct, error) {
+	/*query is explained here with comments
+	SELECT
+			 p.id,
+			 p.name,
+			 SUM(oi.quantity) as total_quantity, 				-- Sums up the total quantity of the product sold
+			 SUM(oi.quantity * oi.price) as total_revenue		-- Sums up the total revenue generated from this product (quantity * price)
+
+		-- From the 'order_items' table (oi), which contains data about products in each order
+		FROM order_items oi
+
+		-- Inner join with the 'orders' table (o) based on matching order IDs
+		-- This is done to filter the orders based on their creation date
+		JOIN orders o ON oi.order_id = o.id
+
+		-- Inner join with the 'products' table (p) based on matching product IDs
+		-- This is done to retrieve the product name and ID for each sold product
+		JOIN products p ON oi.product_id = p.id
+
+		-- Filter the orders based on a date range specified by $1 and $2 (input parameters)
+		-- This will only include orders created between the two dates
+		WHERE o.created_at BETWEEN $1 AND $2
+
+		-- Groups the result by product ID and product name to ensure that each row in the result
+		-- represents a unique product with its total sold quantity and revenue
+		GROUP BY p.id, p.name
+
+		-- Orders the results (missing the column to order by)
+		-- Typically, you'd order by 'total_quantity', 'total_revenue', or 'p.name' depending on your needs
+		ORDER BY
+	*/
+
 	query := `
 		SELECT p.id, p.name, SUM(oi.quantity) as total_quantity, SUM(oi.quantity * oi.price) as total_revenue
 		FROM order_items oi
@@ -25,7 +56,7 @@ func (r *analyticsRepository) GetTopProducts(ctx context.Context, startDate, end
 		JOIN products p ON oi.product_id = p.id
 		WHERE o.created_at BETWEEN $1 AND $2
 		GROUP BY p.id, p.name
-		ORDER BY 
+		ORDER BY  
 	`
 
 	if sortBy == "revenue" {

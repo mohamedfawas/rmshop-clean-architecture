@@ -13,6 +13,7 @@ import (
 type Service struct {
 	client    *razorpay.Client // Razorpay client instance for making API calls
 	secretKey string           // Secret key for verifying payment signatures
+	keyID     string
 }
 
 // Order struct represents a payment order with relevant details.
@@ -28,6 +29,7 @@ func NewService(keyID, keySecret string) *Service {
 	return &Service{
 		client:    client,
 		secretKey: keySecret,
+		keyID:     keyID,
 	}
 }
 
@@ -101,4 +103,8 @@ func (s *Service) VerifyPaymentSignature(attributes map[string]interface{}) erro
 	}
 
 	return nil
+}
+
+func (s *Service) GetKeyID() string {
+	return s.keyID
 }

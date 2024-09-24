@@ -182,8 +182,10 @@ type WalletRepository interface {
 }
 
 type SalesRepository interface {
-	GetSalesData(ctx context.Context, startDate, endDate time.Time, couponApplied bool) ([]domain.DailySalesData, error)
-	GetTopSellingProducts(ctx context.Context, startDate, endDate time.Time, limit int) ([]domain.TopSellingProduct, error)
+	GetDailySalesData(ctx context.Context, date time.Time) ([]domain.DailySales, error)
+	GetWeeklySalesData(ctx context.Context, startDate time.Time) ([]domain.DailySales, error)
+	GetMonthlySalesData(ctx context.Context, year int, month time.Month) ([]domain.DailySales, error)
+	GetCustomSalesData(ctx context.Context, startDate, endDate time.Time) ([]domain.DailySales, error)
 }
 
 type AnalyticsRepository interface {
@@ -206,4 +208,6 @@ type ReturnRepository interface {
 type PaymentRepository interface {
 	GetByOrderID(ctx context.Context, orderID int64) (*domain.Payment, error)
 	InitiateRefund(ctx context.Context, paymentID int64) error
+	GetByRazorpayOrderID(ctx context.Context, razorpayOrderID string) (*domain.Payment, error)
+	UpdatePayment(ctx context.Context, payment *domain.Payment) error
 }

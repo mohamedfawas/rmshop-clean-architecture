@@ -8,7 +8,6 @@ import (
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/api"
-	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/utils"
 )
 
 type SalesHandler struct {
@@ -19,155 +18,230 @@ func NewSalesHandler(salesUseCase usecase.SalesUseCase) *SalesHandler {
 	return &SalesHandler{salesUseCase: salesUseCase}
 }
 
-func (h *SalesHandler) GetSalesReport(w http.ResponseWriter, r *http.Request) {
+func (h *SalesHandler) GetDailySalesReport(w http.ResponseWriter, r *http.Request) {
 	// Extract query parameters
-	reportType := r.URL.Query().Get("report_type")
-	startDate := r.URL.Query().Get("start_date")
-	endDate := r.URL.Query().Get("end_date")
-	date := r.URL.Query().Get("date")
-	year := r.URL.Query().Get("year")
-	couponApplied := r.URL.Query().Get("coupon_applied")
-	includeMetrics := r.URL.Query().Get("include_metrics")
+	dateStr := r.URL.Query().Get("date")
 	format := r.URL.Query().Get("format")
 
-	// Validate report type
-	if !isValidReportType(reportType) {
-		api.SendResponse(w, http.StatusBadRequest, "Invalid report type", nil, "Supported types: daily, weekly, monthly, yearly, custom")
+	// Validate date
+	date, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Invalid date format", nil, "Use YYYY-MM-DD format")
 		return
 	}
 
-	// Parse dates
-	var startTime, endTime time.Time
-	var err error
-
-	switch reportType {
-	case "daily":
-		if date == "" {
-			api.SendResponse(w, http.StatusBadRequest, "Missing date for daily report", nil, "Please provide a date")
-			return
-		}
-		startTime, err = time.Parse("2006-01-02", date)
-		if err != nil {
-			api.SendResponse(w, http.StatusBadRequest, "Invalid date format", nil, "Use YYYY-MM-DD format")
-			return
-		}
-		endTime = startTime.AddDate(0, 0, 1)
-	case "weekly":
-		startTime, endTime, err = parseWeeklyDates(startDate, endDate)
-	case "monthly":
-		startTime, endTime, err = parseMonthlyDates(date)
-	case "yearly":
-		startTime, endTime, err = parseYearlyDates(year)
-	case "custom":
-		startTime, endTime, err = parseCustomDates(startDate, endDate)
-	}
-
-	if err != nil {
-		api.SendResponse(w, http.StatusBadRequest, "Invalid date parameters", nil, err.Error())
+	// Check if date is in the future
+	if date.After(time.Now()) {
+		api.SendResponse(w, http.StatusBadRequest, "Invalid date", nil, "Cannot generate report for future dates")
 		return
 	}
 
-	// Parse boolean parameters
-	couponAppliedBool, _ := strconv.ParseBool(couponApplied)
+	// Validate format
+	if format != "json" && format != "pdf" && format != "excel" {
+		api.SendResponse(w, http.StatusBadRequest, "Invalid format", nil, "Supported formats: json, pdf, excel")
+		return
+	}
 
-	// Generate the report
-	report, err := h.salesUseCase.GenerateSalesReport(r.Context(), reportType, startTime, endTime, couponAppliedBool, includeMetrics)
+	// Call use case
+	report, err := h.salesUseCase.GenerateDailySalesReport(r.Context(), date, format)
 	if err != nil {
+		if err == usecase.ErrNoDataFound {
+			api.SendResponse(w, http.StatusNoContent, "No sales data for the specified date", nil, "")
+			return
+		}
+		log.Printf("error : %v", err)
 		api.SendResponse(w, http.StatusInternalServerError, "Failed to generate report", nil, "An unexpected error occurred")
 		return
 	}
 
-	// Handle different output formats
+	// Set appropriate headers based on format
 	switch format {
 	case "pdf":
-		pdfData, err := h.salesUseCase.GeneratePDFReport(report)
-		if err != nil {
-			api.SendResponse(w, http.StatusInternalServerError, "Failed to generate PDF", nil, "An unexpected error occurred")
-			return
-		}
 		w.Header().Set("Content-Type", "application/pdf")
-		w.Header().Set("Content-Disposition", "attachment; filename=sales_report.pdf")
-		_, err = w.Write(pdfData)
-		if err != nil {
-			log.Printf("Error writing PDF data to response: %v", err)
-		}
-		return
+		w.Header().Set("Content-Disposition", "attachment; filename=daily_sales_report.pdf")
 	case "excel":
-		excelData, err := h.salesUseCase.GenerateExcelReport(report)
+		w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+		w.Header().Set("Content-Disposition", "attachment; filename=daily_sales_report.xlsx")
+	default:
+		w.Header().Set("Content-Type", "application/json")
+	}
+
+	// Write the report to the response
+	w.Write(report)
+}
+
+func (h *SalesHandler) GetWeeklySalesReport(w http.ResponseWriter, r *http.Request) {
+	// Extract query parameters
+	startDateStr := r.URL.Query().Get("start_date")
+	format := r.URL.Query().Get("format")
+
+	// Use current date if start_date is not provided
+	var startDate time.Time
+	var err error
+	if startDateStr == "" {
+		startDate = time.Now().AddDate(0, 0, -7) // Start from a week ago
+	} else {
+		startDate, err = time.Parse("2006-01-02", startDateStr)
 		if err != nil {
-			api.SendResponse(w, http.StatusInternalServerError, "Failed to generate Excel file", nil, "An unexpected error occurred")
+			api.SendResponse(w, http.StatusBadRequest, "Invalid date format", nil, "Use YYYY-MM-DD format")
 			return
 		}
+	}
+
+	// Check if date is in the future
+	if startDate.After(time.Now()) {
+		api.SendResponse(w, http.StatusBadRequest, "Invalid date", nil, "Cannot generate report for future dates")
+		return
+	}
+
+	// Validate format
+	if format == "" {
+		format = "json" // Default format
+	}
+	if format != "json" && format != "pdf" && format != "excel" {
+		api.SendResponse(w, http.StatusBadRequest, "Invalid format", nil, "Supported formats: json, pdf, excel")
+		return
+	}
+
+	// Call use case
+	report, err := h.salesUseCase.GenerateWeeklySalesReport(r.Context(), startDate, format)
+	if err != nil {
+		if err == usecase.ErrNoDataFound {
+			api.SendResponse(w, http.StatusNoContent, "No sales data for the specified week", nil, "")
+			return
+		}
+		api.SendResponse(w, http.StatusInternalServerError, "Failed to generate report", nil, "An unexpected error occurred")
+		return
+	}
+
+	// Set appropriate headers based on format
+	switch format {
+	case "pdf":
+		w.Header().Set("Content-Type", "application/pdf")
+		w.Header().Set("Content-Disposition", "attachment; filename=weekly_sales_report.pdf")
+	case "excel":
 		w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-		w.Header().Set("Content-Disposition", "attachment; filename=sales_report.xlsx")
-		_, err = w.Write(excelData)
-		if err != nil {
-			log.Printf("Error writing Excel data to response: %v", err)
+		w.Header().Set("Content-Disposition", "attachment; filename=weekly_sales_report.xlsx")
+	default:
+		w.Header().Set("Content-Type", "application/json")
+	}
+
+	// Write the report to the response
+	w.Write(report)
+}
+
+func (h *SalesHandler) GetMonthlySalesReport(w http.ResponseWriter, r *http.Request) {
+	// Extract query parameters
+	yearStr := r.URL.Query().Get("year")
+	monthStr := r.URL.Query().Get("month")
+	format := r.URL.Query().Get("format")
+
+	// Validate and parse year
+	year, err := strconv.Atoi(yearStr)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Invalid year", nil, "Year must be a valid number")
+		return
+	}
+
+	// Validate and parse month
+	month, err := strconv.Atoi(monthStr)
+	if err != nil || month < 1 || month > 12 {
+		api.SendResponse(w, http.StatusBadRequest, "Invalid month", nil, "Month must be a number between 1 and 12")
+		return
+	}
+
+	// Validate format
+	if format == "" {
+		format = "json" // Default format
+	}
+	if format != "json" && format != "pdf" && format != "excel" {
+		api.SendResponse(w, http.StatusBadRequest, "Invalid format", nil, "Supported formats: json, pdf, excel")
+		return
+	}
+
+	// Call use case
+	report, err := h.salesUseCase.GenerateMonthlySalesReport(r.Context(), year, time.Month(month), format)
+	if err != nil {
+		if err == usecase.ErrNoDataFound {
+			api.SendResponse(w, http.StatusNotFound, "No sales data for the specified month", nil, "")
+			return
+		}
+		api.SendResponse(w, http.StatusInternalServerError, "Failed to generate report", nil, "An unexpected error occurred")
+		return
+	}
+
+	// Set appropriate headers based on format
+	switch format {
+	case "pdf":
+		w.Header().Set("Content-Type", "application/pdf")
+		w.Header().Set("Content-Disposition", "attachment; filename=monthly_sales_report.pdf")
+	case "excel":
+		w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+		w.Header().Set("Content-Disposition", "attachment; filename=monthly_sales_report.xlsx")
+	default:
+		w.Header().Set("Content-Type", "application/json")
+	}
+
+	// Write the report to the response
+	w.Write(report)
+}
+
+func (h *SalesHandler) GetCustomSalesReport(w http.ResponseWriter, r *http.Request) {
+	// Extract query parameters
+	startDateStr := r.URL.Query().Get("start_date")
+	endDateStr := r.URL.Query().Get("end_date")
+	format := r.URL.Query().Get("format")
+
+	// Validate and parse dates
+	startDate, err := time.Parse("2006-01-02", startDateStr)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Invalid start date", nil, "Use YYYY-MM-DD format")
+		return
+	}
+
+	endDate, err := time.Parse("2006-01-02", endDateStr)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Invalid end date", nil, "Use YYYY-MM-DD format")
+		return
+	}
+
+	// Validate format
+	if format == "" {
+		format = "json" // Default format
+	}
+	if format != "json" && format != "pdf" && format != "excel" {
+		api.SendResponse(w, http.StatusBadRequest, "Invalid format", nil, "Supported formats: json, pdf, excel")
+		return
+	}
+
+	// Call use case
+	report, err := h.salesUseCase.GenerateCustomSalesReport(r.Context(), startDate, endDate, format)
+	if err != nil {
+		switch err {
+		case usecase.ErrNoDataFound:
+			api.SendResponse(w, http.StatusNotFound, "No sales data for the specified period", nil, "")
+		case usecase.ErrInvalidDateRange:
+			api.SendResponse(w, http.StatusBadRequest, "Invalid date range", nil, "End date must be after start date")
+		case usecase.ErrFutureDateRange:
+			api.SendResponse(w, http.StatusBadRequest, "Invalid date range", nil, "Cannot generate report for future dates")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to generate report", nil, "An unexpected error occurred")
 		}
 		return
-	case "json", "":
-		// Default to JSON if no format is specified
-		api.SendResponse(w, http.StatusOK, "Sales report generated successfully", report, "")
+	}
+
+	// Set appropriate headers based on format
+	switch format {
+	case "pdf":
+		w.Header().Set("Content-Type", "application/pdf")
+		w.Header().Set("Content-Disposition", "attachment; filename=custom_sales_report.pdf")
+	case "excel":
+		w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+		w.Header().Set("Content-Disposition", "attachment; filename=custom_sales_report.xlsx")
 	default:
-		api.SendResponse(w, http.StatusBadRequest, "Invalid format", nil, "Supported formats: json, pdf, excel")
+		w.Header().Set("Content-Type", "application/json")
 	}
-}
 
-func isValidReportType(reportType string) bool {
-	validTypes := map[string]bool{
-		"daily":   true,
-		"weekly":  true,
-		"monthly": true,
-		"yearly":  true,
-		"custom":  true,
-	}
-	return validTypes[reportType]
-}
-
-func parseWeeklyDates(startDate, endDate string) (time.Time, time.Time, error) {
-	start, err := time.Parse("2006-01-02", startDate)
-	if err != nil {
-		return time.Time{}, time.Time{}, err
-	}
-	end, err := time.Parse("2006-01-02", endDate)
-	if err != nil {
-		return time.Time{}, time.Time{}, err
-	}
-	if end.Sub(start) > 7*24*time.Hour {
-		return time.Time{}, time.Time{}, utils.ErrInvalidDateRange
-	}
-	return start, end.AddDate(0, 0, 1), nil
-}
-
-func parseMonthlyDates(date string) (time.Time, time.Time, error) {
-	start, err := time.Parse("2006-01", date)
-	if err != nil {
-		return time.Time{}, time.Time{}, err
-	}
-	end := start.AddDate(0, 1, 0)
-	return start, end, nil
-}
-
-func parseYearlyDates(year string) (time.Time, time.Time, error) {
-	start, err := time.Parse("2006", year)
-	if err != nil {
-		return time.Time{}, time.Time{}, err
-	}
-	end := start.AddDate(1, 0, 0)
-	return start, end, nil
-}
-
-func parseCustomDates(startDate, endDate string) (time.Time, time.Time, error) {
-	start, err := time.Parse("2006-01-02", startDate)
-	if err != nil {
-		return time.Time{}, time.Time{}, err
-	}
-	end, err := time.Parse("2006-01-02", endDate)
-	if err != nil {
-		return time.Time{}, time.Time{}, err
-	}
-	if end.Before(start) {
-		return time.Time{}, time.Time{}, utils.ErrInvalidDateRange
-	}
-	return start, end.AddDate(0, 0, 1), nil
+	// Write the report to the response
+	w.Write(report)
 }

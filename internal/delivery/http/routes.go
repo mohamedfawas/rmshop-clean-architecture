@@ -242,9 +242,14 @@ func NewRouter(userHandler *handlers.UserHandler,
 
 	r.HandleFunc("/home/payment", paymentHandler.RenderPaymentPage).Methods("GET")
 	r.HandleFunc("/home/razorpay-payment", paymentHandler.ProcessRazorpayPayment).Methods("POST")
+	r.HandleFunc("/payment-failure", paymentHandler.RenderPaymentFailurePage).Methods("GET")
+	r.HandleFunc("/payment-success", paymentHandler.RenderPaymentSuccessPage).Methods("GET")
 
 	// sales report
-	r.HandleFunc("/admin/sales-report", chainMiddleware(jwtAuth, adminAuth)(salesHandler.GetSalesReport)).Methods("GET")
+	r.HandleFunc("/admin/sales-report/daily", chainMiddleware(jwtAuth, adminAuth)(salesHandler.GetDailySalesReport)).Methods("GET")
+	r.HandleFunc("/admin/sales-report/weekly", chainMiddleware(jwtAuth, adminAuth)(salesHandler.GetWeeklySalesReport)).Methods("GET")
+	r.HandleFunc("/admin/sales-report/monthly", chainMiddleware(jwtAuth, adminAuth)(salesHandler.GetMonthlySalesReport)).Methods("GET")
+	r.HandleFunc("/admin/sales-report/custom", chainMiddleware(jwtAuth, adminAuth)(salesHandler.GetCustomSalesReport)).Methods("GET")
 
 	// admin : analytics
 	r.HandleFunc("/admin/analytics/top-products", chainMiddleware(jwtAuth, adminAuth)(analyticsHandler.GetTopProducts)).Methods("GET")

@@ -17,29 +17,29 @@ func NewPaymentRepository(db *sql.DB) *paymentRepository {
 	return &paymentRepository{db: db}
 }
 
-func (r *paymentRepository) GetByOrderID(ctx context.Context, orderID int64) (*domain.Payment, error) {
-	query := `
-        SELECT id, order_id, amount, payment_method, status, created_at, updated_at, 
-               razorpay_order_id, razorpay_payment_id, razorpay_signature
-        FROM payments
-        WHERE order_id = $1
-    `
-	var payment domain.Payment
-	err := r.db.QueryRowContext(ctx, query, orderID).Scan(
-		&payment.ID, &payment.OrderID, &payment.Amount, &payment.PaymentMethod, &payment.Status,
-		&payment.CreatedAt, &payment.UpdatedAt, &payment.RazorpayOrderID, &payment.RazorpayPaymentID,
-		&payment.RazorpaySignature,
-	)
+// func (r *paymentRepository) GetByOrderID(ctx context.Context, orderID int64) (*domain.Payment, error) {
+// 	query := `
+//         SELECT id, order_id, amount, payment_method, status, created_at, updated_at,
+//                razorpay_order_id, razorpay_payment_id, razorpay_signature
+//         FROM payments
+//         WHERE order_id = $1
+//     `
+// 	var payment domain.Payment
+// 	err := r.db.QueryRowContext(ctx, query, orderID).Scan(
+// 		&payment.ID, &payment.OrderID, &payment.Amount, &payment.PaymentMethod, &payment.Status,
+// 		&payment.CreatedAt, &payment.UpdatedAt, &payment.RazorpayOrderID, &payment.RazorpayPaymentID,
+// 		&payment.RazorpaySignature,
+// 	)
 
-	if err == sql.ErrNoRows {
-		return nil, utils.ErrPaymentNotFound
-	}
-	if err != nil {
-		return nil, err
-	}
+// 	if err == sql.ErrNoRows {
+// 		return nil, utils.ErrPaymentNotFound
+// 	}
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	return &payment, nil
-}
+// 	return &payment, nil
+// }
 
 func (r *paymentRepository) InitiateRefund(ctx context.Context, paymentID int64) error {
 	tx, err := r.db.BeginTx(ctx, nil)
@@ -95,4 +95,103 @@ func (r *paymentRepository) InitiateRefund(ctx context.Context, paymentID int64)
 	}
 
 	return tx.Commit()
+}
+
+// func (r *paymentRepository) UpdatePayment(ctx context.Context, payment *domain.Payment) error {
+// 	query := `
+//         UPDATE payments
+//         SET payment_status = $1, razorpay_payment_id = $2, razorpay_signature = $3, updated_at = $4
+//         WHERE id = $5
+//     `
+// 	_, err := r.db.ExecContext(ctx, query,
+// 		payment.Status,
+// 		payment.RazorpayPaymentID,
+// 		payment.RazorpaySignature,
+// 		time.Now(),
+// 		payment.ID)
+
+// 	return err
+// }
+
+func (r *paymentRepository) GetByOrderID(ctx context.Context, orderID int64) (*domain.Payment, error) {
+	query := `
+        SELECT id, order_id, amount, payment_method, payment_status, created_at, updated_at, 
+               razorpay_order_id, razorpay_payment_id, razorpay_signature, expires_at
+        FROM payments
+        WHERE order_id = $1
+    `
+	var payment domain.Payment
+	err := r.db.QueryRowContext(ctx, query, orderID).Scan(
+		&payment.ID, &payment.OrderID, &payment.Amount, &payment.PaymentMethod, &payment.Status,
+		&payment.CreatedAt, &payment.UpdatedAt, &payment.RazorpayOrderID, &payment.RazorpayPaymentID,
+		&payment.RazorpaySignature, &payment.ExpiresAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, utils.ErrPaymentNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &payment, nil
+}
+
+func (r *paymentRepository) UpdatePayment(ctx context.Context, payment *domain.Payment) error {
+	query := `
+        UPDATE payments
+        SET payment_status = $1, razorpay_payment_id = $2, razorpay_signature = $3, updated_at = $4
+        WHERE id = $5
+    `
+	_, err := r.db.ExecContext(ctx, query,
+		payment.Status,
+		payment.RazorpayPaymentID,
+		payment.RazorpaySignature,
+		time.Now(),
+		payment.ID)
+
+	return err
+}
+
+func (r *paymentRepository) GetByRazorpayOrderID(ctx context.Context, razorpayOrderID string) (*domain.Payment, error) {
+	query := `SELECT id, order_id, amount, payment_method, payment_status, created_at, updated_at, 
+              razorpay_order_id, razorpay_payment_id, razorpay_signature, expires_at
+              FROM payments WHERE razorpay_order_id = $1`
+
+	var payment domain.Payment
+	var expiresAt sql.NullTime
+	var rzpPaymentID, rzpSignature sql.NullString
+
+	err := r.db.QueryRowContext(ctx, query, razorpayOrderID).Scan(
+		&payment.ID,
+		&payment.OrderID,
+		&payment.Amount,
+		&payment.PaymentMethod,
+		&payment.Status,
+		&payment.CreatedAt,
+		&payment.UpdatedAt,
+		&payment.RazorpayOrderID,
+		&rzpPaymentID,
+		&rzpSignature,
+		&expiresAt,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, utils.ErrPaymentNotFound
+		}
+		return nil, err
+	}
+
+	if expiresAt.Valid {
+		payment.ExpiresAt = &expiresAt.Time
+	}
+	if rzpPaymentID.Valid {
+		payment.RazorpayPaymentID = rzpPaymentID.String
+	}
+	if rzpSignature.Valid {
+		payment.RazorpaySignature = rzpSignature.String
+	}
+
+	return &payment, nil
 }

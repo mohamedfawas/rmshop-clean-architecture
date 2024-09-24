@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"log"
 	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
@@ -16,7 +17,46 @@ func NewSalesRepository(db *sql.DB) *salesRepository {
 	return &salesRepository{db: db}
 }
 
-func (r *salesRepository) GetSalesData(ctx context.Context, startDate, endDate time.Time, couponApplied bool) ([]domain.DailySalesData, error) {
+func (r *salesRepository) GetDailySalesData(ctx context.Context, date time.Time) ([]domain.DailySales, error) {
+	query := `
+		SELECT 
+			DATE(o.created_at) as date,
+			COUNT(DISTINCT o.id) as order_count,
+			SUM(o.final_amount) as total_amount,
+            -- Counts the distinct number of orders where a coupon was applied (if 'coupon_applied' is true)
+			COUNT(DISTINCT CASE WHEN o.coupon_applied THEN o.id ELSE NULL END) as coupon_order_count
+		FROM 
+            -- Refers to the 'orders' table with an alias 'o'
+			orders o
+		WHERE 
+            -- Filters the results to only include orders created on a specific date (provided via parameter)
+			DATE(o.created_at) = $1
+		GROUP BY 
+            -- Groups the results by the 'created_at' date (since we're interested in aggregating by date)
+			DATE(o.created_at)
+	`
+
+	var salesData domain.DailySales
+	err := r.db.QueryRowContext(ctx, query, date).Scan(
+		&salesData.Date,
+		&salesData.OrderCount,
+		&salesData.TotalAmount,
+		&salesData.CouponOrderCount,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		log.Printf("error while retrieving Get Daily Sales data from db  : %v", err)
+		return nil, err
+	}
+
+	return []domain.DailySales{salesData}, nil
+}
+
+func (r *salesRepository) GetWeeklySalesData(ctx context.Context, startDate time.Time) ([]domain.DailySales, error) {
+	endDate := startDate.AddDate(0, 0, 6) // 7 days including start date
 	query := `
         SELECT 
             DATE(o.created_at) as date,
@@ -26,78 +66,130 @@ func (r *salesRepository) GetSalesData(ctx context.Context, startDate, endDate t
         FROM 
             orders o
         WHERE 
-            o.created_at BETWEEN $1 AND $2
-            AND ($3 = false OR o.coupon_applied = true)
+            DATE(o.created_at) BETWEEN $1 AND $2
         GROUP BY 
             DATE(o.created_at)
-        ORDER BY 
-            date
+        ORDER BY
+            DATE(o.created_at)
     `
 
-	rows, err := r.db.QueryContext(ctx, query, startDate, endDate, couponApplied)
+	rows, err := r.db.QueryContext(ctx, query, startDate, endDate)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var dailyData []domain.DailySalesData
+	var salesData []domain.DailySales
 	for rows.Next() {
-		var data domain.DailySalesData
-		err := rows.Scan(&data.Date, &data.OrderCount, &data.TotalAmount, &data.CouponOrderCount)
+		var sale domain.DailySales
+		err := rows.Scan(
+			&sale.Date,
+			&sale.OrderCount,
+			&sale.TotalAmount,
+			&sale.CouponOrderCount,
+		)
 		if err != nil {
 			return nil, err
 		}
-		dailyData = append(dailyData, data)
+		salesData = append(salesData, sale)
 	}
 
 	if err = rows.Err(); err != nil {
 		return nil, err
 	}
 
-	return dailyData, nil
+	return salesData, nil
 }
 
-func (r *salesRepository) GetTopSellingProducts(ctx context.Context, startDate, endDate time.Time, limit int) ([]domain.TopSellingProduct, error) {
+func (r *salesRepository) GetMonthlySalesData(ctx context.Context, year int, month time.Month) ([]domain.DailySales, error) {
+	startDate := time.Date(year, month, 1, 0, 0, 0, 0, time.UTC)
+	endDate := startDate.AddDate(0, 1, -1)
+
 	query := `
         SELECT 
-            p.id,
-            p.name,
-            SUM(oi.quantity) as total_quantity,
-            SUM(oi.quantity * oi.price) as total_revenue
+            DATE(o.created_at) as date,
+            COUNT(DISTINCT o.id) as order_count,
+            SUM(o.final_amount) as total_amount,
+            COUNT(DISTINCT CASE WHEN o.coupon_applied THEN o.id ELSE NULL END) as coupon_order_count
         FROM 
-            order_items oi
-        JOIN 
-            orders o ON oi.order_id = o.id
-        JOIN 
-            products p ON oi.product_id = p.id
+            orders o
         WHERE 
-            o.created_at BETWEEN $1 AND $2
+            DATE(o.created_at) BETWEEN $1 AND $2
         GROUP BY 
-            p.id, p.name
-        ORDER BY 
-            total_quantity DESC
-        LIMIT $3
+            DATE(o.created_at)
+        ORDER BY
+            DATE(o.created_at)
     `
 
-	rows, err := r.db.QueryContext(ctx, query, startDate, endDate, limit)
+	rows, err := r.db.QueryContext(ctx, query, startDate, endDate)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var products []domain.TopSellingProduct
+	var salesData []domain.DailySales
 	for rows.Next() {
-		var product domain.TopSellingProduct
-		err := rows.Scan(&product.ID, &product.Name, &product.Quantity, &product.Revenue)
+		var sale domain.DailySales
+		err := rows.Scan(
+			&sale.Date,
+			&sale.OrderCount,
+			&sale.TotalAmount,
+			&sale.CouponOrderCount,
+		)
 		if err != nil {
 			return nil, err
 		}
-		products = append(products, product)
+		salesData = append(salesData, sale)
 	}
 
 	if err = rows.Err(); err != nil {
 		return nil, err
 	}
 
-	return products, nil
+	return salesData, nil
+}
+
+func (r *salesRepository) GetCustomSalesData(ctx context.Context, startDate, endDate time.Time) ([]domain.DailySales, error) {
+	query := `
+        SELECT 
+            DATE(o.created_at) as date,
+            COUNT(DISTINCT o.id) as order_count,
+            SUM(o.final_amount) as total_amount,
+            COUNT(DISTINCT CASE WHEN o.coupon_applied THEN o.id ELSE NULL END) as coupon_order_count
+        FROM 
+            orders o
+        WHERE 
+            DATE(o.created_at) BETWEEN $1 AND $2
+        GROUP BY 
+            DATE(o.created_at)
+        ORDER BY
+            DATE(o.created_at)
+    `
+
+	rows, err := r.db.QueryContext(ctx, query, startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var salesData []domain.DailySales
+	for rows.Next() {
+		var sale domain.DailySales
+		err := rows.Scan(
+			&sale.Date,
+			&sale.OrderCount,
+			&sale.TotalAmount,
+			&sale.CouponOrderCount,
+		)
+		if err != nil {
+			return nil, err
+		}
+		salesData = append(salesData, sale)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return salesData, nil
 }

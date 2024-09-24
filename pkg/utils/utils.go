@@ -327,7 +327,10 @@ var (
 	ErrWalletNotInitialized = errors.New("wallet not initialized")
 
 	// sales report
-	ErrInvalidDateRange = errors.New("invalid date range")
+	ErrInvalidDateRange    = errors.New("invalid date range")
+	ErrInvalidFormat       = errors.New("invalid format")
+	ErrNoDataFound         = errors.New("no data found")
+	ErrFailedToGeneratePDF = errors.New("failed to generate pdf")
 
 	// cancel
 	ErrCancellationWindowExpired = errors.New("cancellation window expired")

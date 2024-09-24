@@ -15,14 +15,15 @@ type PaymentDetails struct {
 }
 
 type Payment struct {
-	ID                int64     `json:"id"`
-	OrderID           int64     `json:"order_id"`
-	Amount            float64   `json:"amount"`
-	PaymentMethod     string    `json:"payment_method"`
-	Status            string    `json:"status"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
-	RazorpayOrderID   string    `json:"razorpay_order_id,omitempty"`
-	RazorpayPaymentID string    `json:"razorpay_payment_id,omitempty"`
-	RazorpaySignature string    `json:"razorpay_signature,omitempty"`
+	ID                int64      `json:"id"`
+	OrderID           int64      `json:"order_id"`
+	Amount            float64    `json:"amount"`
+	PaymentMethod     string     `json:"payment_method"`
+	Status            string     `json:"status"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+	ExpiresAt         *time.Time `json:"expires_at,omitempty"`
+	RazorpayOrderID   string     `json:"razorpay_order_id,omitempty"`
+	RazorpayPaymentID string     `json:"razorpay_payment_id,omitempty"`
+	RazorpaySignature string     `json:"razorpay_signature,omitempty"`
 }
