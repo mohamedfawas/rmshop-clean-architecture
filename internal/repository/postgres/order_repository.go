@@ -653,40 +653,6 @@ func (r *orderRepository) GetOrderByID(ctx context.Context, id int64) (*domain.O
 	return &order, nil
 }
 
-func (r *orderRepository) CreateCancellationRequest(ctx context.Context, orderID, userID int64) error {
-	query := `
-        INSERT INTO cancellation_requests (order_id, user_id, created_at, status)
-        VALUES ($1, $2, $3, $4)
-    `
-	_, err := r.db.ExecContext(ctx, query, orderID, userID, time.Now(), "pending_review")
-	if err != nil {
-		log.Printf("error while adding values to cancellation requests table : %v", err)
-	}
-	return err
-}
-
-func (r *orderRepository) GetCancellationRequest(ctx context.Context, orderID int64) (*domain.CancellationRequest, error) {
-	query := `
-        SELECT id, order_id, user_id, created_at, status
-        FROM cancellation_requests
-        WHERE order_id = $1
-    `
-	var request domain.CancellationRequest
-	err := r.db.QueryRowContext(ctx, query, orderID).Scan(
-		&request.ID, &request.OrderID, &request.UserID, &request.CreatedAt, &request.CancellationRequestStatus,
-	)
-
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		log.Printf("error while retrieving values from cancellation_requests table : %v", err)
-		return nil, err
-	}
-
-	return &request, nil
-}
-
 func (r *orderRepository) CreatePayment(ctx context.Context, tx *sql.Tx, payment *domain.Payment) error {
 	query := `
         INSERT INTO payments (order_id, amount, payment_method, payment_status, created_at, updated_at, expires_at, razorpay_order_id)
@@ -738,4 +704,25 @@ func (r *orderRepository) GetPaymentByOrderID(ctx context.Context, orderID int64
 		return nil, err
 	}
 	return &payment, nil
+}
+
+func (r *orderRepository) CreateCancellationRequest(ctx context.Context, orderID, userID int64) error {
+	query := `
+        INSERT INTO cancellation_requests (order_id, user_id, created_at, cancellation_status)
+        VALUES ($1, $2, $3, $4)
+    `
+
+	now := time.Now().UTC()
+
+	_, err := r.db.ExecContext(ctx, query, orderID, userID, now, "pending_review")
+	if err != nil {
+		// Check for unique constraint violation
+		if utils.IsDuplicateKeyError(err) {
+			return utils.ErrCancellationRequestExists
+		}
+		log.Printf("Error creating cancellation request: %v", err)
+		return err
+	}
+
+	return nil
 }

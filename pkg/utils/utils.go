@@ -23,13 +23,13 @@ const (
 
 	// order status constants
 	OrderStatusPending             = "pending_payment"
+	OrderStatusConfirmed           = "confirmed"
 	OrderStatusProcessing          = "processing"
 	OrderStatusShipped             = "shipped"
 	OrderStatusCompleted           = "completed"
+	OrderStatusPendingCancellation = "pending_cancellation"
 	OrderStatusCancelled           = "cancelled"
 	OrderStatusRefunded            = "refunded"
-	OrderStatusConfirmed           = "confirmed"
-	OrderStatusPendingCancellation = "pending_cancellation"
 
 	// Delivery status constants
 	DeliveryStatusPending               = "pending"

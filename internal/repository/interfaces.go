@@ -156,9 +156,8 @@ type OrderRepository interface {
 	UpdateOrderHasReturnRequest(ctx context.Context, orderID int64, hasReturnRequest bool) error
 	UpdateOrderDeliveryStatus(ctx context.Context, orderID int64, deliveryStatus, orderStatus string, deliveredAt *time.Time) error
 	IsOrderDelivered(ctx context.Context, orderID int64) (bool, error)
-	GetCancellationRequest(ctx context.Context, orderID int64) (*domain.CancellationRequest, error)
-	CreateCancellationRequest(ctx context.Context, orderID, userID int64) error
 	GetOrderByID(ctx context.Context, id int64) (*domain.Order, error)
+	CreateCancellationRequest(ctx context.Context, orderID, userID int64) error
 }
 
 type InventoryRepository interface {

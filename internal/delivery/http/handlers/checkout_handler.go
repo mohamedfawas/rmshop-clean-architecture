@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 	"strconv"
 
@@ -184,64 +183,6 @@ func (h *CheckoutHandler) GetCheckoutSummary(w http.ResponseWriter, r *http.Requ
 	}
 
 	api.SendResponse(w, http.StatusOK, "Checkout summary retrieved successfully", summary, "")
-}
-
-// Add this method to your CheckoutHandler struct
-func (h *CheckoutHandler) PlaceOrder(w http.ResponseWriter, r *http.Request) {
-	// Extract user ID from context (set by auth middleware)
-	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
-	if !ok {
-		api.SendResponse(w, http.StatusUnauthorized, "Failed to place order", nil, "User not authenticated")
-		return
-	}
-
-	// Extract checkout ID from URL
-	vars := mux.Vars(r)
-	checkoutID, err := strconv.ParseInt(vars["checkout_id"], 10, 64)
-	if err != nil {
-		api.SendResponse(w, http.StatusBadRequest, "Failed to place order", nil, "Invalid checkout ID")
-		return
-	}
-
-	// Parse request body
-	var input struct {
-		PaymentMethod string `json:"payment_method"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		api.SendResponse(w, http.StatusBadRequest, "Failed to place order", nil, "Invalid request body")
-		return
-	}
-
-	// Validate payment method
-	if input.PaymentMethod != "COD" && input.PaymentMethod != "razorpay" {
-		api.SendResponse(w, http.StatusBadRequest, "Failed to place order", nil, "Invalid payment method")
-		return
-	}
-
-	// Call use case method to place the order
-	order, err := h.checkoutUseCase.PlaceOrder(r.Context(), userID, checkoutID, input.PaymentMethod)
-	if err != nil {
-		log.Printf("error : %v", err)
-		switch err {
-		case utils.ErrCheckoutNotFound:
-			api.SendResponse(w, http.StatusNotFound, "Failed to place order", nil, "Checkout not found")
-		case utils.ErrUnauthorized:
-			api.SendResponse(w, http.StatusForbidden, "Failed to place order", nil, "Unauthorized access to this checkout")
-		case utils.ErrEmptyCart:
-			api.SendResponse(w, http.StatusBadRequest, "Failed to place order", nil, "Cannot place order with empty cart")
-		case utils.ErrInsufficientStock:
-			api.SendResponse(w, http.StatusBadRequest, "Failed to place order", nil, "Insufficient stock for one or more items")
-		case utils.ErrInvalidAddress:
-			api.SendResponse(w, http.StatusBadRequest, "Failed to place order", nil, "Invalid or missing delivery address")
-		case utils.ErrOrderAlreadyPlaced:
-			api.SendResponse(w, http.StatusConflict, "Failed to place order", nil, "Order has already been placed")
-		default:
-			api.SendResponse(w, http.StatusInternalServerError, "Failed to place order", nil, "An unexpected error occurred")
-		}
-		return
-	}
-
-	api.SendResponse(w, http.StatusCreated, "Order placed successfully", order, "")
 }
 
 func (h *CheckoutHandler) RemoveAppliedCoupon(w http.ResponseWriter, r *http.Request) {

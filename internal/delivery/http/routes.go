@@ -188,30 +188,26 @@ func NewRouter(userHandler *handlers.UserHandler,
 	r.HandleFunc("/user/cart/items/{itemId}", chainMiddleware(jwtAuth, userAuth)(cartHandler.UpdateCartItemQuantity)).Methods("PATCH")
 	r.HandleFunc("/user/cart/items/{itemId}", chainMiddleware(jwtAuth, userAuth)(cartHandler.DeleteCartItem)).Methods("DELETE")
 
-	// apply coupon : remove this code later
-	r.HandleFunc("/user/cart/apply-coupon", chainMiddleware(jwtAuth, userAuth)(couponHandler.ApplyCoupon)).Methods("POST")
-
 	// User routes : Checkout
 	r.HandleFunc("/user/checkout", chainMiddleware(jwtAuth, userAuth)(checkoutHandler.CreateCheckout)).Methods("POST")
 	// apply coupon
 	r.HandleFunc("/user/checkout/{checkout_id}/apply-coupon", chainMiddleware(jwtAuth, userAuth)(checkoutHandler.ApplyCoupon)).Methods("POST")
 	// remove coupon
 	r.HandleFunc("/user/checkout/{checkout_id}/apply-coupon", chainMiddleware(jwtAuth, userAuth)(checkoutHandler.RemoveAppliedCoupon)).Methods("DELETE")
+	// add shipping address to checkout
 	r.HandleFunc("/user/checkout/{checkout_id}/address", chainMiddleware(jwtAuth, userAuth)(checkoutHandler.UpdateCheckoutAddress)).Methods("PATCH")
+	// get checkout summary
 	r.HandleFunc("/user/checkout/{checkout_id}/summary", chainMiddleware(jwtAuth, userAuth)(checkoutHandler.GetCheckoutSummary)).Methods("GET")
-	// r.HandleFunc("/user/checkout/{checkout_id}/place-order", chainMiddleware(jwtAuth, userAuth)(checkoutHandler.PlaceOrder)).Methods("POST")
 
 	// User routes : Order management
 	// place order using razorpay
 	r.HandleFunc("/user/checkout/{checkout_id}/place-order/razorpay", chainMiddleware(jwtAuth, userAuth)(orderHandler.PlaceOrderRazorpay)).Methods("POST")
 	// place order using cod
 	r.HandleFunc("/user/checkout/{checkout_id}/place-order/cod", chainMiddleware(jwtAuth, userAuth)(orderHandler.PlaceOrderCOD)).Methods("POST")
-
+	// Get order details by order id
 	r.HandleFunc("/user/orders/{order_id}", chainMiddleware(jwtAuth, userAuth)(orderHandler.GetOrderConfirmation)).Methods("GET")
+	// Get order history
 	r.HandleFunc("/user/orders", chainMiddleware(jwtAuth, userAuth)(orderHandler.GetUserOrders)).Methods("GET")
-
-	// order cancellation
-	r.HandleFunc("/user/orders/{orderId}/cancel", chainMiddleware(jwtAuth, userAuth)(orderHandler.UserInitiateCancellation)).Methods("POST")
 
 	// order return
 	r.HandleFunc("/user/orders/{orderId}/return", chainMiddleware(jwtAuth, userAuth)(returnHandler.InitiateReturn)).Methods("POST")
@@ -228,6 +224,10 @@ func NewRouter(userHandler *handlers.UserHandler,
 	// order return : admin refund complete
 	r.HandleFunc("/admin/returns/{returnId}/refund", chainMiddleware(jwtAuth, adminAuth)(returnHandler.CompleteRefund)).Methods("PATCH")
 
+	// Order cancellation
+	// user initiate order cancellation
+	r.HandleFunc("/user/orders/{orderId}/cancel", chainMiddleware(jwtAuth, userAuth)(orderHandler.CancelOrder)).Methods("POST")
+
 	// order invoice
 	r.HandleFunc("/user/orders/{orderId}/invoice", chainMiddleware(jwtAuth, userAuth)(orderHandler.GetOrderInvoice)).Methods("GET")
 
@@ -240,6 +240,7 @@ func NewRouter(userHandler *handlers.UserHandler,
 	r.HandleFunc("/products/{productId}", productHandler.GetPublicProductByID).Methods("GET")
 	r.HandleFunc("/coupons", couponHandler.GetAllCoupons).Methods("GET")
 
+	// razorpay gateway: front end api end points
 	r.HandleFunc("/home/payment", paymentHandler.RenderPaymentPage).Methods("GET")
 	r.HandleFunc("/home/razorpay-payment", paymentHandler.ProcessRazorpayPayment).Methods("POST")
 	r.HandleFunc("/payment-failure", paymentHandler.RenderPaymentFailurePage).Methods("GET")
