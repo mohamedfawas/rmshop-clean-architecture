@@ -381,6 +381,9 @@ func (r *orderRepository) UpdateOrderRazorpayID(ctx context.Context, orderID int
         WHERE order_id = $2
     `
 	_, err := r.db.ExecContext(ctx, query, razorpayOrderID, orderID)
+	if err != nil {
+		log.Printf("failed to update razorpay_order_id in payments table : %v", err)
+	}
 	return err
 }
 

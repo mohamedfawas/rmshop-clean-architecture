@@ -44,8 +44,9 @@
 <body>
     <div class="container">
         <h1>Payment Failed</h1>
-        <p>We're sorry, but your payment could not be processed. Please try again.</p>
-        <button class="retry-button" onclick="retryPayment()">Retry Payment</button>
+        <p>We're sorry, but your payment for Order ID: {{.OrderID}} could not be processed.</p>
+        <p>Error: {{.Error}}</p>
+        <a href="/home/payment?order_id={{.OrderID}}" class="btn btn-primary">Retry Payment</a>
     </div>
     <script>
         function retryPayment() {

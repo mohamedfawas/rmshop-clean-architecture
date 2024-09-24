@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -11,8 +10,8 @@ import (
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/delivery/http/middleware"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
-	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/api"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/payment/razorpay"
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/utils"
 )
 
 type PaymentHandler struct {
@@ -138,7 +137,7 @@ func (h *PaymentHandler) RenderPaymentPage(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Check if payment is already completed
-	if order.OrderStatus == "paid" || order.OrderStatus == "completed" {
+	if order.OrderStatus == utils.OrderStatusConfirmed || order.OrderStatus == utils.OrderStatusCompleted {
 		data := struct {
 			OrderID string
 			Message string
@@ -185,7 +184,7 @@ func (h *PaymentHandler) ProcessRazorpayPayment(w http.ResponseWriter, r *http.R
 	var input domain.RazorpayPaymentInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		log.Printf("Error decoding request body: %v", err)
-		api.SendResponse(w, http.StatusBadRequest, "Invalid request body", nil, err.Error())
+		http.Error(w, "Invalid input", http.StatusBadRequest)
 		return
 	}
 
@@ -194,24 +193,24 @@ func (h *PaymentHandler) ProcessRazorpayPayment(w http.ResponseWriter, r *http.R
 	err := h.orderUseCase.VerifyAndUpdateRazorpayPayment(r.Context(), input)
 	if err != nil {
 		log.Printf("Error verifying and updating Razorpay payment: %v", err)
-		if err.Error() == "payment not found" {
-			api.SendResponse(w, http.StatusNotFound, "Payment verification failed", nil, "Payment not found")
-		} else {
-			api.SendResponse(w, http.StatusInternalServerError, "Payment verification failed", nil, err.Error())
-		}
-		// Redirect to payment failure page
-		http.Redirect(w, r, fmt.Sprintf("/payment-failure?order_id=%s", input.OrderID), http.StatusSeeOther)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	////////////////////////// below code was used to test payment failure case
+	// if 1 == 1 {
+	// 	http.Error(w, "mock error", http.StatusInternalServerError)
+	// 	return
+	// }
+
 	log.Printf("Payment processed successfully for order ID: %s", input.OrderID)
-	api.SendResponse(w, http.StatusOK, "Payment processed successfully", nil, "")
-	// Redirect to payment success page or order confirmation page
-	http.Redirect(w, r, fmt.Sprintf("/payment-success?order_id=%s", input.OrderID), http.StatusSeeOther)
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 }
 
 func (h *PaymentHandler) RenderPaymentFailurePage(w http.ResponseWriter, r *http.Request) {
 	orderID := r.URL.Query().Get("order_id")
+	errorMsg := r.URL.Query().Get("error")
 	if orderID == "" {
 		http.Error(w, "Order ID is required", http.StatusBadRequest)
 		return
@@ -219,8 +218,10 @@ func (h *PaymentHandler) RenderPaymentFailurePage(w http.ResponseWriter, r *http
 
 	data := struct {
 		OrderID string
+		Error   string
 	}{
 		OrderID: orderID,
+		Error:   errorMsg,
 	}
 
 	err := h.templates.ExecuteTemplate(w, "payment_failure.html", data)
@@ -231,19 +232,39 @@ func (h *PaymentHandler) RenderPaymentFailurePage(w http.ResponseWriter, r *http
 }
 
 func (h *PaymentHandler) RenderPaymentSuccessPage(w http.ResponseWriter, r *http.Request) {
-	orderID := r.URL.Query().Get("order_id")
-	if orderID == "" {
-		http.Error(w, "Order ID is required", http.StatusBadRequest)
+	razorpayOrderID := r.URL.Query().Get("order_id")
+	if razorpayOrderID == "" {
+		http.Error(w, "Razorpay Order ID is required", http.StatusBadRequest)
+		return
+	}
+
+	// First, get the payment details using the Razorpay order ID
+	payment, err := h.orderUseCase.GetPaymentByRazorpayOrderID(r.Context(), razorpayOrderID)
+	if err != nil {
+		log.Printf("Error retrieving payment: %v", err)
+		http.Error(w, "Failed to retrieve payment details", http.StatusInternalServerError)
+		return
+	}
+
+	// Now use the order ID from the payment to get the order details
+	order, err := h.orderUseCase.GetOrderByID(r.Context(), 0, payment.OrderID) // 0 for userID as it's not required here
+	if err != nil {
+		log.Printf("Error retrieving order: %v", err)
+		http.Error(w, "Failed to retrieve order details", http.StatusInternalServerError)
 		return
 	}
 
 	data := struct {
-		OrderID string
+		OrderID         string
+		Amount          float64
+		RazorpayOrderID string
 	}{
-		OrderID: orderID,
+		OrderID:         strconv.FormatInt(order.ID, 10),
+		Amount:          order.FinalAmount,
+		RazorpayOrderID: razorpayOrderID,
 	}
 
-	err := h.templates.ExecuteTemplate(w, "payment_success.html", data)
+	err = h.templates.ExecuteTemplate(w, "payment_success.html", data)
 	if err != nil {
 		log.Printf("Error executing template: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)

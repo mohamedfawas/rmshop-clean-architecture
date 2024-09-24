@@ -44,34 +44,34 @@ var options = {
                     razorpay_signature: response.razorpay_signature
                 }),
             })
-            .then(response => response.json())
-            .then(data => {
-                if(data.status === 200) {
-                    alert('Payment successful');
-                    // Redirect or update UI as needed
-                } else {
-                    alert('Payment failed: ' + data.error);
+            .then(response => {
+                if (response.ok) {
+                    return response.json();
                 }
+                throw new Error('Network response was not ok.');
+            })
+            .then(data => {
+                window.location.href = '/payment-success?order_id={{.RazorpayOrderID}}';
             })
             .catch((error) => {
                 console.error('Error:', error);
-                alert('Payment failed');
+                window.location.href = '/payment-failure?order_id={{.OrderID}}&error=' + encodeURIComponent(error.message);
             });
-    },
-    "prefill": {
-        "name": "Customer Name",
-        "email": "customer@example.com",
-        "contact": "9999999999"
-    },
-    "theme": {
-        "color": "#3399cc"
+        },
+        "prefill": {
+            "name": "Customer Name",
+            "email": "customer@example.com",
+            "contact": "9999999999"
+        },
+        "theme": {
+            "color": "#3399cc"
+        }
+    };
+    var rzp1 = new Razorpay(options);
+    document.getElementById('rzp-button1').onclick = function(e){
+        rzp1.open();
+        e.preventDefault();
     }
-};
-var rzp1 = new Razorpay(options);
-document.getElementById('rzp-button1').onclick = function(e){
-    rzp1.open();
-    e.preventDefault();
-}
-</script>
+    </script>
 </body>
 </html>

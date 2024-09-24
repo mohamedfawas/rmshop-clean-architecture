@@ -441,7 +441,7 @@ func (u *orderUseCase) PlaceOrderCOD(ctx context.Context, userID, checkoutID int
 	}
 
 	// Check if the checkout is in a valid state to place an order
-	if checkout.Status != "pending" {
+	if checkout.Status != utils.CheckoutStatusPending {
 		return nil, utils.ErrOrderAlreadyPlaced
 	}
 
@@ -482,8 +482,8 @@ func (u *orderUseCase) PlaceOrderCOD(ctx context.Context, userID, checkoutID int
 		TotalAmount:       checkout.FinalAmount,
 		DiscountAmount:    checkout.DiscountAmount,
 		FinalAmount:       checkout.FinalAmount,
-		OrderStatus:       "pending",
-		DeliveryStatus:    "processing",
+		OrderStatus:       utils.OrderStatusPending,
+		DeliveryStatus:    utils.DeliveryStatusPending,
 		ShippingAddressID: checkout.ShippingAddressID,
 		CouponApplied:     checkout.CouponApplied,
 		CreatedAt:         time.Now().UTC(),
@@ -501,8 +501,8 @@ func (u *orderUseCase) PlaceOrderCOD(ctx context.Context, userID, checkoutID int
 	payment := &domain.Payment{
 		OrderID:       order.ID,
 		Amount:        order.FinalAmount,
-		PaymentMethod: "cod",
-		Status:        "pending",
+		PaymentMethod: utils.PaymentMethodCOD,
+		Status:        utils.PaymentStatusPending,
 		CreatedAt:     time.Now().UTC(),
 		UpdatedAt:     time.Now().UTC(),
 	}
@@ -532,7 +532,7 @@ func (u *orderUseCase) PlaceOrderCOD(ctx context.Context, userID, checkoutID int
 	}
 
 	// Update checkout status
-	checkout.Status = "completed"
+	checkout.Status = utils.CheckoutStatusCompleted
 	err = u.checkoutRepo.UpdateCheckoutStatus(ctx, tx, checkout)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update checkout status: %w", err)
@@ -773,17 +773,20 @@ func (u *orderUseCase) GetRazorpayKeyID() string {
 }
 
 func (u *orderUseCase) GetPaymentByRazorpayOrderID(ctx context.Context, razorpayOrderID string) (*domain.Payment, error) {
+	log.Printf("razorpay order id used to get payment details : %v", razorpayOrderID)
 	payment, err := u.paymentRepo.GetByRazorpayOrderID(ctx, razorpayOrderID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, utils.ErrPaymentNotFound
 		}
+		log.Printf("error while getting payment using razorpay order id : %v", err)
 		return nil, err
 	}
 	return payment, nil
 }
 
 func (u *orderUseCase) VerifyAndUpdateRazorpayPayment(ctx context.Context, input domain.RazorpayPaymentInput) error {
+
 	// Verify the payment signature
 	attributes := map[string]interface{}{
 		"razorpay_order_id":   input.OrderID,
@@ -803,7 +806,7 @@ func (u *orderUseCase) VerifyAndUpdateRazorpayPayment(ctx context.Context, input
 	}
 
 	// Update the payment status
-	payment.Status = "paid"
+	payment.Status = utils.PaymentStatusPaid
 	payment.RazorpayPaymentID = input.PaymentID
 	payment.RazorpaySignature = input.Signature
 

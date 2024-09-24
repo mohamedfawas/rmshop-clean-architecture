@@ -43,15 +43,9 @@
 <body>
     <div class="container">
         <h1>Payment Successful!</h1>
-        <p>Thank you for your purchase. Your payment has been processed successfully.</p>
-        <div class="order-info">
-            <p>Order ID: {{.OrderID}}</p>
-        </div>
-        <p>An email confirmation has been sent to your registered email address.</p>
-        <div>
-            <a href="/user/orders/{{.OrderID}}" class="btn">View Order</a>
-            <a href="/" class="btn">Continue Shopping</a>
-        </div>
+        <p>Thank you for your purchase. Your payment of ₹{{.Amount}} for Order ID: {{.OrderID}} has been processed successfully.</p>
+        <p>Razorpay Order ID: {{.RazorpayOrderID}}</p>
+        <!-- <a href="/user/orders/{{.OrderID}}" class="btn btn-primary">View Order</a> -->
     </div>
 </body>
 </html>
