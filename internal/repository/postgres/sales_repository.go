@@ -45,6 +45,7 @@ func (r *salesRepository) GetDailySalesData(ctx context.Context, date time.Time)
 	)
 
 	if err != nil {
+		// If no rows were returned (i.e., no data for the given date), return nil with no error
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
@@ -56,6 +57,7 @@ func (r *salesRepository) GetDailySalesData(ctx context.Context, date time.Time)
 }
 
 func (r *salesRepository) GetWeeklySalesData(ctx context.Context, startDate time.Time) ([]domain.DailySales, error) {
+	// Calculate the end date, which is 6 days after the start date (making it a 7-day week, inclusive)
 	endDate := startDate.AddDate(0, 0, 6) // 7 days including start date
 	query := `
         SELECT 
@@ -75,13 +77,17 @@ func (r *salesRepository) GetWeeklySalesData(ctx context.Context, startDate time
 
 	rows, err := r.db.QueryContext(ctx, query, startDate, endDate)
 	if err != nil {
+		log.Printf("error while getting weekly sales data : %v", err)
 		return nil, err
 	}
 	defer rows.Close()
 
 	var salesData []domain.DailySales
+	// Iterate through the result set row by row
 	for rows.Next() {
+		// Declare a variable to hold each row's data (each day’s sales)
 		var sale domain.DailySales
+		// Scan the current row into the 'sale' variable, mapping columns to fields
 		err := rows.Scan(
 			&sale.Date,
 			&sale.OrderCount,
@@ -89,12 +95,15 @@ func (r *salesRepository) GetWeeklySalesData(ctx context.Context, startDate time
 			&sale.CouponOrderCount,
 		)
 		if err != nil {
+			log.Printf("error while getting records of daily sales data : %v", err)
 			return nil, err
 		}
 		salesData = append(salesData, sale)
 	}
 
+	// Check if there were any errors during the iteration over the rows
 	if err = rows.Err(); err != nil {
+		log.Printf("error while iterating over rows : %v", err)
 		return nil, err
 	}
 

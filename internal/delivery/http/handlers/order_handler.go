@@ -460,3 +460,77 @@ func (h *OrderHandler) AdminApproveCancellation(w http.ResponseWriter, r *http.R
 
 	api.SendResponse(w, http.StatusOK, "Order cancellation approved successfully", result, "")
 }
+
+func (h *OrderHandler) AdminCancelOrder(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	orderID, err := strconv.ParseInt(vars["orderId"], 10, 64)
+	if err != nil {
+		api.SendResponse(w, http.StatusBadRequest, "Failed to cancel order", nil, "Invalid order ID")
+		return
+	}
+
+	result, err := h.orderUseCase.AdminCancelOrder(r.Context(), orderID)
+	if err != nil {
+		switch err {
+		case utils.ErrOrderNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Failed to cancel order", nil, "Order not found")
+		case utils.ErrOrderAlreadyCancelled:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to cancel order", nil, "Order is already cancelled")
+		case utils.ErrOrderNotCancellable:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to cancel order", nil, "Order cannot be cancelled in its current state")
+		default:
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to cancel order", nil, "An unexpected error occurred")
+		}
+		return
+	}
+
+	api.SendResponse(w, http.StatusOK, "Order cancelled successfully", result, "")
+}
+
+func (h *OrderHandler) GetCancellationRequests(w http.ResponseWriter, r *http.Request) {
+	params := domain.CancellationRequestParams{
+		Page:  1,
+		Limit: 10,
+	}
+
+	// Parse query parameters
+	if page, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && page > 0 {
+		params.Page = page
+	}
+
+	if limit, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && limit > 0 {
+		params.Limit = limit
+	}
+
+	params.SortBy = r.URL.Query().Get("sort")
+	params.SortOrder = r.URL.Query().Get("order")
+
+	if customerID, err := strconv.ParseInt(r.URL.Query().Get("customer_id"), 10, 64); err == nil {
+		params.CustomerID = customerID
+	}
+
+	if startDate, err := time.Parse("2006-01-02", r.URL.Query().Get("start_date")); err == nil {
+		params.StartDate = &startDate
+	}
+
+	if endDate, err := time.Parse("2006-01-02", r.URL.Query().Get("end_date")); err == nil {
+		params.EndDate = &endDate
+	}
+
+	requests, totalCount, err := h.orderUseCase.GetCancellationRequests(r.Context(), params)
+	if err != nil {
+		log.Printf("error : %v", err)
+		api.SendResponse(w, http.StatusInternalServerError, "Failed to retrieve cancellation requests", nil, "An unexpected error occurred")
+		return
+	}
+
+	response := map[string]interface{}{
+		"cancellation_requests": requests,
+		"total_count":           totalCount,
+		"page":                  params.Page,
+		"limit":                 params.Limit,
+		"total_pages":           (totalCount + int64(params.Limit) - 1) / int64(params.Limit),
+	}
+
+	api.SendResponse(w, http.StatusOK, "Cancellation requests retrieved successfully", response, "")
+}

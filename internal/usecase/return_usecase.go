@@ -179,7 +179,7 @@ func (u *returnUseCase) InitiateRefund(ctx context.Context, returnID int64) (*do
 		return nil, utils.ErrOrderCancelled
 	}
 
-	// Calculate refund amount (you might want to implement a more sophisticated calculation)
+	// Calculate refund amount
 	refundAmount := order.FinalAmount
 
 	// Get current wallet balance
@@ -193,6 +193,7 @@ func (u *returnUseCase) InitiateRefund(ctx context.Context, returnID int64) (*do
 
 	// Update return request
 	returnRequest.RefundInitiated = true
+	returnRequest.RefundCompleted = true
 	returnRequest.RefundAmount = &refundAmount
 	err = u.returnRepo.UpdateRefundDetails(ctx, returnRequest)
 	if err != nil {
@@ -243,6 +244,7 @@ func (u *returnUseCase) InitiateRefund(ctx context.Context, returnID int64) (*do
 	return refundDetails, nil
 }
 
+// Remove this code, belongs to old approach
 func (u *returnUseCase) CompleteRefund(ctx context.Context, returnID int64) (*domain.ReturnRequest, error) {
 	// Start a database transaction
 	tx, err := u.returnRepo.BeginTx(ctx)

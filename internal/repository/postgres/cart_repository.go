@@ -18,6 +18,7 @@ func NewCartRepository(db *sql.DB) *cartRepository {
 	return &cartRepository{db: db}
 }
 
+// Add cart item
 func (r *cartRepository) AddCartItem(ctx context.Context, item *domain.CartItem) error {
 	query := `
 		INSERT INTO cart_items (user_id, product_id, quantity, created_at, updated_at)
@@ -25,7 +26,12 @@ func (r *cartRepository) AddCartItem(ctx context.Context, item *domain.CartItem)
 		RETURNING id
 	`
 	now := time.Now().UTC()
-	err := r.db.QueryRowContext(ctx, query, item.UserID, item.ProductID, item.Quantity, now, now).Scan(&item.ID)
+	err := r.db.QueryRowContext(ctx, query,
+		item.UserID,
+		item.ProductID,
+		item.Quantity,
+		now,
+		now).Scan(&item.ID)
 	if err != nil {
 		log.Printf("error while adding item to cart : %v", err)
 	}
@@ -34,20 +40,6 @@ func (r *cartRepository) AddCartItem(ctx context.Context, item *domain.CartItem)
 
 // GetCartItemByProductID retrieves a cart item from the database based on the provided userID and productID.
 // It queries the `cart_items` table to find the item associated with the specified user and product.
-//
-// Parameters:
-//
-//	ctx (context.Context) : The context for managing request-scoped values, deadlines, and cancellation.
-//	userID (int64)        : The ID of the user whose cart item is being retrieved.
-//	productID (int64)     : The ID of the product for which the cart item is being retrieved.
-//
-// Returns:
-//
-//	(*domain.CartItem, error) : A pointer to the CartItem if found, or nil and an error if the item does not exist or if a database error occurs.
-//
-// Possible errors:
-//   - utils.ErrCartItemNotFound : If no cart item is found with the specified userID and productID.
-//   - Other database-related errors : If there is an error querying the database or scanning the result.
 func (r *cartRepository) GetCartItemByProductID(ctx context.Context, userID, productID int64) (*domain.CartItem, error) {
 	query := `
 		SELECT id, user_id, product_id, quantity, created_at, updated_at
@@ -56,18 +48,26 @@ func (r *cartRepository) GetCartItemByProductID(ctx context.Context, userID, pro
 	`
 	var item domain.CartItem
 	err := r.db.QueryRowContext(ctx, query, userID, productID).Scan(
-		&item.ID, &item.UserID, &item.ProductID, &item.Quantity, &item.CreatedAt, &item.UpdatedAt,
+		&item.ID,
+		&item.UserID,
+		&item.ProductID,
+		&item.Quantity,
+		&item.CreatedAt,
+		&item.UpdatedAt,
 	)
-	if err == sql.ErrNoRows {
-		return nil, utils.ErrCartItemNotFound
-	}
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, utils.ErrCartItemNotFound
+		}
 		log.Printf("eror while retrieving cart item details using user id and product id : %v", err)
 		return nil, err
 	}
+
+	// return the retrieved cart item details
 	return &item, nil
 }
 
+// Update cart item details : updates cart item quantity
 func (r *cartRepository) UpdateCartItem(ctx context.Context, item *domain.CartItem) error {
 	query := `
 		UPDATE cart_items
@@ -167,6 +167,8 @@ func (r *cartRepository) DeleteCartItem(ctx context.Context, itemID int64) error
 	return nil
 }
 
+// GetCartItemByID
+// - Retrieve Cart item details using cart item id
 func (r *cartRepository) GetCartItemByID(ctx context.Context, itemID int64) (*domain.CartItem, error) {
 	query := `
         SELECT id, user_id, product_id, quantity, created_at, updated_at
@@ -175,7 +177,12 @@ func (r *cartRepository) GetCartItemByID(ctx context.Context, itemID int64) (*do
     `
 	var item domain.CartItem
 	err := r.db.QueryRowContext(ctx, query, itemID).Scan(
-		&item.ID, &item.UserID, &item.ProductID, &item.Quantity, &item.CreatedAt, &item.UpdatedAt,
+		&item.ID,
+		&item.UserID,
+		&item.ProductID,
+		&item.Quantity,
+		&item.CreatedAt,
+		&item.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, utils.ErrCartItemNotFound

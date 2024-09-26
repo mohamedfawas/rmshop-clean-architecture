@@ -785,3 +785,88 @@ func (r *orderRepository) GetOrderItemsTx(ctx context.Context, tx *sql.Tx, order
 
 	return items, nil
 }
+
+func (r *orderRepository) GetCancellationRequests(ctx context.Context, params domain.CancellationRequestParams) ([]*domain.CancellationRequest, int64, error) {
+	baseQuery := `
+        SELECT cr.id, cr.order_id, cr.user_id, cr.created_at, cr.cancellation_status
+        FROM cancellation_requests cr
+        JOIN orders o ON cr.order_id = o.id
+        WHERE o.order_status = 'pending_cancellation'
+    `
+	countQuery := `
+        SELECT COUNT(*)
+        FROM cancellation_requests cr
+        JOIN orders o ON cr.order_id = o.id
+        WHERE o.order_status = 'pending_cancellation'
+    `
+
+	var conditions []string
+	var args []interface{}
+
+	if params.CustomerID != 0 {
+		conditions = append(conditions, "cr.user_id = $"+strconv.Itoa(len(args)+1))
+		args = append(args, params.CustomerID)
+	}
+
+	if params.StartDate != nil {
+		conditions = append(conditions, "cr.created_at >= $"+strconv.Itoa(len(args)+1))
+		args = append(args, params.StartDate)
+	}
+
+	if params.EndDate != nil {
+		conditions = append(conditions, "cr.created_at <= $"+strconv.Itoa(len(args)+1))
+		args = append(args, params.EndDate)
+	}
+
+	if len(conditions) > 0 {
+		baseQuery += " AND " + strings.Join(conditions, " AND ")
+		countQuery += " AND " + strings.Join(conditions, " AND ")
+	}
+
+	// Add sorting
+	if params.SortBy != "" {
+		baseQuery += fmt.Sprintf(" ORDER BY %s %s", params.SortBy, params.SortOrder)
+	} else {
+		baseQuery += " ORDER BY cr.created_at DESC"
+	}
+
+	// Add pagination
+	baseQuery += fmt.Sprintf(" LIMIT $%d OFFSET $%d", len(args)+1, len(args)+2)
+	args = append(args, params.Limit, (params.Page-1)*params.Limit)
+
+	// Get total count
+	var totalCount int64
+	err := r.db.QueryRowContext(ctx, countQuery, args[:len(args)-2]...).Scan(&totalCount)
+	if err != nil {
+		log.Printf("error while getting total count: %v", err)
+		return nil, 0, err
+	}
+
+	// Execute main query
+	rows, err := r.db.QueryContext(ctx, baseQuery, args...)
+	if err != nil {
+		log.Printf("error while executing main query: %v", err)
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var requests []*domain.CancellationRequest
+	for rows.Next() {
+		var req domain.CancellationRequest
+		err := rows.Scan(&req.ID, &req.OrderID, &req.UserID, &req.CreatedAt, &req.CancellationRequestStatus)
+		if err != nil {
+			log.Printf("error while iterating over rows: %v", err)
+			return nil, 0, err
+		}
+		requests = append(requests, &req)
+	}
+
+	return requests, totalCount, nil
+}
+
+func (r *orderRepository) replacePlaceholders(query string) string {
+	for i := 1; i <= strings.Count(query, "?"); i++ {
+		query = strings.Replace(query, "?", fmt.Sprintf("$%d", i), 1)
+	}
+	return query
+}

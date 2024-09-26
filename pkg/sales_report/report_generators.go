@@ -150,19 +150,24 @@ func GenerateExcelReport(data []domain.DailySales) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// GenerateWeeklyPDFReport generates a weekly sales report in PDF format.
 func GenerateWeeklyPDFReport(data domain.WeeklySalesReport) ([]byte, error) {
+	// Create a new PDF document with default settings (Portrait orientation, millimeter units, and A4 size).
 	pdf := gofpdf.New("P", "mm", "A4", "")
+	// Add a new page to the PDF
 	pdf.AddPage()
 
 	// Add title
-	pdf.SetFont("Arial", "B", 16)
-	pdf.Cell(40, 10, "Weekly Sales Report")
-	pdf.Ln(10)
+	pdf.SetFont("Arial", "B", 16)           // Set font to Arial, bold, size 16 for the title.
+	pdf.Cell(40, 10, "Weekly Sales Report") // Create a cell to hold the title text.
+	pdf.Ln(10)                              // Move to the next line after the title with a 10mm line break.
 
 	// Add date range
-	pdf.SetFont("Arial", "", 12)
-	pdf.Cell(40, 10, fmt.Sprintf("From: %s To: %s", data.StartDate.Format("2006-01-02"), data.EndDate.Format("2006-01-02")))
-	pdf.Ln(10)
+	pdf.SetFont("Arial", "", 12) // Set font to Arial, normal, size 12 for the date range.
+	pdf.Cell(40, 10, fmt.Sprintf("From: %s To: %s",
+		data.StartDate.Format("2006-01-02"),
+		data.EndDate.Format("2006-01-02")))
+	pdf.Ln(10) // Move to the next line after the date range with a 10mm line break.
 
 	// Add summary
 	pdf.SetFont("Arial", "B", 14)

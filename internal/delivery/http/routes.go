@@ -19,31 +19,28 @@ type statusRecorder struct {
 	statusCode int
 }
 
-// loggingMiddleware is a middleware function that logs incoming HTTP requests
-// and their corresponding responses using Logrus. It logs the method, URL path,
-// remote address, user agent, status code, and the time taken to process the request.
-//
-// Parameters:
-//
-//	next: The next http.Handler in the middleware chain.
-//
-// Returns:
-//
-//	http.Handler: A wrapped http.Handler that logs request and response details.
+/*
+LogginMiddleware : used to log the details of every requests
+
+Ouput example:
+INFO[2024-09-25 12:00:00] Incoming request method=GET url=/api/v1/login remote=192.168.1.100 agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4577.63 Safari/537.36"
+*/
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
+		start := time.Now() // record start time, for recording request processing
 
 		// Log the request details using Logrus
+		// WithFields : used to add structured fields (key-value pairs) to the log entry.
 		logrus.WithFields(logrus.Fields{
 			"method": r.Method,
 			"url":    r.URL.Path,
 			"remote": r.RemoteAddr,
 			"agent":  r.UserAgent(),
-		}).Info("Incoming request")
+		}).Info("Incoming request") // Info method :  used to log the message as an informational message
 
-		// Capture the response status code
+		// Capture the response and response status code
 		rec := statusRecorder{ResponseWriter: w, statusCode: http.StatusOK}
+		// pass the request and record to next handler in chain
 		next.ServeHTTP(&rec, r)
 
 		// Log the response status and duration
@@ -54,25 +51,29 @@ func loggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// chainMiddleware chains a series of middleware functions into a single middleware.
-// The returned middleware, when applied to an http.HandlerFunc, will execute each
-// middleware in the order provided, wrapping the final handler with all the middleware.
-//
-// Parameters:
-//   - middlewares: A variadic number of middleware functions. Each middleware should
-//     take an http.HandlerFunc and return an http.HandlerFunc.
-//
-// Returns:
-//   - A function that takes an http.HandlerFunc (final handler) as input and returns
-//     a new http.HandlerFunc that chains the provided middlewares around the final handler.
+// chainMiddleware is a function that takes a list of middleware functions
+// and returns a single middleware function that applies them in sequence.
 func chainMiddleware(middlewares ...func(http.HandlerFunc) http.HandlerFunc) func(http.HandlerFunc) http.HandlerFunc {
+
+	// This returned function takes the final handler (the main logic for the request)
 	return func(final http.HandlerFunc) http.HandlerFunc {
+
+		// This function is the one that actually handles the request (w, r)
 		return func(w http.ResponseWriter, r *http.Request) {
-			last := final
+
+			// Start by setting 'currentHandler' as the final handler
+			currentHandler := final
+
+			// Loop through the middlewares in reverse order
+			// (this is needed because middleware wraps the next one)
 			for i := len(middlewares) - 1; i >= 0; i-- {
-				last = middlewares[i](last)
+
+				// Wrap the current handler with the middleware
+				currentHandler = middlewares[i](currentHandler)
 			}
-			last(w, r)
+
+			// After all middlewares have wrapped the handler, call the final one
+			currentHandler(w, r)
 		}
 	}
 }
@@ -221,14 +222,18 @@ func NewRouter(userHandler *handlers.UserHandler,
 	r.HandleFunc("/admin/returns/{returnId}", chainMiddleware(jwtAuth, adminAuth)(returnHandler.UpdateReturnRequest)).Methods("PATCH")
 	// order return : admin initiate refund
 	r.HandleFunc("/admin/returns/{returnId}/refund", chainMiddleware(jwtAuth, adminAuth)(returnHandler.InitiateRefund)).Methods("POST")
-	// order return : admin refund complete
+	// order return : admin refund complete // Remove this code, belongs to old approach
 	r.HandleFunc("/admin/returns/{returnId}/refund", chainMiddleware(jwtAuth, adminAuth)(returnHandler.CompleteRefund)).Methods("PATCH")
 
 	// Order cancellation
 	// user initiate order cancellation
 	r.HandleFunc("/user/orders/{orderId}/cancel", chainMiddleware(jwtAuth, userAuth)(orderHandler.CancelOrder)).Methods("POST")
+	// Admin gets all the cancellation requests created by users
+	r.HandleFunc("/admin/orders/cancellation-requests", chainMiddleware(jwtAuth, adminAuth)(orderHandler.GetCancellationRequests)).Methods("GET")
 	// Admin approve order cancellation
 	r.HandleFunc("/admin/orders/{orderId}/cancellation", chainMiddleware(jwtAuth, adminAuth)(orderHandler.AdminApproveCancellation)).Methods("PATCH")
+	// Admin initiate order cancellation
+	r.HandleFunc("/admin/orders/{orderId}/cancel", chainMiddleware(jwtAuth, adminAuth)(orderHandler.AdminCancelOrder)).Methods("POST")
 
 	// order invoice
 	r.HandleFunc("/user/orders/{orderId}/invoice", chainMiddleware(jwtAuth, userAuth)(orderHandler.GetOrderInvoice)).Methods("GET")

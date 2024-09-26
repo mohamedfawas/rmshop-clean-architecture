@@ -95,10 +95,6 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 
 	paymentRepo := postgres.NewPaymentRepository(db)
 
-	orderUseCase := usecase.NewOrderUseCase(orderRepo, checkoutRepo, productRepo, cartRepo, walletRepo, paymentRepo, cfg.Razorpay.KeySecret, cfg.Razorpay.KeySecret)
-	orderHandler := handlers.NewOrderHandler(orderUseCase)
-	log.Println("Order components initialized")
-
 	inventoryRepo := postgres.NewInventoryRepository(db)
 	inventoryUseCase := usecase.NewInventoryUseCase(inventoryRepo, productRepo)
 	inventoryHandler := handlers.NewInventoryHandler(inventoryUseCase)
@@ -118,6 +114,10 @@ func NewServer(db *sql.DB, emailSender *email.Sender, cloudinaryService *cloudin
 	analyticsRepo := postgres.NewAnalyticsRepository(db)
 	analyticsUseCase := usecase.NewAnalyticsUseCase(analyticsRepo)
 	analyticsHandler := handlers.NewAnalyticsHandler(analyticsUseCase)
+
+	orderUseCase := usecase.NewOrderUseCase(orderRepo, checkoutRepo, productRepo, cartRepo, walletRepo, paymentRepo, cfg.Razorpay.KeySecret, cfg.Razorpay.KeySecret)
+	orderHandler := handlers.NewOrderHandler(orderUseCase)
+	log.Println("Order components initialized")
 
 	templates := setupTemplates()
 	paymentHandler := handlers.NewPaymentHandler(orderUseCase, cfg.Razorpay.KeyID, cfg.Razorpay.KeySecret, templates)

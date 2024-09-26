@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"log"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/repository"
@@ -29,6 +30,9 @@ func NewCartUseCase(cartRepo repository.CartRepository, productRepo repository.P
 	}
 }
 
+// AddToCart :
+// - If a new product is added to cart, new entry is added in cart_items table
+// - If an existing product in cart is added again, then quantity of the respective product is updated
 func (u *cartUseCase) AddToCart(ctx context.Context, userID, productID int64, quantity int) (*domain.CartItem, error) {
 	// Validate quantity
 	if quantity <= 0 {
@@ -39,13 +43,14 @@ func (u *cartUseCase) AddToCart(ctx context.Context, userID, productID int64, qu
 		return nil, utils.ErrExceedsMaxQuantity
 	}
 
-	// Check if product exists and is active
+	// Check if product exists and is active (not soft deleted)
 	product, err := u.productRepo.GetByID(ctx, productID)
 	if err != nil {
+		if err == utils.ErrProductNotFound {
+			return nil, utils.ErrProductNotFound
+		}
+		log.Printf("error while getting product by ID : %v", err)
 		return nil, err
-	}
-	if product == nil || product.IsDeleted {
-		return nil, utils.ErrProductNotFound
 	}
 
 	// Check stock availability
@@ -60,16 +65,19 @@ func (u *cartUseCase) AddToCart(ctx context.Context, userID, productID int64, qu
 	}
 
 	if existingItem != nil {
-		// Check if quantity after updation exceeds maximum limit
 		quantityAfterUpdation := existingItem.Quantity + quantity
+		// Check if quantity after updation exceeds maximum limit
 		if quantityAfterUpdation > utils.MaxCartItemQuantity {
 			return nil, utils.ErrExceedsMaxQuantity
 		}
 
 		// Update quantity of existing item
 		existingItem.Quantity += quantity
+
+		// Update cart item details
 		err = u.cartRepo.UpdateCartItem(ctx, existingItem)
 		if err != nil {
+			log.Printf("error while updating cart item quantity for existing cart item : %v", err)
 			return nil, err
 		}
 		return existingItem, nil
@@ -82,8 +90,10 @@ func (u *cartUseCase) AddToCart(ctx context.Context, userID, productID int64, qu
 		Quantity:  quantity,
 	}
 
+	// Create the cart item entry in cart_items table
 	err = u.cartRepo.AddCartItem(ctx, newItem)
 	if err != nil {
+		log.Printf("error while adding entry in cart_items table : %v", err)
 		return nil, err
 	}
 
@@ -169,6 +179,7 @@ func (u *cartUseCase) DeleteCartItem(ctx context.Context, userID, itemID int64) 
 		if err == utils.ErrCartItemNotFound {
 			return utils.ErrCartItemNotFound
 		}
+		log.Printf("error while retrieving cart item using item id : %v", err)
 		return err
 	}
 
@@ -180,6 +191,9 @@ func (u *cartUseCase) DeleteCartItem(ctx context.Context, userID, itemID int64) 
 	// Delete the item
 	err = u.cartRepo.DeleteCartItem(ctx, itemID)
 	if err != nil {
+		if err == utils.ErrCartItemNotFound {
+			return utils.ErrCartItemNotFound
+		}
 		return err
 	}
 

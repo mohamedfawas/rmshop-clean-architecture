@@ -36,6 +36,8 @@ type OrderUseCase interface {
 	GetPaymentByRazorpayOrderID(ctx context.Context, razorpayOrderID string) (*domain.Payment, error)
 	CancelOrder(ctx context.Context, userID, orderID int64) (*domain.OrderCancellationResult, error)
 	ApproveCancellation(ctx context.Context, orderID int64) (*domain.OrderStatusUpdateResult, error)
+	AdminCancelOrder(ctx context.Context, orderID int64) (*domain.AdminOrderCancellationResult, error)
+	GetCancellationRequests(ctx context.Context, params domain.CancellationRequestParams) ([]*domain.CancellationRequest, int64, error)
 }
 
 type orderUseCase struct {
@@ -60,6 +62,7 @@ func NewOrderUseCase(orderRepo repository.OrderRepository,
 		checkoutRepo:    checkoutRepo,
 		productRepo:     productRepo,
 		cartRepo:        cartRepo,
+		walletRepo:      walletRepo,
 		paymentRepo:     paymentRepo,
 		razorpayService: razorpay.NewService(razorpayKeyID, razorpaySecret),
 	}
@@ -757,6 +760,7 @@ func (u *orderUseCase) CancelOrder(ctx context.Context, userID, orderID int64) (
 }
 
 func (u *orderUseCase) ApproveCancellation(ctx context.Context, orderID int64) (*domain.OrderStatusUpdateResult, error) {
+
 	// Start a database transaction
 	tx, err := u.orderRepo.BeginTx(ctx)
 	if err != nil {
@@ -824,6 +828,10 @@ func (u *orderUseCase) ApproveCancellation(ctx context.Context, orderID int64) (
 }
 
 func (u *orderUseCase) processRefund(ctx context.Context, tx *sql.Tx, order *domain.Order, payment *domain.Payment) error {
+	if u.walletRepo == nil {
+		return fmt.Errorf("wallet repository is nil")
+	}
+
 	// Get the user's wallet
 	wallet, err := u.walletRepo.GetWalletTx(ctx, tx, order.UserID)
 	if err != nil {
@@ -868,6 +876,10 @@ func (u *orderUseCase) processRefund(ctx context.Context, tx *sql.Tx, order *dom
 		return fmt.Errorf("failed to update wallet balance: %w", err)
 	}
 
+	if u.paymentRepo == nil {
+		return fmt.Errorf("payment repository is nil")
+	}
+
 	// Update payment status
 	err = u.paymentRepo.UpdateStatusTx(ctx, tx, payment.ID, "refunded")
 	if err != nil {
@@ -893,4 +905,108 @@ func (u *orderUseCase) updateInventory(ctx context.Context, tx *sql.Tx, orderID 
 	}
 
 	return nil
+}
+
+func (u *orderUseCase) AdminCancelOrder(ctx context.Context, orderID int64) (*domain.AdminOrderCancellationResult, error) {
+	// Start a database transaction
+	tx, err := u.orderRepo.BeginTx(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Get the order
+	order, err := u.orderRepo.GetByIDTx(ctx, tx, orderID)
+	if err != nil {
+		if err == utils.ErrOrderNotFound {
+			return nil, utils.ErrOrderNotFound
+		}
+		return nil, fmt.Errorf("failed to get order: %w", err)
+	}
+
+	// Check if the order is cancellable
+	if order.OrderStatus == "cancelled" {
+		return nil, utils.ErrOrderAlreadyCancelled
+	}
+	if !isOrderCancellable(order.OrderStatus) {
+		return nil, utils.ErrOrderNotCancellable
+	}
+
+	// Update order status to cancelled
+	err = u.orderRepo.UpdateOrderStatusTx(ctx, tx, orderID, "cancelled")
+	if err != nil {
+		return nil, fmt.Errorf("failed to update order status: %w", err)
+	}
+
+	result := &domain.AdminOrderCancellationResult{
+		OrderID:             orderID,
+		OrderStatus:         "cancelled",
+		RequiresAdminReview: false,
+		RefundInitiated:     false,
+	}
+
+	// Check if refund is needed
+	payment, err := u.paymentRepo.GetByOrderIDTx(ctx, tx, orderID)
+	if err != nil {
+		if err != utils.ErrPaymentNotFound {
+			return nil, fmt.Errorf("failed to get payment: %w", err)
+		}
+		// If payment not found, we assume no refund is needed
+		payment = nil
+	}
+
+	if payment != nil && payment.Status == "paid" && payment.PaymentMethod == "razorpay" {
+		// Process refund
+		err = u.processRefund(ctx, tx, order, payment)
+		if err != nil {
+			return nil, fmt.Errorf("failed to process refund: %w", err)
+		}
+		result.RefundInitiated = true
+	}
+
+	// Update inventory (add back the quantities)
+	err = u.updateInventory(ctx, tx, orderID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update inventory: %w", err)
+	}
+
+	// Commit the transaction
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return result, nil
+}
+
+func isOrderCancellable(status string) bool {
+	cancellableStatuses := []string{"pending_payment", "confirmed", "processing"}
+	for _, s := range cancellableStatuses {
+		if status == s {
+			return true
+		}
+	}
+	return false
+}
+
+func (u *orderUseCase) GetCancellationRequests(ctx context.Context, params domain.CancellationRequestParams) ([]*domain.CancellationRequest, int64, error) {
+	// Validate and set default values
+	if params.Page < 1 {
+		params.Page = 1
+	}
+	if params.Limit < 1 {
+		params.Limit = 10
+	} else if params.Limit > 100 {
+		params.Limit = 100
+	}
+
+	validSortFields := map[string]bool{"created_at": true, "order_id": true}
+	if params.SortBy != "" && !validSortFields[params.SortBy] {
+		params.SortBy = "created_at"
+	}
+
+	if params.SortOrder != "asc" && params.SortOrder != "desc" {
+		params.SortOrder = "desc"
+	}
+
+	return u.orderRepo.GetCancellationRequests(ctx, params)
 }

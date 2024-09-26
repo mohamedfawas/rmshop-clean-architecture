@@ -161,6 +161,7 @@ type OrderRepository interface {
 	CreateCancellationRequest(ctx context.Context, orderID, userID int64) error
 	GetByIDTx(ctx context.Context, tx *sql.Tx, id int64) (*domain.Order, error)
 	GetOrderItemsTx(ctx context.Context, tx *sql.Tx, orderID int64) ([]*domain.OrderItem, error)
+	GetCancellationRequests(ctx context.Context, params domain.CancellationRequestParams) ([]*domain.CancellationRequest, int64, error)
 }
 
 type InventoryRepository interface {

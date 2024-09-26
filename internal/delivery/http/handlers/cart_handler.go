@@ -29,6 +29,7 @@ func (h *CartHandler) AddToCart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// extract the request body
 	var input domain.AddToCartInput
 	err := json.NewDecoder(r.Body).Decode(&input)
 	if err != nil {
@@ -36,6 +37,7 @@ func (h *CartHandler) AddToCart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Call the AddToCart Method from usecase layer
 	cartItem, err := h.cartUseCase.AddToCart(r.Context(), userID, input.ProductID, input.Quantity)
 	if err != nil {
 		switch err {
@@ -133,13 +135,15 @@ func (h *CartHandler) DeleteCartItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Extract the item id from the URL
 	vars := mux.Vars(r)
-	itemID, err := strconv.ParseInt(vars["itemId"], 10, 64)
+	itemID, err := strconv.ParseInt(vars["itemId"], 10, 64) // base 10 decimal number, 64 is the bit size
 	if err != nil {
 		api.SendResponse(w, http.StatusBadRequest, "Failed to delete item from cart", nil, "Invalid item ID")
 		return
 	}
 
+	// DeleteCartIem method from usecase layer
 	err = h.cartUseCase.DeleteCartItem(r.Context(), userID, itemID)
 	if err != nil {
 		switch err {

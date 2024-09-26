@@ -183,6 +183,7 @@ func (h *ReturnHandler) InitiateRefund(w http.ResponseWriter, r *http.Request) {
 	api.SendResponse(w, http.StatusOK, "Refund initiated successfully", refundDetails, "")
 }
 
+// Remove this code, belongs to old approach
 func (h *ReturnHandler) CompleteRefund(w http.ResponseWriter, r *http.Request) {
 	// Get return ID from URL
 	vars := mux.Vars(r)

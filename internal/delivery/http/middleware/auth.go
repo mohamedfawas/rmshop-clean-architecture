@@ -18,47 +18,6 @@ const (
 	TokenKey    contextKey = "token"
 )
 
-// JWTAuthMiddleware is an HTTP middleware that provides JWT-based authentication.
-// It checks the Authorization header for a Bearer token and validates the token.
-// If the token is valid, the user's ID, role and token are added to the request context,
-// allowing subsequent handlers to access this information.
-// If the token is missing, malformed, or invalid, the middleware responds with an
-// HTTP 401 Unauthorized status and an appropriate error message.
-//
-// Parameters:
-//
-//	next - The next http.HandlerFunc in the middleware chain.
-//
-// Returns:
-//
-//	http.HandlerFunc - A function that processes the request with JWT authentication.
-// func JWTAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
-// 	return func(w http.ResponseWriter, r *http.Request) {
-// 		authHeader := r.Header.Get("Authorization")
-// 		if authHeader == "" {
-// 			api.SendResponse(w, http.StatusUnauthorized, "Authentication failed", nil, "Missing authorization header")
-// 			return
-// 		}
-// 		bearerToken := strings.Split(authHeader, " ")
-// 		if len(bearerToken) != 2 || !strings.EqualFold(bearerToken[0], "Bearer") {
-// 			api.SendResponse(w, http.StatusUnauthorized, "Authentication failed", nil, "Invalid authorization header format")
-// 			return
-// 		}
-
-// 		token := bearerToken[1]
-// 		userID, role, err := auth.ValidateTokenWithRole(token)
-// 		if err != nil {
-// 			api.SendResponse(w, http.StatusUnauthorized, "Authentication failed", nil, "Invalid or expired token")
-// 			return
-// 		}
-
-// 		ctx := context.WithValue(r.Context(), UserIDKey, userID)
-// 		ctx = context.WithValue(ctx, UserRoleKey, role)
-// 		ctx = context.WithValue(ctx, TokenKey, token)
-// 		next.ServeHTTP(w, r.WithContext(ctx))
-// 	}
-// }
-
 func UserAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		role, ok := r.Context().Value(UserRoleKey).(string)

@@ -38,6 +38,13 @@ type OrderCancellationResult struct {
 	RefundInitiated     bool
 }
 
+type AdminOrderCancellationResult struct {
+	OrderID             int64
+	OrderStatus         string
+	RequiresAdminReview bool
+	RefundInitiated     bool
+}
+
 type CancellationRequest struct {
 	ID                        int64
 	OrderID                   int64
@@ -90,4 +97,14 @@ type RazorpayPaymentInput struct {
 	OrderID   string `json:"razorpay_order_id"`
 	PaymentID string `json:"razorpay_payment_id"`
 	Signature string `json:"razorpay_signature"`
+}
+
+type CancellationRequestParams struct {
+	Page       int
+	Limit      int
+	SortBy     string
+	SortOrder  string
+	CustomerID int64
+	StartDate  *time.Time
+	EndDate    *time.Time
 }
