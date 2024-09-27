@@ -61,20 +61,11 @@ func (r *couponRepository) Create(ctx context.Context, coupon *domain.Coupon) er
 	return nil
 }
 
-// GetByCode retrieves a coupon from the database based on the provided coupon code, if it is active.
-// It returns the coupon details or an error if the coupon is not found or if a query execution error occurs.
-//
-// Parameters:
-// - ctx: context for managing request-scoped values and cancellation signals.
-// - code: the unique coupon code to search for.
-//
-// Returns:
-// - *domain.Coupon: a pointer to the Coupon object if found and active.
-// - error: an error if the coupon is not found or a database query error occurs.
-//
-// Possible errors:
-// - utils.ErrCouponNotFound: returned if no active coupon with the given code is found.
-// - error: returned if any other error occurs during the query execution.
+/*
+GetByCode :
+- Get coupon details from coupons table for the given coupon code
+- code, discount_percentage, min_order_amount, is_active and expires_at values are taken
+*/
 func (r *couponRepository) GetByCode(ctx context.Context, code string) (*domain.Coupon, error) {
 	query := `
         SELECT id, code, discount_percentage, min_order_amount, is_active, created_at, updated_at, expires_at
@@ -83,16 +74,23 @@ func (r *couponRepository) GetByCode(ctx context.Context, code string) (*domain.
     `
 	var coupon domain.Coupon
 	err := r.db.QueryRowContext(ctx, query, code).Scan(
-		&coupon.ID, &coupon.Code, &coupon.DiscountPercentage, &coupon.MinOrderAmount,
-		&coupon.IsActive, &coupon.CreatedAt, &coupon.UpdatedAt, &coupon.ExpiresAt,
+		&coupon.ID,
+		&coupon.Code,
+		&coupon.DiscountPercentage,
+		&coupon.MinOrderAmount,
+		&coupon.IsActive,
+		&coupon.CreatedAt,
+		&coupon.UpdatedAt,
+		&coupon.ExpiresAt,
 	)
-	if err == sql.ErrNoRows {
-		return nil, utils.ErrCouponNotFound
-	}
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, utils.ErrCouponNotFound
+		}
 		log.Printf("error while retrieving coupon details : %v", err)
 		return nil, err
 	}
+
 	return &coupon, nil
 }
 

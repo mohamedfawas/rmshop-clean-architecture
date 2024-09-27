@@ -24,12 +24,14 @@ func NewCheckoutHandler(checkoutUseCase usecase.CheckoutUseCase, couponUseCase u
 }
 
 func (h *CheckoutHandler) CreateCheckout(w http.ResponseWriter, r *http.Request) {
+	// Extract the userID from the context
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok {
 		api.SendResponse(w, http.StatusUnauthorized, "Failed to create checkout", nil, "User not authenticated")
 		return
 	}
 
+	// Call CreateCheckout method in use case layer
 	session, err := h.checkoutUseCase.CreateCheckout(r.Context(), userID)
 	if err != nil {
 		switch err {
@@ -70,7 +72,7 @@ func (h *CheckoutHandler) ApplyCoupon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate coupon code
+	// Ensure coupon code is provided
 	if input.CouponCode == "" {
 		api.SendResponse(w, http.StatusBadRequest, "Failed to apply coupon", nil, "Coupon code is required")
 		return

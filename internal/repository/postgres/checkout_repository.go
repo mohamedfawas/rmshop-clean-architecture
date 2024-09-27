@@ -18,6 +18,11 @@ func NewCheckoutRepository(db *sql.DB) *checkoutRepository {
 	return &checkoutRepository{db: db}
 }
 
+/*
+	CreateCheckoutSession
+
+- Create the checkout session entry (user_id, status, created_at, updated_at)
+*/
 func (r *checkoutRepository) CreateCheckoutSession(ctx context.Context, userID int64) (*domain.CheckoutSession, error) {
 	query := `
         INSERT INTO checkout_sessions (user_id, status, created_at, updated_at)
@@ -30,33 +35,61 @@ func (r *checkoutRepository) CreateCheckoutSession(ctx context.Context, userID i
 		log.Printf("error while creating checkout session entry : %v", err)
 		return nil, err
 	}
+
+	// Update session values after creating checkout sessions entry
 	session.UserID = userID
 	session.Status = "pending"
 	return &session, nil
 }
 
+/*
+	AddCheckoutItems :
+
+- Adds Checkout item values in checkout_items table, done with transaction
+*/
 func (r *checkoutRepository) AddCheckoutItems(ctx context.Context, sessionID int64, items []*domain.CheckoutItem) error {
-	tx, err := r.db.BeginTx(ctx, nil)
+	// start transaction
+	tx, err := r.db.BeginTx(ctx, nil) // nil means default behaviour will be used
 	if err != nil {
+		log.Printf("error while beginnint transaction in AddCheckoutItems method : %v", err)
 		return err
 	}
 	defer tx.Rollback()
 
+	// Define the query
 	query := `
         INSERT INTO checkout_items (session_id, product_id, quantity, price, subtotal)
         VALUES ($1, $2, $3, $4, $5)
     `
+
+	// Iterate through checkout items
 	for _, item := range items {
-		_, err := tx.ExecContext(ctx, query, sessionID, item.ProductID, item.Quantity, item.Price, item.Subtotal)
+		_, err := tx.ExecContext(ctx, query,
+			sessionID,
+			item.ProductID,
+			item.Quantity,
+			item.Price,
+			item.Subtotal)
 		if err != nil {
+			log.Printf("error while adding each checkout item entry in checkout_items table : %v", err)
 			return err
 		}
 	}
 
+	// commit the transaction
 	return tx.Commit()
 }
 
+/*
+	GetCartItems :
+
+Get the current cart of the user.
+Take id,product_id, quantity from cart items
+Take product name and product price from products table
+*/
 func (r *checkoutRepository) GetCartItems(ctx context.Context, userID int64) ([]*domain.CartItemWithProduct, error) {
+	// Inner join cart items and products table
+	// Retrieve cart items, product name, product price
 	query := `
         SELECT ci.id, ci.product_id, ci.quantity, p.name, p.price
         FROM cart_items ci
@@ -70,18 +103,24 @@ func (r *checkoutRepository) GetCartItems(ctx context.Context, userID int64) ([]
 	}
 	defer rows.Close()
 
+	// here we use pointer for memory efficiency :  creating a slice of pointers to CartItemWithProduct structs.
 	var items []*domain.CartItemWithProduct
-	for rows.Next() {
+
+	// start iterating over each row
+	for rows.Next() { // move the cursor to the next row
 		var item domain.CartItemWithProduct
+		// read the column values in the current row
 		err := rows.Scan(&item.ID, &item.ProductID, &item.Quantity, &item.ProductName, &item.ProductPrice)
 		if err != nil {
-			log.Printf("error : %v", err)
+			log.Printf("error while scanning rows of cart items and products : %v", err)
 			return nil, err
 		}
 		items = append(items, &item)
 	}
 
+	// check whether any error occured that weren't caught in the loop
 	if err = rows.Err(); err != nil {
+		log.Printf("error while iterating over cart items and products : %v", err)
 		return nil, err
 	}
 
@@ -102,6 +141,11 @@ func (r *couponRepository) IsApplied(ctx context.Context, checkoutID int64) (boo
 	return isApplied, nil
 }
 
+/*
+GetCheckoutItems :
+- Retrieves values from checkout items table
+- product_id, price, quantity and subtotal are retrieved
+*/
 func (r *checkoutRepository) GetCheckoutItems(ctx context.Context, checkoutID int64) ([]*domain.CheckoutItem, error) {
 	query := `
         SELECT id, product_id, quantity, price, subtotal
@@ -110,21 +154,25 @@ func (r *checkoutRepository) GetCheckoutItems(ctx context.Context, checkoutID in
     `
 	rows, err := r.db.QueryContext(ctx, query, checkoutID)
 	if err != nil {
+		log.Printf("error while retrieving rows from checkout_items table : %v", err)
 		return nil, err
 	}
 	defer rows.Close()
 
+	// Define the slice to store each checkout items
 	var items []*domain.CheckoutItem
 	for rows.Next() {
 		var item domain.CheckoutItem
 		err := rows.Scan(&item.ID, &item.ProductID, &item.Quantity, &item.Price, &item.Subtotal)
 		if err != nil {
+			log.Printf("error while iterating over rows of checkout items : %v", err)
 			return nil, err
 		}
 		items = append(items, &item)
 	}
 
 	if err = rows.Err(); err != nil {
+		log.Printf("error while fetching rows of checkout items : %v", err)
 		return nil, err
 	}
 
@@ -268,23 +316,35 @@ func (r *checkoutRepository) GetCheckoutWithItems(ctx context.Context, checkoutI
 	return &summary, nil
 }
 
+/*
+UpdateCheckoutDetails:
+- Update values in checkout_sessions table
+- total_amount, discount_amount, final_amount, coupon_code, coupon_applied and item_count are updated
+*/
 func (r *checkoutRepository) UpdateCheckoutDetails(ctx context.Context, checkout *domain.CheckoutSession) error {
 	query := `
         UPDATE checkout_sessions
         SET total_amount = $1, discount_amount = $2, final_amount = $3, updated_at = $4, 
-            coupon_code = $5, coupon_applied = $6
-        WHERE id = $7
+            coupon_code = $5, coupon_applied = $6, item_count = $7
+        WHERE id = $8
     `
 	result, err := r.db.ExecContext(ctx, query,
-		checkout.TotalAmount, checkout.DiscountAmount, checkout.FinalAmount, time.Now().UTC(),
-		checkout.CouponCode, checkout.CouponApplied, checkout.ID,
+		checkout.TotalAmount,
+		checkout.DiscountAmount,
+		checkout.FinalAmount,
+		time.Now().UTC(),
+		checkout.CouponCode,
+		checkout.CouponApplied,
+		checkout.ItemCount,
+		checkout.ID,
 	)
 	if err != nil {
-		log.Printf("error while updating checkout session details: %v", err)
+		log.Printf("error while updating checkout_sessions table: %v", err)
 		return err
 	}
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
+		log.Printf("error while checking rows affected in checkout_sessions table")
 		return err
 	}
 
@@ -410,6 +470,10 @@ func (r *checkoutRepository) getShippingAddressById(ctx context.Context, id int6
 	return &address, nil
 }
 
+/*
+GetCheckoutByID:
+- Get rows from checkout_sessions table
+*/
 func (r *checkoutRepository) GetCheckoutByID(ctx context.Context, checkoutID int64) (*domain.CheckoutSession, error) {
 	query := `
         SELECT id, user_id, total_amount, discount_amount, final_amount, 
@@ -422,21 +486,33 @@ func (r *checkoutRepository) GetCheckoutByID(ctx context.Context, checkoutID int
 	var checkout domain.CheckoutSession
 	var couponCode sql.NullString
 	err := r.db.QueryRowContext(ctx, query, checkoutID).Scan(
-		&checkout.ID, &checkout.UserID, &checkout.TotalAmount, &checkout.DiscountAmount,
-		&checkout.FinalAmount, &checkout.ItemCount, &checkout.CreatedAt, &checkout.UpdatedAt,
-		&checkout.Status, &couponCode, &checkout.CouponApplied, &shippingAddrID,
+		&checkout.ID,
+		&checkout.UserID,
+		&checkout.TotalAmount,
+		&checkout.DiscountAmount,
+		&checkout.FinalAmount,
+		&checkout.ItemCount,
+		&checkout.CreatedAt,
+		&checkout.UpdatedAt,
+		&checkout.Status,
+		&couponCode,
+		&checkout.CouponApplied,
+		&shippingAddrID,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, utils.ErrCheckoutNotFound
 		}
+		log.Printf("error while retrieiving rows from checkout_sessions table : %v", err)
 		return nil, err
 	}
 
+	// If not null, get the coupon code
 	if couponCode.Valid {
 		checkout.CouponCode = couponCode.String
 	}
 
+	// If not null, get the shipping address id
 	if shippingAddrID.Valid {
 		checkout.ShippingAddressID = shippingAddrID.Int64
 	}
