@@ -218,104 +218,6 @@ func (r *checkoutRepository) AddNewAddressToCheckout(ctx context.Context, checko
 	return tx.Commit()
 }
 
-func (r *checkoutRepository) GetCheckoutWithItems(ctx context.Context, checkoutID int64) (*domain.CheckoutSummary, error) {
-	query := `
-        SELECT cs.id, cs.user_id, cs.total_amount, cs.discount_amount, cs.final_amount, 
-               cs.item_count, cs.status, cs.coupon_code, cs.coupon_applied, cs.shipping_address_id,
-               ci.id, ci.product_id, p.name, ci.quantity, ci.price, ci.subtotal,
-               sa.address_line1, sa.address_line2, sa.city, sa.state, sa.pincode, sa.phone_number
-        FROM checkout_sessions cs
-        LEFT JOIN checkout_items ci ON cs.id = ci.session_id
-        LEFT JOIN products p ON ci.product_id = p.id
-        LEFT JOIN shipping_addresses sa ON cs.shipping_address_id = sa.id
-        WHERE cs.id = $1
-    `
-
-	rows, err := r.db.QueryContext(ctx, query, checkoutID)
-	if err != nil {
-		log.Printf("error while getting checkout with items : %v", err)
-		return nil, err
-	}
-	defer rows.Close()
-
-	var summary domain.CheckoutSummary
-	var items []*domain.CheckoutItemDetail
-	var address domain.UserAddress
-	addressSet := false
-
-	for rows.Next() {
-		var item domain.CheckoutItemDetail
-		var couponCode, addressLine1, addressLine2, city, state, pincode, phoneNumber sql.NullString
-		var shippingAddressID sql.NullInt64
-
-		err := rows.Scan(
-			&summary.ID, &summary.UserID, &summary.TotalAmount, &summary.DiscountAmount, &summary.FinalAmount,
-			&summary.ItemCount, &summary.Status, &couponCode, &summary.CouponApplied, &shippingAddressID,
-			&item.ID, &item.ProductID, &item.Name, &item.Quantity, &item.Price, &item.Subtotal,
-			&addressLine1, &addressLine2, &city, &state, &pincode, &phoneNumber,
-		)
-		if err != nil {
-			log.Printf("error while scanning row : %v", err)
-			return nil, err
-		}
-
-		if couponCode.Valid {
-			summary.CouponCode = couponCode.String
-		}
-
-		items = append(items, &item)
-
-		if !addressSet && shippingAddressID.Valid {
-			address = domain.UserAddress{
-				ID:           shippingAddressID.Int64,
-				AddressLine1: addressLine1.String,
-				AddressLine2: addressLine2.String,
-				City:         city.String,
-				State:        state.String,
-				PinCode:      pincode.String,
-				PhoneNumber:  phoneNumber.String,
-			}
-			addressSet = true
-		}
-	}
-
-	if err = rows.Err(); err != nil {
-		log.Printf("error after iterating rows : %v", err)
-		return nil, err
-	}
-
-	summary.Items = items
-	if addressSet {
-		summary.Address = &address
-	}
-
-	// Handle empty checkout
-	if len(items) == 0 {
-		summary.Status = "empty"
-		summary.TotalAmount = 0
-		summary.DiscountAmount = 0
-		summary.FinalAmount = 0
-		summary.ItemCount = 0
-	} else {
-		// Recalculate item count
-		var itemCount int
-		for _, item := range items {
-			itemCount += item.Quantity
-		}
-		summary.ItemCount = itemCount
-	}
-
-	// Update the checkout session with the correct item count
-	updateQuery := `UPDATE checkout_sessions SET item_count = $1 WHERE id = $2`
-	_, err = r.db.ExecContext(ctx, updateQuery, summary.ItemCount, checkoutID)
-	if err != nil {
-		log.Printf("error updating item count: %v", err)
-		return nil, err
-	}
-
-	return &summary, nil
-}
-
 /*
 UpdateCheckoutDetails:
 - Update values in checkout_sessions table
@@ -372,21 +274,47 @@ func (r *checkoutRepository) BeginTx(ctx context.Context) (*sql.Tx, error) {
 	return r.db.BeginTx(ctx, nil)
 }
 
+/*
+CreateOrGetShippingAddress:
+- Select values from user_address table and then insert those values into shipping _addresses table.
+- On conflict, update the existing values with new values.
+*/
 func (r *checkoutRepository) CreateOrGetShippingAddress(ctx context.Context, userID, addressID int64) (int64, error) {
+	// start transaction
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
+		log.Printf("error while starting transaction in CreateOrGetShippingAddress method : %v", err)
 		return 0, err
 	}
 	defer tx.Rollback()
 
 	var shippingAddressID int64
 	err = tx.QueryRowContext(ctx, `
-        INSERT INTO shipping_addresses (user_id, address_id, address_line1, address_line2, city, state, landmark, pincode, phone_number)
-        SELECT $1, ua.id, ua.address_line1, ua.address_line2, ua.city, ua.state, ua.landmark, ua.pincode, ua.phone_number
-        FROM user_address ua
-        WHERE ua.id = $2 AND ua.user_id = $1
-        ON CONFLICT (user_id, address_id) 
+        INSERT INTO shipping_addresses (user_id, 
+									address_id, 
+									address_line1, 
+									address_line2, 
+									city, 
+									state, 
+									landmark, 
+									pincode, 
+									phone_number)
+        SELECT $1, 
+				ua.id, 
+				ua.address_line1, 
+				ua.address_line2, 
+				ua.city, ua.state, 
+				ua.landmark, 
+				ua.pincode, 
+				ua.phone_number
+				FROM user_address ua
+        WHERE 
+			ua.id = $2 
+			AND ua.user_id = $1  		-- Ensure address belongs to the same user by matching user_id
+        ON CONFLICT (user_id, address_id)  -- Manage conflicts if a record with the same (user_id, address_id) already exists
         DO UPDATE SET 
+			-- On conflict, update with new values
+			-- EXCLUDED keyword provides access to the values that you were trying to insert.
             address_line1 = EXCLUDED.address_line1,
             address_line2 = EXCLUDED.address_line2,
             city = EXCLUDED.city,
@@ -398,10 +326,12 @@ func (r *checkoutRepository) CreateOrGetShippingAddress(ctx context.Context, use
         RETURNING id
     `, userID, addressID).Scan(&shippingAddressID)
 	if err != nil {
+		log.Printf("error while adding values to shipping_addresses table : %v", err)
 		return 0, err
 	}
 
 	if err = tx.Commit(); err != nil {
+		log.Printf("error while commiting transaction in Update shipping address process : %v", err)
 		return 0, err
 	}
 
@@ -451,23 +381,6 @@ func (r *checkoutRepository) GetCheckoutWithAddressByID(ctx context.Context, che
 	}
 
 	return &checkout, nil
-}
-
-func (r *checkoutRepository) getShippingAddressById(ctx context.Context, id int64) (*domain.ShippingAddress, error) {
-	query := `
-        SELECT id, address_line1, address_line2, city, state, landmark, pincode, phone_number
-        FROM shipping_addresses
-        WHERE id = $1
-    `
-	var address domain.ShippingAddress
-	err := r.db.QueryRowContext(ctx, query, id).Scan(
-		&address.ID, &address.AddressLine1, &address.AddressLine2, &address.City,
-		&address.State, &address.Landmark, &address.PinCode, &address.PhoneNumber,
-	)
-	if err != nil {
-		return nil, err
-	}
-	return &address, nil
 }
 
 /*
@@ -520,6 +433,10 @@ func (r *checkoutRepository) GetCheckoutByID(ctx context.Context, checkoutID int
 	return &checkout, nil
 }
 
+/*
+UpdateCheckoutShippingAddress:
+- update checkout_sessions table with the shipping_address id
+*/
 func (r *checkoutRepository) UpdateCheckoutShippingAddress(ctx context.Context, checkoutID, shippingAddressID int64) error {
 	query := `
         UPDATE checkout_sessions 
@@ -528,11 +445,13 @@ func (r *checkoutRepository) UpdateCheckoutShippingAddress(ctx context.Context, 
     `
 	result, err := r.db.ExecContext(ctx, query, shippingAddressID, checkoutID)
 	if err != nil {
+		log.Printf("error while updating checkout_sessions table with the new shipping_address_id : %v", err)
 		return err
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
+		log.Printf("error while checking rows affected in UpdateCheckoutShippingAddress method in checkout_repository : %v", err)
 		return err
 	}
 
@@ -541,4 +460,91 @@ func (r *checkoutRepository) UpdateCheckoutShippingAddress(ctx context.Context, 
 	}
 
 	return nil
+}
+
+/*
+GetCheckoutItemsWithProductDetails:
+- Join checkout_items with products based on product id
+*/
+func (r *checkoutRepository) GetCheckoutItemsWithProductDetails(ctx context.Context, checkoutID int64) ([]*domain.CheckoutItemDetail, error) {
+	query := `
+		SELECT ci.id, ci.product_id, p.name, ci.quantity, ci.price, ci.subtotal
+		FROM checkout_items ci
+		JOIN products p ON ci.product_id = p.id
+		WHERE ci.session_id = $1
+	`
+	rows, err := r.db.QueryContext(ctx, query, checkoutID)
+	if err != nil {
+		log.Printf("error while retrieving details from checkout_items table and products table : %v)", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []*domain.CheckoutItemDetail
+	for rows.Next() {
+		var item domain.CheckoutItemDetail
+		if err := rows.Scan(&item.ID,
+			&item.ProductID,
+			&item.Name,
+			&item.Quantity,
+			&item.Price,
+			&item.Subtotal); err != nil {
+			log.Printf("error while fetching values from each row in GetCheckoutItemsWithProductDetails method : %v", err)
+			return nil, err
+		}
+		// Append each checkout item row to checkout items slice
+		items = append(items, &item)
+	}
+
+	// IF there are which are not captured while iterating over the rows
+	err = rows.Err()
+	if err != nil {
+		log.Printf("error captured while iterating over the rows : %v", err)
+		return nil, err
+	}
+
+	return items, nil
+}
+
+/*
+GetShippingAddress:
+- Get values from shipping_addresses table
+*/
+func (r *checkoutRepository) GetShippingAddress(ctx context.Context, addressID int64) (*domain.ShippingAddress, error) {
+	query := `
+		SELECT id, user_id,address_id, address_line1, address_line2, city, state, pincode, landmark, phone_number
+		FROM shipping_addresses
+		WHERE id = $1
+	`
+	var address domain.ShippingAddress
+	err := r.db.QueryRowContext(ctx, query, addressID).Scan(
+		&address.ID,
+		&address.UserID,
+		&address.AddressID,
+		&address.AddressLine1,
+		&address.AddressLine2,
+		&address.City,
+		&address.State,
+		&address.PinCode,
+		&address.Landmark,
+		&address.PhoneNumber,
+	)
+	if err != nil {
+		log.Printf("error while retrieving values from shipping address table : %v", err)
+		return nil, err
+	}
+	return &address, nil
+}
+
+/*
+UpdateCheckoutItemCount:
+- Update item_count value in checkout_sessions table
+*/
+func (r *checkoutRepository) UpdateCheckoutItemCount(ctx context.Context, checkoutID int64, itemCount int) error {
+	query := `UPDATE checkout_sessions SET item_count = $1 WHERE id = $2`
+	_, err := r.db.ExecContext(ctx, query, itemCount, checkoutID)
+	if err != nil {
+		log.Printf("error while updating item_count in checkout_sesions table : %v", err)
+	}
+	return err
 }

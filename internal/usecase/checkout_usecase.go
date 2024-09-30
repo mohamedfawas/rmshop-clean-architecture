@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"database/sql"
 	"log"
 	"math"
 	"time"
@@ -236,10 +235,19 @@ func (u *checkoutUseCase) ApplyCoupon(ctx context.Context, userID int64, checkou
 	}, nil
 }
 
+/*
+UpdateCheckoutAddress:
+- Get checkout session details
+- Verify the checkout_status
+- Get/create shipping_address details using existing user addresses.
+- Update checkout_sessions table with new shipping_address_id
+- Get updated checkout session details from checkout_sessions table
+*/
 func (u *checkoutUseCase) UpdateCheckoutAddress(ctx context.Context, userID, checkoutID, addressID int64) (*domain.CheckoutSession, error) {
 	// Get the checkout session
 	checkout, err := u.checkoutRepo.GetCheckoutByID(ctx, checkoutID)
 	if err != nil {
+		log.Printf("error whiler retrieving checkout data using checkout id : %v", err)
 		return nil, err
 	}
 
@@ -249,13 +257,14 @@ func (u *checkoutUseCase) UpdateCheckoutAddress(ctx context.Context, userID, che
 	}
 
 	// Check if the checkout is in a valid state to update the address
-	if checkout.Status != "pending" {
+	if checkout.Status != utils.CheckoutStatusPending {
 		return nil, utils.ErrInvalidCheckoutState
 	}
 
-	// Get the address
+	// Get the address from the user_address table using the user address id
 	address, err := u.userRepo.GetUserAddressByID(ctx, addressID)
 	if err != nil {
+		log.Printf("error while retrieving user address details using user address id : %v", err)
 		return nil, err
 	}
 
@@ -270,34 +279,20 @@ func (u *checkoutUseCase) UpdateCheckoutAddress(ctx context.Context, userID, che
 		return nil, err
 	}
 
-	// Update checkout with new shipping address ID
+	// Update checkout_sessions table with new shipping address ID
 	err = u.checkoutRepo.UpdateCheckoutShippingAddress(ctx, checkoutID, shippingAddressID)
 	if err != nil {
+		log.Printf("error while updating checkout session details with new shipping_address_id : %v", err)
 		return nil, err
 	}
-	// Fetch the updated checkout session
+	// Fetch the updated checkout session details from checkout_sessions table
 	updatedCheckout, err := u.checkoutRepo.GetCheckoutByID(ctx, checkoutID)
 	if err != nil {
+		log.Printf("error while fetching checkout session details form checkout_sessions table : %v", err)
 		return nil, err
 	}
 
 	return updatedCheckout, nil
-}
-
-func (u *checkoutUseCase) GetCheckoutSummary(ctx context.Context, userID, checkoutID int64) (*domain.CheckoutSummary, error) {
-	summary, err := u.checkoutRepo.GetCheckoutWithItems(ctx, checkoutID)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, utils.ErrCheckoutNotFound
-		}
-		return nil, err
-	}
-
-	if summary.UserID != userID {
-		return nil, utils.ErrUnauthorized
-	}
-
-	return summary, nil
 }
 
 /*
@@ -345,4 +340,104 @@ func (u *checkoutUseCase) RemoveAppliedCoupon(ctx context.Context, userID, check
 	}
 
 	return checkout, nil
+}
+
+/*
+GetCheckoutSummary:
+- Get details from checkout_sessions, checkout_items, products, shipping address tables
+*/
+func (u *checkoutUseCase) GetCheckoutSummary(ctx context.Context, userID, checkoutID int64) (*domain.CheckoutSummary, error) {
+	// Get checkout details
+	checkout, err := u.checkoutRepo.GetCheckoutByID(ctx, checkoutID)
+	if err != nil {
+		log.Printf("error while retrieving checkout details from checkout_sessions table : %v", err)
+		return nil, err
+	}
+
+	// Verify the checkout belongs to the user
+	if checkout.UserID != userID {
+		return nil, utils.ErrUnauthorized
+	}
+
+	// Get checkout items with product details
+	items, err := u.checkoutRepo.GetCheckoutItemsWithProductDetails(ctx, checkoutID)
+	if err != nil {
+		log.Printf("error while retrieving details from checkout_items and products table : %v", err)
+		return nil, err
+	}
+
+	// Calculate actual item count and update if necessary
+	actualItemCount := calculateActualItemCount(items)
+	// Update the item count if it's different from item count associated with the checkout
+	if actualItemCount != checkout.ItemCount {
+		if err := u.checkoutRepo.UpdateCheckoutItemCount(ctx, checkoutID, actualItemCount); err != nil {
+			log.Printf("error while updating the item count in checkout_sessions table : %v", err)
+			return nil, err
+		}
+		// Update the variable associated with the checkout data
+		checkout.ItemCount = actualItemCount
+	}
+
+	// Get shipping address if set
+	var address *domain.ShippingAddress
+	if checkout.ShippingAddressID != 0 {
+		address, err = u.checkoutRepo.GetShippingAddress(ctx, checkout.ShippingAddressID)
+		if err != nil {
+			log.Printf("error while retrieving shipping address details : %v", err)
+			return nil, err
+		}
+	}
+
+	// Update values for address response in checkout summmary
+	addressResponse := &domain.ShippingAddressResponseInCheckoutSummary{
+		ID:           address.ID,
+		AddressID:    address.AddressID,
+		AddressLine1: address.AddressLine1,
+		AddressLine2: address.AddressLine2,
+		City:         address.City,
+		State:        address.State,
+		Landmark:     address.Landmark,
+		PinCode:      address.PinCode,
+		PhoneNumber:  address.PhoneNumber,
+	}
+
+	// Assemble the checkout summary
+	summary := &domain.CheckoutSummary{
+		ID:             checkout.ID,
+		UserID:         checkout.UserID,
+		TotalAmount:    checkout.TotalAmount,
+		DiscountAmount: checkout.DiscountAmount,
+		FinalAmount:    checkout.FinalAmount,
+		ItemCount:      checkout.ItemCount,
+		Status:         checkout.Status,
+		CouponCode:     checkout.CouponCode,
+		CouponApplied:  checkout.CouponApplied,
+		Address:        addressResponse,
+		Items:          items,
+	}
+
+	// Handle empty checkout
+	if len(items) == 0 {
+		summary.Status = "empty"
+		summary.TotalAmount = 0
+		summary.DiscountAmount = 0
+		summary.FinalAmount = 0
+		summary.ItemCount = 0
+	}
+
+	return summary, nil
+}
+
+/*
+calculateActualItemCount:
+- Iterate over each checkout item
+- Add its quantity to the item count associated with the checkout
+*/
+func calculateActualItemCount(items []*domain.CheckoutItemDetail) int {
+	var count int
+	// Iterate over each item  in the slice and add its quantity to the item count
+	for _, item := range items {
+		count += item.Quantity
+	}
+	return count
 }

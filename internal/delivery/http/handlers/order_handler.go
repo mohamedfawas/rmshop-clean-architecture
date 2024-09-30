@@ -223,7 +223,7 @@ func (h *OrderHandler) InitiateReturn(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *OrderHandler) PlaceOrderCOD(w http.ResponseWriter, r *http.Request) {
-	// Extract user ID from context (set by auth middleware)
+	// Extract user ID from context key
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok {
 		api.SendResponse(w, http.StatusUnauthorized, "Failed to place order", nil, "User not authenticated")

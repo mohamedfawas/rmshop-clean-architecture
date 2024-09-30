@@ -80,7 +80,11 @@ func (r *productRepository) NameExists(ctx context.Context, name string) (bool, 
 	return exists, err
 }
 
-// Retrieve product details using ID
+/*
+GetByID:
+- Get product details from products table
+- id, name, slug, description, price, stock_quantity, sub_category_id, created_at, updated_at, deleted_at, is_deleted
+*/
 func (r *productRepository) GetByID(ctx context.Context, id int64) (*domain.Product, error) {
 	query := `SELECT id, name, slug, description, price, stock_quantity, sub_category_id, created_at, updated_at, deleted_at, is_deleted
               FROM products WHERE id = $1 AND is_deleted = false`
@@ -103,7 +107,7 @@ func (r *productRepository) GetByID(ctx context.Context, id int64) (*domain.Prod
 		if err == sql.ErrNoRows {
 			return nil, utils.ErrProductNotFound
 		}
-		log.Printf("Database error while retrieving product by ID: %v", err)
+		log.Printf("Database error while retrieving product using product ID: %v", err)
 		return nil, err
 	}
 

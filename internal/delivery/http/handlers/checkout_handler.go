@@ -108,12 +108,14 @@ func (h *CheckoutHandler) ApplyCoupon(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CheckoutHandler) UpdateCheckoutAddress(w http.ResponseWriter, r *http.Request) {
+	// Extract the user id from the context values
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok {
 		api.SendResponse(w, http.StatusUnauthorized, "Failed to update address", nil, "User not authenticated")
 		return
 	}
 
+	// Extract the checkout id from the url
 	vars := mux.Vars(r)
 	checkoutID, err := strconv.ParseInt(vars["checkout_id"], 10, 64)
 	if err != nil {
@@ -121,14 +123,17 @@ func (h *CheckoutHandler) UpdateCheckoutAddress(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// Input address id to use for shipping address
 	var input struct {
 		AddressID int64 `json:"address_id"`
 	}
+	// extract given address id from the request body
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		api.SendResponse(w, http.StatusBadRequest, "Failed to update address", nil, "Invalid request body")
 		return
 	}
 
+	// validate given address id
 	if input.AddressID <= 0 {
 		api.SendResponse(w, http.StatusBadRequest, "Failed to update address", nil, "Invalid address ID")
 		return
@@ -155,13 +160,16 @@ func (h *CheckoutHandler) UpdateCheckoutAddress(w http.ResponseWriter, r *http.R
 
 	api.SendResponse(w, http.StatusOK, "Address updated successfully", updatedCheckout, "")
 }
+
 func (h *CheckoutHandler) GetCheckoutSummary(w http.ResponseWriter, r *http.Request) {
+	// extract the user id from the context values
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok {
 		api.SendResponse(w, http.StatusUnauthorized, "Failed to get checkout summary", nil, "User not authenticated")
 		return
 	}
 
+	// Extract the checkout id from the url query
 	vars := mux.Vars(r)
 	checkoutID, err := strconv.ParseInt(vars["checkout_id"], 10, 64)
 	if err != nil {
@@ -169,6 +177,7 @@ func (h *CheckoutHandler) GetCheckoutSummary(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// Call the GetCheckoutSummary method from the usecase layer
 	summary, err := h.checkoutUseCase.GetCheckoutSummary(r.Context(), userID, checkoutID)
 	if err != nil {
 		switch err {

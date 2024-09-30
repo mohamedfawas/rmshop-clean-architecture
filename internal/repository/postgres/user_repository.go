@@ -426,16 +426,11 @@ func (r *userRepository) AddUserAddress(ctx context.Context, address *domain.Use
 	return err
 }
 
-// GetUserAddressByID retrieves a user address from the database by its ID.
-// It fetches the address details, ensuring that the address has not been soft-deleted (i.e., 'deleted_at' is NULL).
-//
-// Parameters:
-//   - ctx: Context for controlling execution and managing timeouts.
-//   - addressID: The ID of the address to be retrieved.
-//
-// Returns:
-//   - *domain.UserAddress: A pointer to the UserAddress struct containing the address details if found.
-//   - error: Returns ErrAddressNotFound if the address does not exist, or another error if the retrieval fails.
+/*
+GetUserAddressByID :
+- retrieve address data from user_address table
+- user_id, address_line1, address_line2, state, city, pincode, landmark, phone_number
+*/
 func (r *userRepository) GetUserAddressByID(ctx context.Context, addressID int64) (*domain.UserAddress, error) {
 	query := `
 		SELECT id, user_id, address_line1, address_line2, state, city, pincode, landmark, phone_number, created_at, updated_at
@@ -444,16 +439,23 @@ func (r *userRepository) GetUserAddressByID(ctx context.Context, addressID int64
 		`
 	var address domain.UserAddress
 	err := r.db.QueryRowContext(ctx, query, addressID).Scan(
-		&address.ID, &address.UserID, &address.AddressLine1,
-		&address.AddressLine2, &address.State, &address.City,
-		&address.PinCode, &address.Landmark, &address.PhoneNumber,
-		&address.CreatedAt, &address.UpdatedAt,
+		&address.ID,
+		&address.UserID,
+		&address.AddressLine1,
+		&address.AddressLine2,
+		&address.State,
+		&address.City,
+		&address.PinCode,
+		&address.Landmark,
+		&address.PhoneNumber,
+		&address.CreatedAt,
+		&address.UpdatedAt,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, utils.ErrAddressNotFound
 		}
-		log.Printf("error while retreiving address details : %v", err)
+		log.Printf("error while retreiving address details using user address id : %v", err)
 		return nil, err
 	}
 

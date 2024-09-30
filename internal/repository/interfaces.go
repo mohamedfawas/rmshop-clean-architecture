@@ -123,13 +123,15 @@ type CheckoutRepository interface {
 	GetCheckoutItems(ctx context.Context, checkoutID int64) ([]*domain.CheckoutItem, error)
 	UpdateCheckoutAddress(ctx context.Context, checkoutID int64, addressID int64) error
 	AddNewAddressToCheckout(ctx context.Context, checkoutID int64, address *domain.UserAddress) error
-	GetCheckoutWithItems(ctx context.Context, checkoutID int64) (*domain.CheckoutSummary, error)
 	UpdateCheckoutDetails(ctx context.Context, checkout *domain.CheckoutSession) error
 	UpdateCheckoutStatus(ctx context.Context, tx *sql.Tx, checkout *domain.CheckoutSession) error
 	BeginTx(ctx context.Context) (*sql.Tx, error)
 	CreateOrGetShippingAddress(ctx context.Context, userID, addressID int64) (int64, error)
 	UpdateCheckoutShippingAddress(ctx context.Context, checkoutID, shippingAddressID int64) error
 	GetCheckoutWithAddressByID(ctx context.Context, checkoutID int64) (*domain.CheckoutSession, error)
+	GetCheckoutItemsWithProductDetails(ctx context.Context, checkoutID int64) ([]*domain.CheckoutItemDetail, error)
+	GetShippingAddress(ctx context.Context, addressID int64) (*domain.ShippingAddress, error)
+	UpdateCheckoutItemCount(ctx context.Context, checkoutID int64, itemCount int) error
 }
 
 type OrderRepository interface {

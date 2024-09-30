@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"log"
+	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/repository"
@@ -30,15 +31,21 @@ func NewCartUseCase(cartRepo repository.CartRepository, productRepo repository.P
 	}
 }
 
-// AddToCart :
-// - If a new product is added to cart, new entry is added in cart_items table
-// - If an existing product in cart is added again, then quantity of the respective product is updated
+/*
+AddToCart:
+- Validate the given quantity
+- Get product details , verify it's not soft deleted, stock is available
+- Check if the given product is already added in the cart
+- If already exists in cart, then update quantity (make sure it's not exceeding max limit)
+- If product added is new to cart, then make new cart item entry
+*/
 func (u *cartUseCase) AddToCart(ctx context.Context, userID, productID int64, quantity int) (*domain.CartItem, error) {
 	// Validate quantity
 	if quantity <= 0 {
 		return nil, utils.ErrInvalidQuantity
 	}
 
+	// If quantity is more than max allowed quantity for each product
 	if quantity > utils.MaxCartItemQuantity {
 		return nil, utils.ErrExceedsMaxQuantity
 	}
@@ -49,7 +56,7 @@ func (u *cartUseCase) AddToCart(ctx context.Context, userID, productID int64, qu
 		if err == utils.ErrProductNotFound {
 			return nil, utils.ErrProductNotFound
 		}
-		log.Printf("error while getting product by ID : %v", err)
+		log.Printf("error while getting product details using ID : %v", err)
 		return nil, err
 	}
 
@@ -60,7 +67,9 @@ func (u *cartUseCase) AddToCart(ctx context.Context, userID, productID int64, qu
 
 	// Check if item already exists in cart
 	existingItem, err := u.cartRepo.GetCartItemByProductID(ctx, userID, productID)
+	// If any error other than cart item not found happens
 	if err != nil && err != utils.ErrCartItemNotFound {
+		log.Printf("error while checking if the product already exists in the cart : %v", err)
 		return nil, err
 	}
 
@@ -71,7 +80,7 @@ func (u *cartUseCase) AddToCart(ctx context.Context, userID, productID int64, qu
 			return nil, utils.ErrExceedsMaxQuantity
 		}
 
-		// Update quantity of existing item
+		// If not violates max limit , Update quantity of existing item
 		existingItem.Quantity += quantity
 
 		// Update cart item details
@@ -83,17 +92,20 @@ func (u *cartUseCase) AddToCart(ctx context.Context, userID, productID int64, qu
 		return existingItem, nil
 	}
 
-	// Add new item to cart
+	// Define the new cart item details
+	now := time.Now().UTC()
 	newItem := &domain.CartItem{
 		UserID:    userID,
 		ProductID: productID,
 		Quantity:  quantity,
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 
 	// Create the cart item entry in cart_items table
 	err = u.cartRepo.AddCartItem(ctx, newItem)
 	if err != nil {
-		log.Printf("error while adding entry in cart_items table : %v", err)
+		log.Printf("error while adding cart item entry in cart_items table : %v", err)
 		return nil, err
 	}
 

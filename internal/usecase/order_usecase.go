@@ -373,16 +373,18 @@ func (u *orderUseCase) PlaceOrderCOD(ctx context.Context, userID, checkoutID int
 	// Start a database transaction
 	tx, err := u.orderRepo.BeginTx(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to start transaction: %w", err)
+		log.Printf("failed to start database transaction in PlaceOrderCOD method : %v", err)
+		return nil, err
 	}
 	defer tx.Rollback()
 
-	// Get the checkout session
+	// Get the checkout session details using checkout id
 	checkout, err := u.checkoutRepo.GetCheckoutByID(ctx, checkoutID)
 	if err != nil {
 		if err == utils.ErrCheckoutNotFound {
 			return nil, utils.ErrCheckoutNotFound
 		}
+		log.Printf("error while retrieving checkout details using checkout id : %v", err)
 		return nil, err
 	}
 
@@ -407,17 +409,21 @@ func (u *orderUseCase) PlaceOrderCOD(ctx context.Context, userID, checkoutID int
 		return nil, err
 	}
 
+	// If checkout is empty , then you can't place the order
 	if len(items) == 0 {
 		return nil, utils.ErrEmptyCart
 	}
 
 	// Verify that all items have sufficient stock
 	for _, item := range items {
+		// Retrieve current stock availability of each product
 		product, err := u.productRepo.GetByID(ctx, item.ProductID)
 		if err != nil {
+			log.Printf("error while retrieiving product details to check stock availability : %v", err)
 			return nil, err
 		}
 		if product.StockQuantity < item.Quantity {
+			log.Printf("insufficient stock for the product id : %v", product.ID)
 			return nil, utils.ErrInsufficientStock
 		}
 	}
@@ -428,17 +434,18 @@ func (u *orderUseCase) PlaceOrderCOD(ctx context.Context, userID, checkoutID int
 	}
 
 	// Create the order
+	now := time.Now().UTC() // record the current time
 	order := &domain.Order{
 		UserID:            userID,
-		TotalAmount:       checkout.FinalAmount,
+		TotalAmount:       checkout.TotalAmount,
 		DiscountAmount:    checkout.DiscountAmount,
 		FinalAmount:       checkout.FinalAmount,
 		OrderStatus:       utils.OrderStatusPending,
 		DeliveryStatus:    utils.DeliveryStatusPending,
 		ShippingAddressID: checkout.ShippingAddressID,
 		CouponApplied:     checkout.CouponApplied,
-		CreatedAt:         time.Now().UTC(),
-		UpdatedAt:         time.Now().UTC(),
+		CreatedAt:         now,
+		UpdatedAt:         now,
 	}
 
 	// Create the order in the database
@@ -454,8 +461,8 @@ func (u *orderUseCase) PlaceOrderCOD(ctx context.Context, userID, checkoutID int
 		Amount:        order.FinalAmount,
 		PaymentMethod: utils.PaymentMethodCOD,
 		Status:        utils.PaymentStatusPending,
-		CreatedAt:     time.Now().UTC(),
-		UpdatedAt:     time.Now().UTC(),
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 	err = u.orderRepo.CreatePayment(ctx, tx, payment)
 	if err != nil {
