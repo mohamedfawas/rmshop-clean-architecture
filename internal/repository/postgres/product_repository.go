@@ -619,6 +619,10 @@ func (r *productRepository) GetPublicProductByID(ctx context.Context, id int64) 
 	return &product, nil
 }
 
+/*
+UpdateStockTx:
+- Update stock_quantity in products table
+*/
 func (r *productRepository) UpdateStockTx(ctx context.Context, tx *sql.Tx, productID int64, quantity int) error {
 	query := `
         UPDATE products
@@ -628,7 +632,8 @@ func (r *productRepository) UpdateStockTx(ctx context.Context, tx *sql.Tx, produ
     `
 	_, err := tx.ExecContext(ctx, query, quantity, productID)
 	if err != nil {
-		return fmt.Errorf("failed to update product stock: %w", err)
+		log.Printf("error while updating stock_quantity in products table : %v", err)
+		return err
 	}
 	return nil
 }

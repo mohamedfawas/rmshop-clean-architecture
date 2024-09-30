@@ -138,14 +138,15 @@ var (
 	ErrTokenExpired            = errors.New("token expired")
 
 	// user address
-	ErrUserAddressTooLong       = errors.New("user address too long")
-	ErrUserAddressTooShort      = errors.New("user address too short")
-	ErrInvalidUserStateEntry    = errors.New("invalid state")
-	ErrInvalidUserCityEntry     = errors.New("invalid city")
-	ErrInvalidPinCode           = errors.New("invalid pin code")
-	ErrUserAddressAlreadyExists = errors.New("user address already exists")
-	ErrAddressNotFound          = errors.New("address not found")
-	ErrUnauthorized             = errors.New("unauthorized to updated this address")
+	ErrUserAddressTooLong         = errors.New("user address too long")
+	ErrUserAddressTooShort        = errors.New("user address too short")
+	ErrInvalidUserStateEntry      = errors.New("invalid state")
+	ErrInvalidUserCityEntry       = errors.New("invalid city")
+	ErrInvalidPinCode             = errors.New("invalid pin code")
+	ErrUserAddressAlreadyExists   = errors.New("user address already exists")
+	ErrAddressNotFound            = errors.New("address not found")
+	ErrShippingAddressNotAssigned = errors.New("shipping address not assigned")
+	ErrUnauthorized               = errors.New("unauthorized to updated this address")
 
 	//category
 	ErrInvalidCategoryName    = errors.New("invalid category name")

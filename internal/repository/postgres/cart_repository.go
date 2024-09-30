@@ -263,8 +263,15 @@ func (r *cartRepository) GetAppliedCoupon(ctx context.Context, userID int64) (*d
 	return &coupon, nil
 }
 
+/*
+ClearCart:
+- Delete the cart item entry from cart_items table
+*/
 func (r *cartRepository) ClearCart(ctx context.Context, userID int64) error {
 	query := `DELETE FROM cart_items WHERE user_id = $1`
 	_, err := r.db.ExecContext(ctx, query, userID)
+	if err != nil {
+		log.Printf("error while clearing cart item from the cart_items table : %v", err)
+	}
 	return err
 }

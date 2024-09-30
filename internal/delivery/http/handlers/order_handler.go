@@ -25,8 +25,41 @@ func NewOrderHandler(orderUseCase usecase.OrderUseCase) *OrderHandler {
 	return &OrderHandler{orderUseCase: orderUseCase}
 }
 
-func (h *OrderHandler) GetOrderConfirmation(w http.ResponseWriter, r *http.Request) {
-	// Extract user ID from context (set by auth middleware)
+// func (h *OrderHandler) GetOrderConfirmation(w http.ResponseWriter, r *http.Request) {
+// 	// Extract user ID from context key
+// 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+// 	if !ok {
+// 		api.SendResponse(w, http.StatusUnauthorized, "Failed to get order", nil, "User not authenticated")
+// 		return
+// 	}
+
+// 	// Extract order ID from URL
+// 	vars := mux.Vars(r)
+// 	orderID, err := strconv.ParseInt(vars["order_id"], 10, 64)
+// 	if err != nil {
+// 		api.SendResponse(w, http.StatusBadRequest, "Failed to get order", nil, "Invalid order ID")
+// 		return
+// 	}
+
+// 	// Call use case method to get the order
+// 	order, err := h.orderUseCase.GetOrderByID(r.Context(), userID, orderID)
+// 	if err != nil {
+// 		switch err {
+// 		case utils.ErrOrderNotFound:
+// 			api.SendResponse(w, http.StatusNotFound, "Failed to get order", nil, "Order not found")
+// 		case utils.ErrUnauthorized:
+// 			api.SendResponse(w, http.StatusForbidden, "Failed to get order", nil, "You don't have permission to access this order")
+// 		default:
+// 			api.SendResponse(w, http.StatusInternalServerError, "Failed to get order", nil, "An unexpected error occurred")
+// 		}
+// 		return
+// 	}
+
+// 	api.SendResponse(w, http.StatusOK, "Order retrieved successfully", order, "")
+// }
+
+func (h *OrderHandler) GetOrderDetails(w http.ResponseWriter, r *http.Request) {
+	// Extract user ID from context
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok {
 		api.SendResponse(w, http.StatusUnauthorized, "Failed to get order", nil, "User not authenticated")
@@ -41,7 +74,7 @@ func (h *OrderHandler) GetOrderConfirmation(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Call use case method to get the order
+	// Call use case method to get the order with all details
 	order, err := h.orderUseCase.GetOrderByID(r.Context(), userID, orderID)
 	if err != nil {
 		switch err {
@@ -50,12 +83,27 @@ func (h *OrderHandler) GetOrderConfirmation(w http.ResponseWriter, r *http.Reque
 		case utils.ErrUnauthorized:
 			api.SendResponse(w, http.StatusForbidden, "Failed to get order", nil, "You don't have permission to access this order")
 		default:
+			log.Printf("Error retrieving order: %v", err)
 			api.SendResponse(w, http.StatusInternalServerError, "Failed to get order", nil, "An unexpected error occurred")
 		}
 		return
 	}
 
-	api.SendResponse(w, http.StatusOK, "Order retrieved successfully", order, "")
+	// Prepare response data
+	responseData := domain.OrderResponse{
+		OrderID:        order.ID,
+		UserID:         order.UserID,
+		TotalAmount:    order.TotalAmount,
+		DiscountAmount: order.DiscountAmount,
+		FinalAmount:    order.FinalAmount,
+		DeliveryStatus: order.DeliveryStatus,
+		OrderStatus:    order.OrderStatus,
+		CreatedAt:      order.CreatedAt,
+		UpdatedAt:      order.UpdatedAt,
+		Items:          order.Items,
+		Payment:        order.Payment,
+	}
+	api.SendResponse(w, http.StatusOK, "Order retrieved successfully", responseData, "")
 }
 
 func (h *OrderHandler) GetUserOrders(w http.ResponseWriter, r *http.Request) {
@@ -352,12 +400,14 @@ func (h *OrderHandler) UpdateOrderDeliveryStatus(w http.ResponseWriter, r *http.
 }
 
 func (h *OrderHandler) PlaceOrderRazorpay(w http.ResponseWriter, r *http.Request) {
+	// extract the user id from the context key
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok {
 		api.SendResponse(w, http.StatusUnauthorized, "Failed to place order", nil, "User not authenticated")
 		return
 	}
 
+	// Extract the checkout id from the url
 	vars := mux.Vars(r)
 	checkoutID, err := strconv.ParseInt(vars["checkout_id"], 10, 64)
 	if err != nil {
@@ -365,6 +415,7 @@ func (h *OrderHandler) PlaceOrderRazorpay(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Call the method in the usecase layer
 	order, err := h.orderUseCase.PlaceOrderRazorpay(r.Context(), userID, checkoutID)
 	if err != nil {
 		switch err {
@@ -372,8 +423,8 @@ func (h *OrderHandler) PlaceOrderRazorpay(w http.ResponseWriter, r *http.Request
 			api.SendResponse(w, http.StatusNotFound, "Failed to place order", nil, "Checkout not found")
 		case utils.ErrUnauthorized:
 			api.SendResponse(w, http.StatusForbidden, "Failed to place order", nil, "Unauthorized access to this checkout")
-		case utils.ErrEmptyCart:
-			api.SendResponse(w, http.StatusBadRequest, "Failed to place order", nil, "Cannot place order with empty cart")
+		case utils.ErrEmptyCheckout:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to place order", nil, "Cannot place order with empty checkout")
 		case utils.ErrInsufficientStock:
 			api.SendResponse(w, http.StatusBadRequest, "Failed to place order", nil, "Insufficient stock for one or more items")
 		case utils.ErrInvalidAddress:

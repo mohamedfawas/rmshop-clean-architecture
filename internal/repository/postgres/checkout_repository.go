@@ -257,6 +257,10 @@ func (r *checkoutRepository) UpdateCheckoutDetails(ctx context.Context, checkout
 	return nil
 }
 
+/*
+UpdateCheckoutStatus:
+- Update checkout status in checkout_sessions table
+*/
 func (r *checkoutRepository) UpdateCheckoutStatus(ctx context.Context, tx *sql.Tx, checkout *domain.CheckoutSession) error {
 	query := `
 		UPDATE checkout_sessions

@@ -117,16 +117,31 @@ func (r *paymentRepository) InitiateRefund(ctx context.Context, paymentID int64)
 func (r *paymentRepository) GetByOrderID(ctx context.Context, orderID int64) (*domain.Payment, error) {
 	query := `
         SELECT id, order_id, amount, payment_method, payment_status, created_at, updated_at, 
-               razorpay_order_id, razorpay_payment_id, razorpay_signature, expires_at
+               razorpay_order_id, razorpay_payment_id, razorpay_signature
         FROM payments
         WHERE order_id = $1
     `
 	var payment domain.Payment
+	var rzpPaymentID, rzpSignature sql.NullString
 	err := r.db.QueryRowContext(ctx, query, orderID).Scan(
-		&payment.ID, &payment.OrderID, &payment.Amount, &payment.PaymentMethod, &payment.Status,
-		&payment.CreatedAt, &payment.UpdatedAt, &payment.RazorpayOrderID, &payment.RazorpayPaymentID,
-		&payment.RazorpaySignature, &payment.ExpiresAt,
+		&payment.ID,
+		&payment.OrderID,
+		&payment.Amount,
+		&payment.PaymentMethod,
+		&payment.Status,
+		&payment.CreatedAt,
+		&payment.UpdatedAt,
+		&payment.RazorpayOrderID,
+		&rzpPaymentID,
+		&rzpSignature,
 	)
+
+	if rzpPaymentID.Valid {
+		payment.RazorpayPaymentID = rzpPaymentID.String
+	}
+	if rzpSignature.Valid {
+		payment.RazorpaySignature = rzpSignature.String
+	}
 
 	if err == sql.ErrNoRows {
 		return nil, utils.ErrPaymentNotFound
@@ -134,7 +149,6 @@ func (r *paymentRepository) GetByOrderID(ctx context.Context, orderID int64) (*d
 	if err != nil {
 		return nil, err
 	}
-
 	return &payment, nil
 }
 
@@ -156,11 +170,10 @@ func (r *paymentRepository) UpdatePayment(ctx context.Context, payment *domain.P
 
 func (r *paymentRepository) GetByRazorpayOrderID(ctx context.Context, razorpayOrderID string) (*domain.Payment, error) {
 	query := `SELECT id, order_id, amount, payment_method, payment_status, created_at, updated_at, 
-              razorpay_order_id, razorpay_payment_id, razorpay_signature, expires_at
+              razorpay_order_id, razorpay_payment_id, razorpay_signature
               FROM payments WHERE razorpay_order_id = $1`
 
 	var payment domain.Payment
-	var expiresAt sql.NullTime
 	var rzpPaymentID, rzpSignature sql.NullString
 
 	err := r.db.QueryRowContext(ctx, query, razorpayOrderID).Scan(
@@ -174,7 +187,6 @@ func (r *paymentRepository) GetByRazorpayOrderID(ctx context.Context, razorpayOr
 		&payment.RazorpayOrderID,
 		&rzpPaymentID,
 		&rzpSignature,
-		&expiresAt,
 	)
 
 	if err != nil {
@@ -184,9 +196,6 @@ func (r *paymentRepository) GetByRazorpayOrderID(ctx context.Context, razorpayOr
 		return nil, err
 	}
 
-	if expiresAt.Valid {
-		payment.ExpiresAt = &expiresAt.Time
-	}
 	if rzpPaymentID.Valid {
 		payment.RazorpayPaymentID = rzpPaymentID.String
 	}

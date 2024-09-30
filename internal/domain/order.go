@@ -19,7 +19,22 @@ type Order struct {
 	CreatedAt         time.Time        `json:"created_at"`
 	UpdatedAt         time.Time        `json:"updated_at"`
 	DeliveredAt       *time.Time       `json:"delivered_at,omitempty"`
-	Items             []OrderItem      `json:"items"`
+	Items             []OrderItem      `json:"items,omitempty"` // In some responses we don't need to display order items
+	Payment           *Payment         `json:"payment,omitempty"`
+}
+
+type OrderResponse struct {
+	OrderID        int64       `json:"order_id"`
+	UserID         int64       `json:"user_id"`
+	TotalAmount    float64     `json:"total_amount"`
+	DiscountAmount float64     `json:"discount_amount"`
+	FinalAmount    float64     `json:"final_amount"`
+	OrderStatus    string      `json:"order_status"`
+	DeliveryStatus string      `json:"delivery_status"`
+	CreatedAt      time.Time   `json:"created_at"`
+	UpdatedAt      time.Time   `json:"updated_at"`
+	Items          []OrderItem `json:"items"`
+	Payment        *Payment    `json:"payment"`
 }
 
 type OrderItem struct {

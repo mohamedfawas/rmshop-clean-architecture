@@ -116,10 +116,9 @@ func (u *checkoutUseCase) CreateCheckout(ctx context.Context, userID int64) (*do
 
 	// Update the session with calculated values
 	session.TotalAmount = totalAmount
-	log.Printf("checkout item count : %v", len(checkoutItems))
-	session.ItemCount = len(checkoutItems)
-
-	session.FinalAmount = totalAmount // final amount is same as total amount, bcz coupon not applied
+	session.ItemCount = len(checkoutItems) // item count : different product items, there is a limit for max different product items you can include in a checkout
+	session.FinalAmount = totalAmount      // final amount is same as total amount, bcz coupon not applied
+	session.UpdatedAt = time.Now().UTC()
 
 	// Update the checkout session in the database
 	err = u.checkoutRepo.UpdateCheckoutDetails(ctx, session)
@@ -367,7 +366,8 @@ func (u *checkoutUseCase) GetCheckoutSummary(ctx context.Context, userID, checko
 	}
 
 	// Calculate actual item count and update if necessary
-	actualItemCount := calculateActualItemCount(items)
+	actualItemCount := len(items) // count of different product items part of this checkout
+
 	// Update the item count if it's different from item count associated with the checkout
 	if actualItemCount != checkout.ItemCount {
 		if err := u.checkoutRepo.UpdateCheckoutItemCount(ctx, checkoutID, actualItemCount); err != nil {
@@ -386,6 +386,8 @@ func (u *checkoutUseCase) GetCheckoutSummary(ctx context.Context, userID, checko
 			log.Printf("error while retrieving shipping address details : %v", err)
 			return nil, err
 		}
+	} else {
+		return nil, utils.ErrShippingAddressNotAssigned
 	}
 
 	// Update values for address response in checkout summmary
@@ -426,18 +428,4 @@ func (u *checkoutUseCase) GetCheckoutSummary(ctx context.Context, userID, checko
 	}
 
 	return summary, nil
-}
-
-/*
-calculateActualItemCount:
-- Iterate over each checkout item
-- Add its quantity to the item count associated with the checkout
-*/
-func calculateActualItemCount(items []*domain.CheckoutItemDetail) int {
-	var count int
-	// Iterate over each item  in the slice and add its quantity to the item count
-	for _, item := range items {
-		count += item.Quantity
-	}
-	return count
 }

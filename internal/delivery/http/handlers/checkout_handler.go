@@ -187,6 +187,8 @@ func (h *CheckoutHandler) GetCheckoutSummary(w http.ResponseWriter, r *http.Requ
 			api.SendResponse(w, http.StatusNotFound, "Failed to get checkout summary", nil, "Checkout not found")
 		case utils.ErrUnauthorized:
 			api.SendResponse(w, http.StatusForbidden, "Failed to get checkout summary", nil, "You don't have permission to access this checkout")
+		case utils.ErrShippingAddressNotAssigned:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to get checkout summary", nil, "Shipping address not assigned for this checkout session")
 		default:
 			api.SendResponse(w, http.StatusInternalServerError, "Failed to get checkout summary", nil, "An unexpected error occurred")
 		}
