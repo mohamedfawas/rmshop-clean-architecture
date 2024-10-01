@@ -1034,73 +1034,6 @@ func (u *orderUseCase) updateStockForCancelledOrder(ctx context.Context, tx *sql
 	return nil
 }
 
-// func (u *orderUseCase) ApproveCancellation(ctx context.Context, orderID int64) (*domain.OrderStatusUpdateResult, error) {
-// 	// Start a database transaction
-// 	tx, err := u.orderRepo.BeginTx(ctx)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to start transaction: %w", err)
-// 	}
-// 	defer tx.Rollback()
-
-// 	// Get the order
-// 	order, err := u.orderRepo.GetByIDTx(ctx, tx, orderID)
-// 	if err != nil {
-// 		if err == utils.ErrOrderNotFound {
-// 			return nil, utils.ErrOrderNotFound
-// 		}
-// 		return nil, fmt.Errorf("failed to get order: %w", err)
-// 	}
-
-// 	// Check if the order is in pending cancellation state
-// 	if order.OrderStatus != "pending_cancellation" {
-// 		return nil, utils.ErrOrderNotPendingCancellation
-// 	}
-
-// 	// Update order status to cancelled
-// 	err = u.orderRepo.UpdateOrderStatusTx(ctx, tx, orderID, "cancelled")
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to update order status: %w", err)
-// 	}
-
-// 	result := &domain.OrderStatusUpdateResult{
-// 		OrderID:      orderID,
-// 		NewStatus:    "cancelled",
-// 		RefundStatus: "not_applicable",
-// 	}
-
-// 	// Check if refund is needed
-// 	payment, err := u.paymentRepo.GetByOrderIDTx(ctx, tx, orderID)
-// 	if err != nil {
-// 		if err != utils.ErrPaymentNotFound {
-// 			return nil, fmt.Errorf("failed to get payment: %w", err)
-// 		}
-// 		// If payment not found, we assume no refund is needed
-// 		payment = nil
-// 	}
-
-// 	if payment != nil && payment.Status == "paid" && payment.PaymentMethod == "razorpay" {
-// 		// Process refund
-// 		err = u.processRefund(ctx, tx, order, payment)
-// 		if err != nil {
-// 			return nil, fmt.Errorf("failed to process refund: %w", err)
-// 		}
-// 		result.RefundStatus = "initiated"
-// 	}
-
-// 	// Update inventory (add back the quantities)
-// 	err = u.updateInventory(ctx, tx, orderID)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to update inventory: %w", err)
-// 	}
-
-// 	// Commit the transaction
-// 	if err = tx.Commit(); err != nil {
-// 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
-// 	}
-
-// 	return result, nil
-// }
-
 /*
 ApproveCancellation:
 - Starts the transaction
@@ -1282,97 +1215,133 @@ func (u *orderUseCase) processRefund(ctx context.Context, tx *sql.Tx, order *dom
 	return nil
 }
 
-func (u *orderUseCase) updateInventory(ctx context.Context, tx *sql.Tx, orderID int64) error {
-	// Get order items
-	orderItems, err := u.orderRepo.GetOrderItemsTx(ctx, tx, orderID)
-	if err != nil {
-		return fmt.Errorf("failed to get order items: %w", err)
-	}
+/*
+AdminCancelOrder:
+- Start the transaction
+- Get order details from orders table using order id
+- Validate the order status
+- Create cancellation request entry in the cancellation_requests table
+- Create the response entry for api response
+- Get payment details using order id
+  - if eligible for refund, process the refund
 
-	// Update inventory for each item
-	for _, item := range orderItems {
-		err = u.productRepo.UpdateStockTx(ctx, tx, item.ProductID, item.Quantity)
-		if err != nil {
-			return fmt.Errorf("failed to update stock for product %d: %w", item.ProductID, err)
-		}
-	}
-
-	return nil
-}
-
+- Update stock quantity of the product which are part of cancelled order items
+- Update cancellation request table (is_stock_updated)
+- Update order status, delivery status, is_cancelled
+*/
 func (u *orderUseCase) AdminCancelOrder(ctx context.Context, orderID int64) (*domain.AdminOrderCancellationResult, error) {
 	// Start a database transaction
 	tx, err := u.orderRepo.BeginTx(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to start transaction: %w", err)
+		log.Printf("failed to start transaction: %v", err)
+		return nil, err
 	}
 	defer tx.Rollback()
 
-	// Get the order
+	// Get the order details from orders table
 	order, err := u.orderRepo.GetByIDTx(ctx, tx, orderID)
 	if err != nil {
 		if err == utils.ErrOrderNotFound {
 			return nil, utils.ErrOrderNotFound
 		}
-		return nil, fmt.Errorf("failed to get order: %w", err)
+		log.Printf("failed to get order details from orders table : %v", err)
+		return nil, err
 	}
 
 	// Check if the order is cancellable
-	if order.OrderStatus == "cancelled" {
+	if order.OrderStatus == utils.OrderStatusCancelled {
 		return nil, utils.ErrOrderAlreadyCancelled
 	}
 	if !isOrderCancellable(order.OrderStatus) {
 		return nil, utils.ErrOrderNotCancellable
 	}
 
-	// Update order status to cancelled
-	err = u.orderRepo.UpdateOrderStatusTx(ctx, tx, orderID, "cancelled")
-	if err != nil {
-		return nil, fmt.Errorf("failed to update order status: %w", err)
+	// Create cancellation request entry
+	cancellationRequest := &domain.CancellationRequest{
+		OrderID:                   orderID,
+		UserID:                    order.UserID,
+		CreatedAt:                 time.Now().UTC(),
+		CancellationRequestStatus: utils.CancellationStatusCancelled,
+		IsStockUpdated:            false, // update this after updating the stock
 	}
 
+	// Create cancellation request entry in the database
+	err = u.orderRepo.CreateCancellationRequestTx(ctx, tx, cancellationRequest)
+	if err != nil {
+		log.Printf("failed to create cancellation request: %v", err)
+		return nil, err
+	}
+
+	// Create the response to show as api response
 	result := &domain.AdminOrderCancellationResult{
 		OrderID:             orderID,
-		OrderStatus:         "cancelled",
+		OrderStatus:         utils.OrderStatusCancelled,
 		RequiresAdminReview: false,
 		RefundInitiated:     false,
 	}
 
 	// Check if refund is needed
+	// First get payment details using order id
 	payment, err := u.paymentRepo.GetByOrderIDTx(ctx, tx, orderID)
 	if err != nil {
 		if err != utils.ErrPaymentNotFound {
-			return nil, fmt.Errorf("failed to get payment: %w", err)
+			log.Printf("failed to get payment details using order id : %v", err)
+			return nil, err
 		}
 		// If payment not found, we assume no refund is needed
 		payment = nil
 	}
 
-	if payment != nil && payment.Status == "paid" && payment.PaymentMethod == "razorpay" {
+	if payment != nil && payment.Status == utils.PaymentStatusPaid && payment.PaymentMethod == utils.PaymentMethodRazorpay {
 		// Process refund
 		err = u.processRefund(ctx, tx, order, payment)
 		if err != nil {
-			return nil, fmt.Errorf("failed to process refund: %w", err)
+			log.Printf("failed to process refund: %v", err)
+			return nil, err
 		}
+		// Update in result we show in api response
 		result.RefundInitiated = true
 	}
 
-	// Update inventory (add back the quantities)
-	err = u.updateInventory(ctx, tx, orderID)
+	// Update stock quantities of the products which are part of the order items
+	err = u.updateStockForCancelledOrder(ctx, tx, orderID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to update inventory: %w", err)
+		log.Printf("failed to update stock quantity for products which are part of cancelled order items: %v", err)
+		return nil, err
+	}
+
+	// Update cancellation request to mark stock as updated
+	cancellationRequest.IsStockUpdated = true
+	err = u.orderRepo.UpdateCancellationRequestTx(ctx, tx, cancellationRequest)
+	if err != nil {
+		log.Printf("failed to update cancellation request: %v", err)
+		return nil, err
+	}
+
+	// Update order status to cancelled and set is_cancelled to true, update delivery status also
+	err = u.orderRepo.UpdateOrderStatusAndSetCancelledTx(ctx, tx, orderID, utils.OrderStatusCancelled, utils.DeliveryStatusReturnedToSender, true)
+	if err != nil {
+		log.Printf("failed to update order status and set cancelled: %v", err)
+		return nil, err
 	}
 
 	// Commit the transaction
 	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+		log.Printf("failed to commit transaction: %v", err)
+		return nil, err
 	}
 
 	return result, nil
 }
 
+/*
+isOrderCancellable:
+- used to validate whether the given order status is eligible for cancellation
+*/
 func isOrderCancellable(status string) bool {
-	cancellableStatuses := []string{"pending_payment", "confirmed", "processing"}
+	cancellableStatuses := []string{utils.OrderStatusPending,
+		utils.OrderStatusConfirmed,
+		utils.OrderStatusProcessing}
 	for _, s := range cancellableStatuses {
 		if status == s {
 			return true

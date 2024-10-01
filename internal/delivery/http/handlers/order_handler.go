@@ -460,12 +460,20 @@ func (h *OrderHandler) AdminCancelOrder(w http.ResponseWriter, r *http.Request) 
 		case utils.ErrOrderNotCancellable:
 			api.SendResponse(w, http.StatusBadRequest, "Failed to cancel order", nil, "Order cannot be cancelled in its current state")
 		default:
+			log.Printf("Error cancelling order: %v", err)
 			api.SendResponse(w, http.StatusInternalServerError, "Failed to cancel order", nil, "An unexpected error occurred")
 		}
 		return
 	}
 
-	api.SendResponse(w, http.StatusOK, "Order cancelled successfully", result, "")
+	responseData := map[string]interface{}{
+		"order_id":              result.OrderID,
+		"order_status":          result.OrderStatus,
+		"refund_initiated":      result.RefundInitiated,
+		"requires_admin_review": result.RequiresAdminReview,
+	}
+
+	api.SendResponse(w, http.StatusOK, "Order cancelled successfully", responseData, "")
 }
 
 func (h *OrderHandler) GetCancellationRequests(w http.ResponseWriter, r *http.Request) {
