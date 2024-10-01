@@ -3,7 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
-	"fmt"
+	"log"
 	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
@@ -17,30 +17,6 @@ type paymentRepository struct {
 func NewPaymentRepository(db *sql.DB) *paymentRepository {
 	return &paymentRepository{db: db}
 }
-
-// func (r *paymentRepository) GetByOrderID(ctx context.Context, orderID int64) (*domain.Payment, error) {
-// 	query := `
-//         SELECT id, order_id, amount, payment_method, status, created_at, updated_at,
-//                razorpay_order_id, razorpay_payment_id, razorpay_signature
-//         FROM payments
-//         WHERE order_id = $1
-//     `
-// 	var payment domain.Payment
-// 	err := r.db.QueryRowContext(ctx, query, orderID).Scan(
-// 		&payment.ID, &payment.OrderID, &payment.Amount, &payment.PaymentMethod, &payment.Status,
-// 		&payment.CreatedAt, &payment.UpdatedAt, &payment.RazorpayOrderID, &payment.RazorpayPaymentID,
-// 		&payment.RazorpaySignature,
-// 	)
-
-// 	if err == sql.ErrNoRows {
-// 		return nil, utils.ErrPaymentNotFound
-// 	}
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	return &payment, nil
-// }
 
 func (r *paymentRepository) InitiateRefund(ctx context.Context, paymentID int64) error {
 	tx, err := r.db.BeginTx(ctx, nil)
@@ -98,22 +74,10 @@ func (r *paymentRepository) InitiateRefund(ctx context.Context, paymentID int64)
 	return tx.Commit()
 }
 
-// func (r *paymentRepository) UpdatePayment(ctx context.Context, payment *domain.Payment) error {
-// 	query := `
-//         UPDATE payments
-//         SET payment_status = $1, razorpay_payment_id = $2, razorpay_signature = $3, updated_at = $4
-//         WHERE id = $5
-//     `
-// 	_, err := r.db.ExecContext(ctx, query,
-// 		payment.Status,
-// 		payment.RazorpayPaymentID,
-// 		payment.RazorpaySignature,
-// 		time.Now(),
-// 		payment.ID)
-
-// 	return err
-// }
-
+/*
+GetByOrderID:
+- Get payment details from payments table using order id
+*/
 func (r *paymentRepository) GetByOrderID(ctx context.Context, orderID int64) (*domain.Payment, error) {
 	query := `
         SELECT id, order_id, amount, payment_method, payment_status, created_at, updated_at, 
@@ -152,6 +116,12 @@ func (r *paymentRepository) GetByOrderID(ctx context.Context, orderID int64) (*d
 	return &payment, nil
 }
 
+/*
+UpdatePayment:
+- update payment details in payments table
+- payment_status, razorpay_payment_id, razorpay_signature, updated_at
+-
+*/
 func (r *paymentRepository) UpdatePayment(ctx context.Context, payment *domain.Payment) error {
 	query := `
         UPDATE payments
@@ -162,7 +132,7 @@ func (r *paymentRepository) UpdatePayment(ctx context.Context, payment *domain.P
 		payment.Status,
 		payment.RazorpayPaymentID,
 		payment.RazorpaySignature,
-		time.Now(),
+		payment.UpdatedAt,
 		payment.ID)
 
 	return err
@@ -206,6 +176,10 @@ func (r *paymentRepository) GetByRazorpayOrderID(ctx context.Context, razorpayOr
 	return &payment, nil
 }
 
+/*
+GetByOrderIDTx:
+- Get payment details from payments table using order id
+*/
 func (r *paymentRepository) GetByOrderIDTx(ctx context.Context, tx *sql.Tx, orderID int64) (*domain.Payment, error) {
 	query := `
         SELECT id, order_id, amount, payment_method, payment_status, created_at, updated_at, 
@@ -226,7 +200,8 @@ func (r *paymentRepository) GetByOrderIDTx(ctx context.Context, tx *sql.Tx, orde
 		return nil, utils.ErrPaymentNotFound
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to get payment: %w", err)
+		log.Printf("failed to get payment: %v", err)
+		return nil, err
 	}
 
 	if razorpayPaymentID.Valid {
@@ -239,6 +214,10 @@ func (r *paymentRepository) GetByOrderIDTx(ctx context.Context, tx *sql.Tx, orde
 	return &payment, nil
 }
 
+/*
+UpdateStatusTx:
+- Update payment_status for the given payment id
+*/
 func (r *paymentRepository) UpdateStatusTx(ctx context.Context, tx *sql.Tx, paymentID int64, status string) error {
 	query := `
         UPDATE payments
@@ -247,7 +226,8 @@ func (r *paymentRepository) UpdateStatusTx(ctx context.Context, tx *sql.Tx, paym
     `
 	_, err := tx.ExecContext(ctx, query, status, paymentID)
 	if err != nil {
-		return fmt.Errorf("failed to update payment status: %w", err)
+		log.Printf("failed to update payment status: %v", err)
+		return err
 	}
 	return nil
 }

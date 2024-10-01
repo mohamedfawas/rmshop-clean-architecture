@@ -1,25 +1,23 @@
 package usecase
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"log"
 	"time"
 
-	"github.com/jung-kurt/gofpdf"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/repository"
+	invoicegenerator "github.com/mohamedfawas/rmshop-clean-architecture/pkg/invoice_generator"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/payment/razorpay"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/utils"
 )
 
 type OrderUseCase interface {
 	GetOrderByID(ctx context.Context, userID, orderID int64) (*domain.Order, error)
-	GetUserOrders(ctx context.Context, userID int64, page, limit int, sortBy, order, status string) ([]*domain.Order, int64, error)
-	GetOrders(ctx context.Context, params domain.OrderQueryParams) ([]*domain.Order, int64, error)
+	GetUserOrders(ctx context.Context, userID int64, page int) ([]*domain.Order, int64, error)
+	GetOrders(ctx context.Context, page int) ([]*domain.Order, int64, error)
 	GetPaymentByOrderID(ctx context.Context, orderID int64) (*domain.Payment, error)
 	CreatePayment(ctx context.Context, tx *sql.Tx, payment *domain.Payment) error
 	UpdatePayment(ctx context.Context, payment *domain.Payment) error
@@ -30,7 +28,7 @@ type OrderUseCase interface {
 	InitiateReturn(ctx context.Context, userID, orderID int64, reason string) (*domain.ReturnRequest, error)
 	PlaceOrderCOD(ctx context.Context, userID, checkoutID int64) (*domain.Order, error)
 	GenerateInvoice(ctx context.Context, userID, orderID int64) ([]byte, error)
-	UpdateOrderDeliveryStatus(ctx context.Context, orderID int64, deliveryStatus, orderStatus string) error
+	UpdateOrderDeliveryStatus(ctx context.Context, orderID int64, deliveryStatus, orderStatus, paymentStatus string) error
 	CreateRazorpayOrder(ctx context.Context, amount float64, currency string) (*razorpay.Order, error)
 	GetRazorpayKeyID() string
 	GetPaymentByRazorpayOrderID(ctx context.Context, razorpayOrderID string) (*domain.Payment, error)
@@ -128,54 +126,20 @@ func (u *orderUseCase) GetOrderByID(ctx context.Context, userID, orderID int64) 
 	return order, nil
 }
 
-func (u *orderUseCase) GetUserOrders(ctx context.Context, userID int64, page, limit int, sortBy, order, status string) ([]*domain.Order, int64, error) {
-	// Validate pagination parameters
-	if page < 1 || limit < 1 {
-		return nil, 0, utils.ErrInvalidPaginationParams
-	}
-
-	// Validate and set default values for sorting
-	if sortBy == "" {
-		sortBy = "created_at"
-	}
-	if order == "" {
-		order = "desc"
-	}
-	if order != "asc" && order != "desc" {
-		order = "desc"
-	}
-
-	// Call repository method to get orders
-	orders, totalCount, err := u.orderRepo.GetUserOrders(ctx, userID, page, limit, sortBy, order, status)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	return orders, totalCount, nil
+/*
+GetUserOrders:
+- Get order history of the given user
+- Details from the orders table are retrieved
+*/
+func (u *orderUseCase) GetUserOrders(ctx context.Context, userID int64, page int) ([]*domain.Order, int64, error) {
+	return u.orderRepo.GetUserOrders(ctx, userID, page)
 }
 
-func (u *orderUseCase) GetOrders(ctx context.Context, params domain.OrderQueryParams) ([]*domain.Order, int64, error) {
-	// Validate and set default values
-	if params.Page < 1 {
-		params.Page = 1
-	}
-	if params.Limit < 1 {
-		params.Limit = 10
-	} else if params.Limit > 100 {
-		params.Limit = 100
-	}
+func (u *orderUseCase) GetOrders(ctx context.Context, page int) ([]*domain.Order, int64, error) {
+	ordersPerPage := 10
+	offset := (page - 1) * ordersPerPage
 
-	validSortFields := map[string]bool{"created_at": true, "total_amount": true, "order_status": true}
-	if params.SortBy != "" && !validSortFields[params.SortBy] {
-		return nil, 0, errors.New("invalid sort field")
-	}
-
-	if params.SortOrder != "" && params.SortOrder != "asc" && params.SortOrder != "desc" {
-		params.SortOrder = "desc"
-	}
-
-	// Call repository method
-	return u.orderRepo.GetOrders(ctx, params)
+	return u.orderRepo.GetOrders(ctx, ordersPerPage, offset)
 }
 
 func (u *orderUseCase) GetPaymentByOrderID(ctx context.Context, orderID int64) (*domain.Payment, error) {
@@ -635,106 +599,111 @@ func (u *orderUseCase) PlaceOrderCOD(ctx context.Context, userID, checkoutID int
 	return order, nil
 }
 
-func (u *orderUseCase) GenerateInvoice(ctx context.Context, userID, orderID int64) ([]byte, error) {
-	order, err := u.orderRepo.GetOrderWithItems(ctx, orderID)
+/*
+getOrderWithItems:
+- Used for retrieving specific details for generating order invoice
+- Get order details
+- Get order items
+- Get product details (mainly product name of each order item)
+- Get shipping address
+*/
+func (u *orderUseCase) getOrderWithItems(ctx context.Context, userID, orderID int64) (*domain.Order, error) {
+	// Get  order details from orders table
+	order, err := u.orderRepo.GetOrderDetails(ctx, orderID)
 	if err != nil {
+		log.Printf("failed to get order details from orders table : %v", err)
 		return nil, err
 	}
 
+	// Check if the order belongs to the user
 	if order.UserID != userID {
 		return nil, utils.ErrUnauthorized
 	}
 
+	// Get order items
+	items, err := u.orderRepo.GetOrderItems(ctx, orderID)
+	if err != nil {
+		log.Printf("failed to get order items details from order_items table : %v", err)
+		return nil, err
+	}
+
+	// Fetch product details for each order item
+	for i, item := range items {
+		product, err := u.productRepo.GetByID(ctx, item.ProductID)
+		if err != nil {
+			log.Printf("failed to get product details for item %d: %w", item.ID, err)
+			return nil, err
+		}
+		items[i].ProductName = product.Name
+	}
+	order.Items = items
+
+	// Get shipping address
+	shippingAddress, err := u.orderRepo.GetShippingAddress(ctx, order.ShippingAddressID)
+	if err != nil {
+		log.Printf("failed to get shipping address details from shipping_addresses table: %v", err)
+		return nil, err
+	}
+	order.ShippingAddress = shippingAddress
+
+	return order, nil
+}
+
+/*
+GenerateInvoice:
+- Get all the details fetched by "getOrderWithItems" method
+*/
+func (u *orderUseCase) GenerateInvoice(ctx context.Context, userID, orderID int64) ([]byte, error) {
+	order, err := u.getOrderWithItems(ctx, userID, orderID)
+	if err != nil {
+		log.Printf("error while executing getOrderWithItems method : %v", err)
+		return nil, err
+	}
+
+	// For a cancelled order, no need to generate invoice
 	if order.OrderStatus == utils.OrderStatusCancelled {
 		return nil, utils.ErrCancelledOrder
 	}
 
-	if order.OrderStatus != utils.OrderStatusCompleted && order.OrderStatus != utils.OrderStatusConfirmed {
+	// If order status is pending payment, no need to generate invoice
+	if order.OrderStatus == utils.OrderStatusPending {
 		return nil, utils.ErrUnpaidOrder
 	}
 
+	// If order status is cancelled , no need to generate invoice
+	if order.OrderStatus == utils.OrderStatusCancelled && order.OrderStatus == utils.OrderStatusPendingCancellation {
+		return nil, utils.ErrOrderCancelled
+	}
+
+	// No items in orders
 	if len(order.Items) == 0 {
 		return nil, utils.ErrEmptyOrder
 	}
 
-	// Generate PDF
-	pdf := gofpdf.New("P", "mm", "A4", "")
-	pdf.AddPage()
-
-	// Add header
-	pdf.SetFont("Arial", "B", 16)
-	pdf.Cell(40, 10, "Invoice")
-
-	// Add order details
-	pdf.Ln(10)
-	pdf.SetFont("Arial", "", 12)
-	pdf.Cell(40, 10, fmt.Sprintf("Order ID: %d", order.ID))
-	pdf.Ln(10)
-	pdf.Cell(40, 10, fmt.Sprintf("Date: %s", order.CreatedAt.Format("2006-01-02 15:04:05")))
-
-	// Add shipping address
-	pdf.Ln(10)
-	pdf.SetFont("Arial", "B", 12)
-	pdf.Cell(40, 10, "Shipping Address:")
-	pdf.Ln(6)
-	pdf.SetFont("Arial", "", 10)
-	pdf.Cell(40, 6, order.ShippingAddress.AddressLine1)
-	if order.ShippingAddress.AddressLine2 != "" {
-		pdf.Ln(6)
-		pdf.Cell(40, 6, order.ShippingAddress.AddressLine2)
-	}
-	pdf.Ln(6)
-	pdf.Cell(40, 6, fmt.Sprintf("%s, %s, %s", order.ShippingAddress.City, order.ShippingAddress.State, order.ShippingAddress.PinCode))
-	pdf.Ln(6)
-	pdf.Cell(40, 6, fmt.Sprintf("Phone: %s", order.ShippingAddress.PhoneNumber))
-
-	// Add items
-	pdf.Ln(10)
-	pdf.SetFont("Arial", "B", 12)
-	pdf.Cell(80, 10, "Product")
-	pdf.Cell(30, 10, "Quantity")
-	pdf.Cell(40, 10, "Price")
-	pdf.Cell(40, 10, "Subtotal")
-
-	for _, item := range order.Items {
-		pdf.Ln(8)
-		pdf.SetFont("Arial", "", 10)
-		pdf.Cell(80, 8, fmt.Sprintf("%s (ID: %d)", item.ProductName, item.ProductID))
-		pdf.Cell(30, 8, fmt.Sprintf("%d", item.Quantity))
-		pdf.Cell(40, 8, fmt.Sprintf("$%.2f", item.Price))
-		pdf.Cell(40, 8, fmt.Sprintf("$%.2f", float64(item.Quantity)*item.Price))
-	}
-
-	// Add total, discount, and final amount
-	pdf.Ln(10)
-	pdf.SetFont("Arial", "B", 12)
-	pdf.Cell(150, 8, "Total Amount")
-	pdf.Cell(40, 8, fmt.Sprintf("$%.2f", order.TotalAmount))
-
-	if order.DiscountAmount > 0 {
-		pdf.Ln(8)
-		pdf.Cell(150, 8, "Discount")
-		pdf.Cell(40, 8, fmt.Sprintf("-$%.2f", order.DiscountAmount))
-	}
-
-	pdf.Ln(8)
-	pdf.SetFont("Arial", "B", 14)
-	pdf.Cell(150, 10, "Final Amount")
-	pdf.Cell(40, 10, fmt.Sprintf("$%.2f", order.FinalAmount))
-
-	// Get PDF as bytes
-	var buf bytes.Buffer
-	err = pdf.Output(&buf)
+	// Generate PDF using the utility function
+	pdfBytes, err := invoicegenerator.GenerateInvoicePDF(order)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate PDF: %w", err)
+		log.Printf("failed to generate invoice PDF: %v", err)
+		return nil, err
 	}
 
-	return buf.Bytes(), nil
+	return pdfBytes, nil
 }
 
-func (u *orderUseCase) UpdateOrderDeliveryStatus(ctx context.Context, orderID int64, deliveryStatus, orderStatus string) error {
+/*
+UpdateOrderDeliveryStatus :
+- Validates the order status and delivery status given as input
+- Verifies if the given order is already delivered before
+- If not delivered, record the current time as delivered_at variable
+- Get payment details of the given order
+- If the payment method used for the order is cod, then the payment_status input will be validated
+- Update the payment details for cod orders
+- Update order status and delivery status for the given order (transaction method, bcz we are updating many values)
+- Make respective changes in db (orders table)
+*/
+func (u *orderUseCase) UpdateOrderDeliveryStatus(ctx context.Context, orderID int64, deliveryStatus, orderStatus, paymentStatus string) error {
 	// Validate delivery status
-	if !isValidDeliveryStatus(deliveryStatus) {
+	if deliveryStatus != "" && !isValidDeliveryStatus(deliveryStatus) {
 		return utils.ErrInvalidDeliveryStatus
 	}
 
@@ -746,26 +715,89 @@ func (u *orderUseCase) UpdateOrderDeliveryStatus(ctx context.Context, orderID in
 	// Check if the order exists and is not already delivered
 	isDelivered, err := u.orderRepo.IsOrderDelivered(ctx, orderID)
 	if err != nil {
+		log.Printf("error while checking if the given order is delivered : %v", err)
 		return err
 	}
+
+	// If order is already delivered
 	if isDelivered {
 		return utils.ErrOrderAlreadyDelivered
 	}
 
-	var deliveredAt *time.Time
-	if deliveryStatus == "delivered" {
-		now := time.Now().UTC()
-		deliveredAt = &now
-		if orderStatus == "" {
-			orderStatus = "completed"
+	// Get payment details
+	payment, err := u.paymentRepo.GetByOrderID(ctx, orderID)
+	if err != nil {
+		log.Printf("error while fetching payment details of the given order id : %v", err)
+		return err
+	}
+
+	// For COD orders, check if payment status is provided and valid
+	if payment.PaymentMethod == utils.PaymentMethodCOD {
+		if paymentStatus == "" {
+			return utils.ErrMissingPaymentStatus
+		}
+		// If payment status is not paid, then no need to record the delivery
+		if paymentStatus != utils.PaymentStatusPaid {
+			return utils.ErrInvalidPaymentStatus
 		}
 	}
 
-	return u.orderRepo.UpdateOrderDeliveryStatus(ctx, orderID, deliveryStatus, orderStatus, deliveredAt)
+	// Record delivery time
+	var deliveredAt *time.Time
+	if deliveryStatus == utils.DeliveryStatusDelivered {
+		now := time.Now().UTC()
+		deliveredAt = &now
+		orderStatus = utils.OrderStatusCompleted
+		// Update payment status for COD orders
+		if payment.PaymentMethod == utils.PaymentMethodCOD {
+			// update payment details
+			payment.Status = utils.PaymentStatusPaid
+			payment.UpdatedAt = time.Now().UTC()
+			err = u.paymentRepo.UpdatePayment(ctx, payment)
+			if err != nil {
+				log.Printf("error while updating payment details : %v", err)
+				return err
+			}
+		}
+	}
+
+	// Start a transaction
+	tx, err := u.orderRepo.BeginTx(ctx)
+	if err != nil {
+		log.Printf("error while starting transaction in UpdateOrderDeliveryStatus method : %v", err)
+		return err
+	}
+	defer tx.Rollback()
+
+	// Update order status
+	err = u.orderRepo.UpdateOrderDeliveryStatus(ctx, tx, orderID, deliveryStatus, orderStatus, deliveredAt)
+	if err != nil {
+		log.Printf("error while updating order delivery status in orders table : %v", err)
+		return err
+	}
+
+	// Commit the transaction
+	err = tx.Commit()
+	if err != nil {
+		log.Printf("error while commiting transaction in UpdateOrderDeliveryStatus method : %v", err)
+	}
+
+	return err
 }
 
+/*
+isValidDeliveryStatus:
+- Evaluates the delivery status given as input
+*/
 func isValidDeliveryStatus(status string) bool {
-	validStatuses := []string{"pending", "in_transit", "out_for_delivery", "delivered", "failed_attempt", "returned_to_sender"}
+	// Define the valid delivery statuses
+	validStatuses := []string{utils.DeliveryStatusPending,
+		utils.DeliveryStatusInTransit,
+		utils.DeliveryStatusOutForDelivery,
+		utils.DeliveryStatusDelivered,
+		utils.DeliveryStatusFailedDeliveryAttempt,
+		utils.DeliveryStatusReturnedToSender}
+	// validate the input status
 	for _, s := range validStatuses {
 		if status == s {
 			return true
@@ -774,8 +806,21 @@ func isValidDeliveryStatus(status string) bool {
 	return false
 }
 
+/*
+isValidOrderStatus:
+- Evaluates the order status given as input
+*/
 func isValidOrderStatus(status string) bool {
-	validStatuses := []string{"pending", "processing", "shipped", "completed", "cancelled"}
+	// Define valid order statuses
+	validStatuses := []string{utils.OrderStatusPending,
+		utils.OrderStatusConfirmed,
+		utils.OrderStatusProcessing,
+		utils.OrderStatusCompleted,
+		utils.OrderStatusShipped,
+		utils.OrderStatusPendingCancellation,
+		utils.OrderStatusCancelled,
+		utils.OrderStatusRefunded}
+	// Evaluate the input order status
 	for _, s := range validStatuses {
 		if status == s {
 			return true
@@ -844,141 +889,357 @@ func (u *orderUseCase) VerifyAndUpdateRazorpayPayment(ctx context.Context, input
 	return nil
 }
 
+/*
+CancelOrder:
+- Begins transaction
+- Get order details using order id
+- validates the order related parameters
+- create cancellation request entry
+- Add cancellation request entry to cancellation_requests table
+- Check if order is eligible for immediate cancellation (unpaid orders, cod)
+  - If eligible,
+  - Update order status, is_cancelled
+  - Update stock for the products in the order
+  - Update cancellation requests table
+  - If not eligible
+  - Update order status
+
+- Commits transaction
+*/
 func (u *orderUseCase) CancelOrder(ctx context.Context, userID, orderID int64) (*domain.OrderCancellationResult, error) {
-	order, err := u.orderRepo.GetByID(ctx, orderID)
+	// Begin transaction
+	tx, err := u.orderRepo.BeginTx(ctx)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, utils.ErrOrderNotFound
-		}
+		log.Printf("failed to begin transaction: %v", err)
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	// get the order details for the given order id from the orders table
+	order, err := u.orderRepo.GetByIDTx(ctx, tx, orderID)
+	if err != nil {
+		log.Printf("error fetching order details: %v", err)
 		return nil, err
 	}
 
+	// ensure that the given order belongs to the authenticated user
 	if order.UserID != userID {
 		return nil, utils.ErrUnauthorized
 	}
 
-	if order.OrderStatus == "cancelled" {
+	// ensure the order is not cancelled before
+	if order.IsCancelled {
 		return nil, utils.ErrOrderAlreadyCancelled
 	}
 
-	if order.OrderStatus != "processing" && order.OrderStatus != "pending_payment" && order.OrderStatus != "confirmed" {
+	// Ensure the order is in a cancellable status
+	if !isOrderCancellable(order.OrderStatus) {
 		return nil, utils.ErrOrderNotCancellable
 	}
 
+	// Create the result to show at in the api response
 	result := &domain.OrderCancellationResult{
-		OrderID:             orderID,
-		RequiresAdminReview: order.OrderStatus == "processing" || order.OrderStatus == "confirmed",
+		OrderID: orderID,
 	}
 
-	if order.OrderStatus == "pending_payment" {
-		err = u.orderRepo.UpdateOrderStatus(ctx, orderID, "cancelled")
+	// Create cancellation request entry
+	cancellationRequest := &domain.CancellationRequest{
+		OrderID:                   orderID,
+		UserID:                    userID,
+		CreatedAt:                 time.Now().UTC(),
+		CancellationRequestStatus: utils.CancellationStatusPendingReview,
+		IsStockUpdated:            false,
+	}
+
+	// Create cancellation request entry in the cancellation_requests table
+	err = u.orderRepo.CreateCancellationRequestTx(ctx, tx, cancellationRequest)
+	if err != nil {
+		log.Printf("failed to create cancellation request: %v", err)
+		return nil, err
+	}
+
+	// If the order is eligible for immediate cancellation, meaning cod orders for which payment is pending
+	if order.OrderStatus == utils.OrderStatusPending {
+		// Immediate cancellation for unpaid orders
+		// Update order_status in orders table and update is_cancelled column value
+		err = u.orderRepo.UpdateOrderStatusAndSetCancelledTx(ctx, tx, orderID, utils.OrderStatusCancelled, utils.DeliveryStatusReturnedToSender, true)
 		if err != nil {
+			log.Printf("failed to update order status and is_cancelled in orders table : %v", err)
 			return nil, err
 		}
-		result.OrderStatus = "cancelled"
+
+		// Immediate cancellation means we need to update stock quantity respective to cancelled order
+		err = u.updateStockForCancelledOrder(ctx, tx, orderID)
+		if err != nil {
+			log.Printf("failed to update stock: %v", err)
+			return nil, err
+		}
+
+		// change bool value after updating stock in products table
+		cancellationRequest.IsStockUpdated = true
+		cancellationRequest.CancellationRequestStatus = utils.CancellationStatusCancelled
+
+		// now update cancellation_requests table
+		err = u.orderRepo.UpdateCancellationRequestTx(ctx, tx, cancellationRequest)
+		if err != nil {
+			log.Printf("failed to update cancellation request: %v", err)
+			return nil, err
+		}
+
+		// Now update the result for api response
+		result.OrderStatus = utils.OrderStatusCancelled
+		result.RequiresAdminReview = false
 	} else {
-		err = u.orderRepo.UpdateOrderStatus(ctx, orderID, "pending_cancellation")
+		// Set to pending cancellation for paid orders
+		err = u.orderRepo.UpdateOrderStatusTx(ctx, tx, orderID, utils.OrderStatusPendingCancellation)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to update order status: %w", err)
 		}
-		err = u.orderRepo.CreateCancellationRequest(ctx, orderID, userID)
-		if err != nil {
-			return nil, err
-		}
-		result.OrderStatus = "pending_cancellation"
+
+		// Now update the result for api response
+		result.OrderStatus = utils.OrderStatusPendingCancellation
+		result.RequiresAdminReview = true
+	}
+
+	// Commit the transaction
+	if err = tx.Commit(); err != nil {
+		log.Printf("failed to commit transaction: %v", err)
+		return nil, err
 	}
 
 	return result, nil
 }
 
-func (u *orderUseCase) ApproveCancellation(ctx context.Context, orderID int64) (*domain.OrderStatusUpdateResult, error) {
+/*
+updateStockForCancelledOrder:
+- Get order items
+- Update stock quantity in the products table for respective order items
+*/
+func (u *orderUseCase) updateStockForCancelledOrder(ctx context.Context, tx *sql.Tx, orderID int64) error {
+	// Get order items from order_items table
+	orderItems, err := u.orderRepo.GetOrderItemsTx(ctx, tx, orderID)
+	if err != nil {
+		log.Printf("failed to get order items: %v", err)
+		return err
+	}
 
+	for _, item := range orderItems {
+		err = u.productRepo.UpdateStockTx(ctx, tx, item.ProductID, item.Quantity)
+		if err != nil {
+			log.Printf("failed to update stock for product %d: %v", item.ProductID, err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+// func (u *orderUseCase) ApproveCancellation(ctx context.Context, orderID int64) (*domain.OrderStatusUpdateResult, error) {
+// 	// Start a database transaction
+// 	tx, err := u.orderRepo.BeginTx(ctx)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to start transaction: %w", err)
+// 	}
+// 	defer tx.Rollback()
+
+// 	// Get the order
+// 	order, err := u.orderRepo.GetByIDTx(ctx, tx, orderID)
+// 	if err != nil {
+// 		if err == utils.ErrOrderNotFound {
+// 			return nil, utils.ErrOrderNotFound
+// 		}
+// 		return nil, fmt.Errorf("failed to get order: %w", err)
+// 	}
+
+// 	// Check if the order is in pending cancellation state
+// 	if order.OrderStatus != "pending_cancellation" {
+// 		return nil, utils.ErrOrderNotPendingCancellation
+// 	}
+
+// 	// Update order status to cancelled
+// 	err = u.orderRepo.UpdateOrderStatusTx(ctx, tx, orderID, "cancelled")
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to update order status: %w", err)
+// 	}
+
+// 	result := &domain.OrderStatusUpdateResult{
+// 		OrderID:      orderID,
+// 		NewStatus:    "cancelled",
+// 		RefundStatus: "not_applicable",
+// 	}
+
+// 	// Check if refund is needed
+// 	payment, err := u.paymentRepo.GetByOrderIDTx(ctx, tx, orderID)
+// 	if err != nil {
+// 		if err != utils.ErrPaymentNotFound {
+// 			return nil, fmt.Errorf("failed to get payment: %w", err)
+// 		}
+// 		// If payment not found, we assume no refund is needed
+// 		payment = nil
+// 	}
+
+// 	if payment != nil && payment.Status == "paid" && payment.PaymentMethod == "razorpay" {
+// 		// Process refund
+// 		err = u.processRefund(ctx, tx, order, payment)
+// 		if err != nil {
+// 			return nil, fmt.Errorf("failed to process refund: %w", err)
+// 		}
+// 		result.RefundStatus = "initiated"
+// 	}
+
+// 	// Update inventory (add back the quantities)
+// 	err = u.updateInventory(ctx, tx, orderID)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to update inventory: %w", err)
+// 	}
+
+// 	// Commit the transaction
+// 	if err = tx.Commit(); err != nil {
+// 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+// 	}
+
+// 	return result, nil
+// }
+
+/*
+ApproveCancellation:
+- Starts the transaction
+- Get order using order id
+- validate order related values
+- Get cancellation request using order id
+- Update order_status in orders table
+- Check if refund is needed
+  - If refund applicable, then get or create wallet and make refund to the wallet
+  - Also, make entry in wallet_transactions table and wallets table respectively
+
+- Update stock_quantity of the products which are part of the order items in this cancelled order
+- Update cancellation related details in cancellation_requests table
+*/
+func (u *orderUseCase) ApproveCancellation(ctx context.Context, orderID int64) (*domain.OrderStatusUpdateResult, error) {
 	// Start a database transaction
 	tx, err := u.orderRepo.BeginTx(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to start transaction: %w", err)
+		log.Printf("failed to start transaction: %v", err)
+		return nil, err
 	}
 	defer tx.Rollback()
 
-	// Get the order
+	// Get the order details from orders table
 	order, err := u.orderRepo.GetByIDTx(ctx, tx, orderID)
 	if err != nil {
 		if err == utils.ErrOrderNotFound {
 			return nil, utils.ErrOrderNotFound
 		}
-		return nil, fmt.Errorf("failed to get order: %w", err)
+		log.Printf("failed to get order details from orders table : %v", err)
+		return nil, err
 	}
 
 	// Check if the order is in pending cancellation state
-	if order.OrderStatus != "pending_cancellation" {
+	if order.OrderStatus != utils.OrderStatusPendingCancellation {
 		return nil, utils.ErrOrderNotPendingCancellation
 	}
 
-	// Update order status to cancelled
-	err = u.orderRepo.UpdateOrderStatusTx(ctx, tx, orderID, "cancelled")
+	// Get the cancellation request
+	cancellationRequest, err := u.orderRepo.GetCancellationRequestByOrderIDTx(ctx, tx, orderID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to update order status: %w", err)
+		log.Printf("failed to get cancellation request using order id: %v", err)
+		return nil, err
+	}
+
+	// Update order status to cancelled
+	err = u.orderRepo.UpdateOrderStatusAndSetCancelledTx(ctx, tx, orderID, utils.OrderStatusCancelled, utils.DeliveryStatusReturnedToSender, true)
+	if err != nil {
+		log.Printf("failed to update order_status and is_cancelled columns in orders table : %v", err)
+		return nil, err
 	}
 
 	result := &domain.OrderStatusUpdateResult{
-		OrderID:      orderID,
-		NewStatus:    "cancelled",
-		RefundStatus: "not_applicable",
+		OrderID:            orderID,
+		UpdatedOrderStatus: utils.OrderStatusCancelled,
+		RefundStatus:       utils.RefundStatusNotApplicable,
 	}
 
 	// Check if refund is needed
 	payment, err := u.paymentRepo.GetByOrderIDTx(ctx, tx, orderID)
 	if err != nil {
 		if err != utils.ErrPaymentNotFound {
-			return nil, fmt.Errorf("failed to get payment: %w", err)
+			log.Printf("failed to get payment details using order id : %v", err)
+			return nil, err
 		}
 		// If payment not found, we assume no refund is needed
 		payment = nil
 	}
 
-	if payment != nil && payment.Status == "paid" && payment.PaymentMethod == "razorpay" {
+	// If payment is found , then it is evaluated
+	if payment != nil && payment.Status == utils.PaymentStatusPaid && payment.PaymentMethod == utils.PaymentMethodRazorpay {
 		// Process refund
 		err = u.processRefund(ctx, tx, order, payment)
 		if err != nil {
-			return nil, fmt.Errorf("failed to process refund: %w", err)
+			log.Printf("failed to process refund: %v", err)
+			return nil, err
 		}
-		result.RefundStatus = "initiated"
+		result.RefundStatus = utils.RefundStatusInitiated
 	}
 
-	// Update inventory (add back the quantities)
-	err = u.updateInventory(ctx, tx, orderID)
+	// Update stock quantity of products which are part of the order items in cancelled order
+	err = u.updateStockForCancelledOrder(ctx, tx, orderID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to update inventory: %w", err)
+		log.Printf("failed to update stock quantity : %v", err)
+		return nil, err
+	}
+
+	// Update cancellation request variables
+	cancellationRequest.CancellationRequestStatus = utils.CancellationStatusCancelled
+	cancellationRequest.IsStockUpdated = true
+
+	// Update cancellation_requests table with new status and is_stock_updated value
+	err = u.orderRepo.UpdateCancellationRequestTx(ctx, tx, cancellationRequest)
+	if err != nil {
+		log.Printf("failed to update cancellation request: %v", err)
+		return nil, err
 	}
 
 	// Commit the transaction
 	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+		log.Printf("failed to commit transaction: %v", err)
+		return nil, err
 	}
 
 	return result, nil
 }
 
+/*
+processRefund:
+- Part of transaction in the methods this is used
+- First try to get the wallet of the given user
+  - If the wallet is not available, a wallet is created for the user
+
+- Create a wallet transaction entry in wallet_transactions table
+- Update wallet balance in wallets table for the given user id
+- Now update the payment status in the payments table
+*/
 func (u *orderUseCase) processRefund(ctx context.Context, tx *sql.Tx, order *domain.Order, payment *domain.Payment) error {
-	if u.walletRepo == nil {
-		return fmt.Errorf("wallet repository is nil")
-	}
 
 	// Get the user's wallet
 	wallet, err := u.walletRepo.GetWalletTx(ctx, tx, order.UserID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			// If wallet doesn't exist, create one
+			now := time.Now().UTC()
 			wallet = &domain.Wallet{
-				UserID:  order.UserID,
-				Balance: 0,
+				UserID:    order.UserID,
+				Balance:   0,
+				CreatedAt: now,
+				UpdatedAt: now,
 			}
 			err = u.walletRepo.CreateWalletTx(ctx, tx, wallet)
 			if err != nil {
-				return fmt.Errorf("failed to create wallet: %w", err)
+				log.Printf("failed to create wallet: %v", err)
+				return err
 			}
 		} else {
-			return fmt.Errorf("failed to get wallet: %w", err)
+			log.Printf("failed to get wallet: %v", err)
+			return err
 		}
 	}
 
@@ -997,25 +1258,25 @@ func (u *orderUseCase) processRefund(ctx context.Context, tx *sql.Tx, order *dom
 		CreatedAt:       time.Now().UTC(),
 	}
 
+	// Create wallet transaction entry in wallet_transactions table
 	err = u.walletRepo.CreateWalletTransactionTx(ctx, tx, walletTx)
 	if err != nil {
-		return fmt.Errorf("failed to create wallet transaction: %w", err)
+		log.Printf("failed to create wallet transaction: %v", err)
+		return err
 	}
 
-	// Update user's wallet balance
+	// Update user's wallet balance respectively for the given user id
 	err = u.walletRepo.UpdateWalletBalanceTx(ctx, tx, order.UserID, newBalance)
 	if err != nil {
-		return fmt.Errorf("failed to update wallet balance: %w", err)
-	}
-
-	if u.paymentRepo == nil {
-		return fmt.Errorf("payment repository is nil")
+		log.Printf("failed to update wallet balance: %v", err)
+		return err
 	}
 
 	// Update payment status
-	err = u.paymentRepo.UpdateStatusTx(ctx, tx, payment.ID, "refunded")
+	err = u.paymentRepo.UpdateStatusTx(ctx, tx, payment.ID, utils.PaymentStatusRefunded)
 	if err != nil {
-		return fmt.Errorf("failed to update payment status: %w", err)
+		log.Printf("failed to update payment status: %v", err)
+		return err
 	}
 
 	return nil
@@ -1121,24 +1382,5 @@ func isOrderCancellable(status string) bool {
 }
 
 func (u *orderUseCase) GetCancellationRequests(ctx context.Context, params domain.CancellationRequestParams) ([]*domain.CancellationRequest, int64, error) {
-	// Validate and set default values
-	if params.Page < 1 {
-		params.Page = 1
-	}
-	if params.Limit < 1 {
-		params.Limit = 10
-	} else if params.Limit > 100 {
-		params.Limit = 100
-	}
-
-	validSortFields := map[string]bool{"created_at": true, "order_id": true}
-	if params.SortBy != "" && !validSortFields[params.SortBy] {
-		params.SortBy = "created_at"
-	}
-
-	if params.SortOrder != "asc" && params.SortOrder != "desc" {
-		params.SortOrder = "desc"
-	}
-
 	return u.orderRepo.GetCancellationRequests(ctx, params)
 }

@@ -6,8 +6,6 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-	"strings"
-	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/delivery/http/middleware"
@@ -24,39 +22,6 @@ type OrderHandler struct {
 func NewOrderHandler(orderUseCase usecase.OrderUseCase) *OrderHandler {
 	return &OrderHandler{orderUseCase: orderUseCase}
 }
-
-// func (h *OrderHandler) GetOrderConfirmation(w http.ResponseWriter, r *http.Request) {
-// 	// Extract user ID from context key
-// 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
-// 	if !ok {
-// 		api.SendResponse(w, http.StatusUnauthorized, "Failed to get order", nil, "User not authenticated")
-// 		return
-// 	}
-
-// 	// Extract order ID from URL
-// 	vars := mux.Vars(r)
-// 	orderID, err := strconv.ParseInt(vars["order_id"], 10, 64)
-// 	if err != nil {
-// 		api.SendResponse(w, http.StatusBadRequest, "Failed to get order", nil, "Invalid order ID")
-// 		return
-// 	}
-
-// 	// Call use case method to get the order
-// 	order, err := h.orderUseCase.GetOrderByID(r.Context(), userID, orderID)
-// 	if err != nil {
-// 		switch err {
-// 		case utils.ErrOrderNotFound:
-// 			api.SendResponse(w, http.StatusNotFound, "Failed to get order", nil, "Order not found")
-// 		case utils.ErrUnauthorized:
-// 			api.SendResponse(w, http.StatusForbidden, "Failed to get order", nil, "You don't have permission to access this order")
-// 		default:
-// 			api.SendResponse(w, http.StatusInternalServerError, "Failed to get order", nil, "An unexpected error occurred")
-// 		}
-// 		return
-// 	}
-
-// 	api.SendResponse(w, http.StatusOK, "Order retrieved successfully", order, "")
-// }
 
 func (h *OrderHandler) GetOrderDetails(w http.ResponseWriter, r *http.Request) {
 	// Extract user ID from context
@@ -107,114 +72,62 @@ func (h *OrderHandler) GetOrderDetails(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *OrderHandler) GetUserOrders(w http.ResponseWriter, r *http.Request) {
-	// Extract user ID from context (set by auth middleware)
+	// Extract the user id from the context
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok {
 		api.SendResponse(w, http.StatusUnauthorized, "Failed to get orders", nil, "User not authenticated")
 		return
 	}
 
-	// Parse query parameters
-	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	sortBy := r.URL.Query().Get("sort")
-	order := r.URL.Query().Get("order")
-	status := r.URL.Query().Get("status")
-
-	// Set default values if not provided
-	if page == 0 {
+	// Get the page number given in the query
+	page, err := strconv.Atoi(r.URL.Query().Get("page"))
+	// If page number is not given in the query or page number given is less than 1, then set the default value
+	if err != nil || page < 1 {
 		page = 1
 	}
-	if limit == 0 {
-		limit = 10
-	}
 
-	// Call use case method to get the orders
-	orders, totalCount, err := h.orderUseCase.GetUserOrders(r.Context(), userID, page, limit, sortBy, order, status)
+	// Call the usecase method
+	orders, totalCount, err := h.orderUseCase.GetUserOrders(r.Context(), userID, page)
 	if err != nil {
-		switch err {
-		case utils.ErrInvalidPaginationParams:
-			api.SendResponse(w, http.StatusBadRequest, "Failed to get orders", nil, "Invalid pagination parameters")
-		default:
-			api.SendResponse(w, http.StatusInternalServerError, "Failed to get orders", nil, "An unexpected error occurred")
-		}
+		api.SendResponse(w, http.StatusInternalServerError, "Failed to get orders", nil, "An unexpected error occurred")
 		return
-	}
-
-	// Prepare pagination metadata
-	totalPages := (totalCount + int64(limit) - 1) / int64(limit)
-	nextPage := ""
-	if int64(page) < totalPages {
-		nextPage = fmt.Sprintf("/user/orders?page=%d&limit=%d", page+1, limit)
 	}
 
 	response := map[string]interface{}{
 		"orders":      orders,
 		"total_count": totalCount,
 		"page":        page,
-		"limit":       limit,
-		"total_pages": totalPages,
-		"next_page":   nextPage,
+		"limit":       10,
+		"total_pages": (totalCount + 9) / 10, // Ceiling division by 10
 	}
 
 	api.SendResponse(w, http.StatusOK, "Orders retrieved successfully", response, "")
 }
 
 func (h *OrderHandler) GetOrders(w http.ResponseWriter, r *http.Request) {
-	// Extract query parameters
-	params := domain.OrderQueryParams{
-		Page:      1,
-		Limit:     10,
-		SortBy:    "created_at",
-		SortOrder: "desc",
+	// Get the page number from the query parameters
+	pageStr := r.URL.Query().Get("page")
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1 // Default to first page if invalid
 	}
 
-	if page, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && page > 0 {
-		params.Page = page
-	}
-
-	if limit, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && limit > 0 {
-		params.Limit = limit
-	}
-
-	params.SortBy = r.URL.Query().Get("sort")
-	params.SortOrder = r.URL.Query().Get("order")
-	params.Status = r.URL.Query().Get("status")
-
-	if customerID, err := strconv.ParseInt(r.URL.Query().Get("customer_id"), 10, 64); err == nil {
-		params.CustomerID = customerID
-	}
-
-	if startDate, err := time.Parse("2006-01-02", r.URL.Query().Get("start_date")); err == nil {
-		params.StartDate = &startDate
-	}
-
-	if endDate, err := time.Parse("2006-01-02", r.URL.Query().Get("end_date")); err == nil {
-		params.EndDate = &endDate
-	}
-
-	if fields := r.URL.Query().Get("fields"); fields != "" {
-		params.Fields = strings.Split(fields, ",")
-	}
-
-	// Call use case
-	orders, total, err := h.orderUseCase.GetOrders(r.Context(), params)
+	// Call use case to get orders
+	orders, totalOrders, err := h.orderUseCase.GetOrders(r.Context(), page)
 	if err != nil {
-		switch err {
-		case utils.ErrInvalidPaginationParams:
-			api.SendResponse(w, http.StatusBadRequest, "Invalid pagination parameters", nil, err.Error())
-		default:
-			api.SendResponse(w, http.StatusInternalServerError, "Failed to retrieve orders", nil, "An unexpected error occurred")
-		}
+		api.SendResponse(w, http.StatusInternalServerError, "Failed to retrieve orders", nil, "An unexpected error occurred")
 		return
 	}
 
+	// Calculate total pages
+	ordersPerPage := 10
+	totalPages := (totalOrders + int64(ordersPerPage) - 1) / int64(ordersPerPage)
+
 	response := map[string]interface{}{
 		"orders":      orders,
-		"total_count": total,
-		"page":        params.Page,
-		"limit":       params.Limit,
-		"total_pages": (total + int64(params.Limit) - 1) / int64(params.Limit),
+		"total_count": totalOrders,
+		"page":        page,
+		"total_pages": totalPages,
 	}
 
 	api.SendResponse(w, http.StatusOK, "Orders retrieved successfully", response, "")
@@ -314,7 +227,7 @@ func (h *OrderHandler) PlaceOrderCOD(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *OrderHandler) GetOrderInvoice(w http.ResponseWriter, r *http.Request) {
-	// Extract user ID from context (set by auth middleware)
+	// Extract user ID from context
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok {
 		api.SendResponse(w, http.StatusUnauthorized, "Failed to generate invoice", nil, "User not authenticated")
@@ -329,7 +242,7 @@ func (h *OrderHandler) GetOrderInvoice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate invoice
+	// Generate invoice by calling th usecase method
 	pdfBytes, err := h.orderUseCase.GenerateInvoice(r.Context(), userID, orderID)
 	if err != nil {
 		switch err {
@@ -343,6 +256,8 @@ func (h *OrderHandler) GetOrderInvoice(w http.ResponseWriter, r *http.Request) {
 			api.SendResponse(w, http.StatusBadRequest, "Failed to generate invoice", nil, "Cannot generate invoice for an unpaid order")
 		case utils.ErrEmptyOrder:
 			api.SendResponse(w, http.StatusBadRequest, "Failed to generate invoice", nil, "Cannot generate invoice for an empty order")
+		case utils.ErrOrderCancelled:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to generate invoice", nil, "Cannot generate invoice for a cancelled or returned order")
 		default:
 			api.SendResponse(w, http.StatusInternalServerError, "Failed to generate invoice", nil, "An unexpected error occurred")
 		}
@@ -373,13 +288,14 @@ func (h *OrderHandler) UpdateOrderDeliveryStatus(w http.ResponseWriter, r *http.
 	var input struct {
 		DeliveryStatus string `json:"delivery_status"`
 		OrderStatus    string `json:"order_status"`
+		PaymentStatus  string `json:"payment_status"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		api.SendResponse(w, http.StatusBadRequest, "Failed to update delivery status", nil, "Invalid request body")
 		return
 	}
 
-	err = h.orderUseCase.UpdateOrderDeliveryStatus(r.Context(), orderID, input.DeliveryStatus, input.OrderStatus)
+	err = h.orderUseCase.UpdateOrderDeliveryStatus(r.Context(), orderID, input.DeliveryStatus, input.OrderStatus, input.PaymentStatus)
 	if err != nil {
 		switch err {
 		case utils.ErrInvalidDeliveryStatus:
@@ -390,6 +306,10 @@ func (h *OrderHandler) UpdateOrderDeliveryStatus(w http.ResponseWriter, r *http.
 			api.SendResponse(w, http.StatusNotFound, "Failed to update delivery status", nil, "Order not found")
 		case utils.ErrOrderAlreadyDelivered:
 			api.SendResponse(w, http.StatusBadRequest, "Failed to update delivery status", nil, "Order is already delivered")
+		case utils.ErrMissingPaymentStatus:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update delivery status", nil, "Payment status is required for COD orders")
+		case utils.ErrInvalidPaymentStatus:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update delivery status", nil, "Invalid payment status for COD orders")
 		default:
 			api.SendResponse(w, http.StatusInternalServerError, "Failed to update delivery status", nil, "An unexpected error occurred")
 		}
@@ -441,6 +361,7 @@ func (h *OrderHandler) PlaceOrderRazorpay(w http.ResponseWriter, r *http.Request
 }
 
 func (h *OrderHandler) CancelOrder(w http.ResponseWriter, r *http.Request) {
+	// Extract the order id from the url
 	vars := mux.Vars(r)
 	orderID, err := strconv.ParseInt(vars["orderId"], 10, 64)
 	if err != nil {
@@ -448,12 +369,14 @@ func (h *OrderHandler) CancelOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Extract the user id from the context
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok {
 		api.SendResponse(w, http.StatusUnauthorized, "Authentication required", nil, "User not authenticated")
 		return
 	}
 
+	// Call the usecase method to initiate order cancellation from user side
 	result, err := h.orderUseCase.CancelOrder(r.Context(), userID, orderID)
 	if err != nil {
 		switch err {
@@ -490,14 +413,14 @@ func (h *OrderHandler) AdminApproveCancellation(w http.ResponseWriter, r *http.R
 	// Call use case method to approve cancellation
 	result, err := h.orderUseCase.ApproveCancellation(r.Context(), orderID)
 	if err != nil {
-		log.Printf("error : %v", err)
+		log.Printf("Error approving cancellation: %v", err)
 		switch err {
 		case utils.ErrOrderNotFound:
 			api.SendResponse(w, http.StatusNotFound, "Failed to approve cancellation", nil, "Order not found")
 		case utils.ErrOrderNotPendingCancellation:
 			api.SendResponse(w, http.StatusBadRequest, "Failed to approve cancellation", nil, "Order is not in pending cancellation state")
-		case utils.ErrUnauthorized:
-			api.SendResponse(w, http.StatusForbidden, "Failed to approve cancellation", nil, "Unauthorized access")
+		case utils.ErrCancellationRequestNotFound:
+			api.SendResponse(w, http.StatusNotFound, "Failed to approve cancellation", nil, "Cancellation request not found")
 		case utils.ErrRefundFailed:
 			api.SendResponse(w, http.StatusInternalServerError, "Failed to process refund", map[string]interface{}{
 				"order_id":   orderID,
@@ -509,7 +432,14 @@ func (h *OrderHandler) AdminApproveCancellation(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	api.SendResponse(w, http.StatusOK, "Order cancellation approved successfully", result, "")
+	// Prepare the response data
+	responseData := map[string]interface{}{
+		"order_id":             result.OrderID,
+		"updated_order_status": result.UpdatedOrderStatus,
+		"refund_status":        result.RefundStatus,
+	}
+
+	api.SendResponse(w, http.StatusOK, "Order cancellation approved successfully", responseData, "")
 }
 
 func (h *OrderHandler) AdminCancelOrder(w http.ResponseWriter, r *http.Request) {
@@ -539,48 +469,41 @@ func (h *OrderHandler) AdminCancelOrder(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *OrderHandler) GetCancellationRequests(w http.ResponseWriter, r *http.Request) {
+	// Set default values
+	page := 1
+	limit := 10
+
+	// Parse page number from query parameter
+	if pageStr := r.URL.Query().Get("page"); pageStr != "" { // If a string is provided with page query
+		if parsedPage, err := strconv.Atoi(pageStr); err == nil && parsedPage > 0 {
+			page = parsedPage
+		}
+	}
+
+	// Create params struct
 	params := domain.CancellationRequestParams{
-		Page:  1,
-		Limit: 10,
+		Page:  page,
+		Limit: limit,
 	}
 
-	// Parse query parameters
-	if page, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && page > 0 {
-		params.Page = page
-	}
-
-	if limit, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && limit > 0 {
-		params.Limit = limit
-	}
-
-	params.SortBy = r.URL.Query().Get("sort")
-	params.SortOrder = r.URL.Query().Get("order")
-
-	if customerID, err := strconv.ParseInt(r.URL.Query().Get("customer_id"), 10, 64); err == nil {
-		params.CustomerID = customerID
-	}
-
-	if startDate, err := time.Parse("2006-01-02", r.URL.Query().Get("start_date")); err == nil {
-		params.StartDate = &startDate
-	}
-
-	if endDate, err := time.Parse("2006-01-02", r.URL.Query().Get("end_date")); err == nil {
-		params.EndDate = &endDate
-	}
-
+	// Get cancellation requests
 	requests, totalCount, err := h.orderUseCase.GetCancellationRequests(r.Context(), params)
 	if err != nil {
-		log.Printf("error : %v", err)
+		log.Printf("Error retrieving cancellation requests: %v", err)
 		api.SendResponse(w, http.StatusInternalServerError, "Failed to retrieve cancellation requests", nil, "An unexpected error occurred")
 		return
 	}
 
+	// Calculate total pages
+	totalPages := (totalCount + int64(limit) - 1) / int64(limit)
+
+	// Prepare response
 	response := map[string]interface{}{
 		"cancellation_requests": requests,
 		"total_count":           totalCount,
-		"page":                  params.Page,
-		"limit":                 params.Limit,
-		"total_pages":           (totalCount + int64(params.Limit) - 1) / int64(params.Limit),
+		"page":                  page,
+		"limit":                 limit,
+		"total_pages":           totalPages,
 	}
 
 	api.SendResponse(w, http.StatusOK, "Cancellation requests retrieved successfully", response, "")

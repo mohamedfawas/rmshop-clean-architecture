@@ -19,6 +19,7 @@ type Order struct {
 	CreatedAt         time.Time        `json:"created_at"`
 	UpdatedAt         time.Time        `json:"updated_at"`
 	DeliveredAt       *time.Time       `json:"delivered_at,omitempty"`
+	IsCancelled       bool             `json:"is_cancelled"`
 	Items             []OrderItem      `json:"items,omitempty"` // In some responses we don't need to display order items
 	Payment           *Payment         `json:"payment,omitempty"`
 }
@@ -61,17 +62,18 @@ type AdminOrderCancellationResult struct {
 }
 
 type CancellationRequest struct {
-	ID                        int64
-	OrderID                   int64
-	UserID                    int64
-	CreatedAt                 time.Time
-	CancellationRequestStatus string
+	ID                        int64     `json:"id"`
+	OrderID                   int64     `json:"order_id"`
+	UserID                    int64     `json:"user_id"`
+	CreatedAt                 time.Time `json:"created_at"`
+	CancellationRequestStatus string    `json:"cancellation_status"`
+	IsStockUpdated            bool      `json:"is_stock_updated"`
 }
 
 type OrderStatusUpdateResult struct {
-	OrderID      int64  `json:"order_id"`
-	NewStatus    string `json:"new_status"`
-	RefundStatus string `json:"refund_status,omitempty"`
+	OrderID            int64  `json:"order_id"`
+	UpdatedOrderStatus string `json:"updated_order_status"`
+	RefundStatus       string `json:"refund_status,omitempty"`
 }
 
 type OrderQueryParams struct {

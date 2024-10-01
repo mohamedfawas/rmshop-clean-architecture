@@ -5,8 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
@@ -21,61 +19,74 @@ func NewOrderRepository(db *sql.DB) *orderRepository {
 	return &orderRepository{db: db}
 }
 
-func (r *orderRepository) GetUserOrders(ctx context.Context, userID int64, page, limit int, sortBy, order, status string) ([]*domain.Order, int64, error) {
-	offset := (page - 1) * limit
+/*
+GetUserOrders:
+  - Main query : retrieve order details from orders table
+    -sub query : count number of orders made by the user, used for recording total count in handler side
+*/
+func (r *orderRepository) GetUserOrders(ctx context.Context, userID int64, page int) ([]*domain.Order, int64, error) {
+	// select values after the offset value , if offset is 10, values after first 10 after chosen
+	offset := (page - 1) * 10
 
-	// Build the base query
 	query := `
-		SELECT o.id, o.total_amount, o.delivery_status, o.shipping_address_id, o.created_at
-		FROM orders o
-		WHERE o.user_id = $1
-	`
-	countQuery := `SELECT COUNT(*) FROM orders o WHERE o.user_id = $1`
-	args := []interface{}{userID}
+        SELECT id, user_id, total_amount, discount_amount, final_amount, shipping_address_id, 
+               coupon_applied, has_return_request, created_at, updated_at, delivered_at, 
+               order_status, delivery_status
+        FROM orders
+        WHERE user_id = $1
+        ORDER BY created_at DESC
+        LIMIT 10 OFFSET $2
+    `
 
-	// Add status filter if provided
-	if status != "" {
-		query += " AND o.delivery_status = $2"
-		countQuery += " AND o.delivery_status = $2"
-		args = append(args, status)
-	}
+	// Count total number of orders made by the given user
+	countQuery := `SELECT COUNT(*) FROM orders WHERE user_id = $1`
 
-	// Add sorting
-	query += fmt.Sprintf(" ORDER BY o.%s %s", sortBy, order)
-
-	// Add pagination
-	query += " LIMIT $2 OFFSET $3"
-	args = append(args, limit, offset)
-
-	// Execute the count query
+	// total count of user orders
 	var totalCount int64
-	err := r.db.QueryRowContext(ctx, countQuery, args[:len(args)-2]...).Scan(&totalCount)
+	// Get total count of user's orders
+	err := r.db.QueryRowContext(ctx, countQuery, userID).Scan(&totalCount)
 	if err != nil {
-		log.Printf("Error counting orders: %v", err)
+		log.Printf("error counting user's orders: %v", err)
 		return nil, 0, err
 	}
 
-	// Execute the main query
-	rows, err := r.db.QueryContext(ctx, query, args...)
+	// Execute main query : get the user's orders based on the calculated offset
+	rows, err := r.db.QueryContext(ctx, query, userID, offset)
 	if err != nil {
-		log.Printf("Error querying orders: %v", err)
+		log.Printf("error querying orders from orders table: %v", err)
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer rows.Close() // Ensure rows are closed after processing
 
 	var orders []*domain.Order
+	// Iterate through query results
 	for rows.Next() {
 		var o domain.Order
-		err := rows.Scan(&o.ID, &o.TotalAmount, &o.DeliveryStatus, &o.ShippingAddressID, &o.CreatedAt)
+		err := rows.Scan(
+			&o.ID,
+			&o.UserID,
+			&o.TotalAmount,
+			&o.DiscountAmount,
+			&o.FinalAmount,
+			&o.ShippingAddressID,
+			&o.CouponApplied,
+			&o.HasReturnRequest,
+			&o.CreatedAt,
+			&o.UpdatedAt,
+			&o.DeliveredAt,
+			&o.OrderStatus,
+			&o.DeliveryStatus,
+		)
 		if err != nil {
-			log.Printf("Error scanning order row: %v", err)
+			log.Printf("error scanning order row: %v", err)
 			return nil, 0, err
 		}
 		orders = append(orders, &o)
 	}
 
+	// error captured during iteration
 	if err = rows.Err(); err != nil {
-		log.Printf("Error iterating order rows: %v", err)
+		log.Printf("error iterating order rows: %v", err)
 		return nil, 0, err
 	}
 
@@ -122,97 +133,68 @@ func (r *orderRepository) UpdateRefundStatus(ctx context.Context, orderID int64,
 	return nil
 }
 
-func (r *orderRepository) GetOrders(ctx context.Context, params domain.OrderQueryParams) ([]*domain.Order, int64, error) {
-	// Start building the base query
-	query := `SELECT `
-	if len(params.Fields) > 0 {
-		// If specific fields are requested, use them
-		query += strings.Join(params.Fields, ", ")
-	} else {
-		// Otherwise, select all fields
-		query += `o.id, o.user_id, o.total_amount, o.delivery_status, 
-                  o.order_status, o.has_return_request, o.shipping_address_id, o.created_at, o.updated_at`
-	}
-	query += ` FROM orders o WHERE 1=1` // o is an alias, 1=1 : used in dynamic querying where it is always true
-	// user to simplify the process of adding additional WHERE conditions dynamically
-
-	// Initialize slices to hold query arguments and conditions
-	var args []interface{}
-	var conditions []string
-
-	// Add condition for order status if provided
-	if params.Status != "" {
-		conditions = append(conditions, "o.order_status = $"+strconv.Itoa(len(args)+1))
-		args = append(args, params.Status)
+/*
+GetOrders:
+- Get orders based on on offset and limit
+- Used to display all the orders for admin side
+*/
+func (r *orderRepository) GetOrders(ctx context.Context, limit, offset int) ([]*domain.Order, int64, error) {
+	// Query to get total count of orders
+	var totalOrders int64
+	countErr := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM orders").Scan(&totalOrders)
+	if countErr != nil {
+		log.Printf("error while counting orders")
+		return nil, 0, countErr
 	}
 
-	// Add condition for customer ID if provided
-	if params.CustomerID != 0 {
-		conditions = append(conditions, "o.user_id = $"+strconv.Itoa(len(args)+1))
-		args = append(args, params.CustomerID)
-	}
-
-	// Add condition for start date if provided
-	if params.StartDate != nil {
-		conditions = append(conditions, "o.created_at >= $"+strconv.Itoa(len(args)+1))
-		args = append(args, params.StartDate)
-	}
-
-	// Add condition for end date if provided
-	if params.EndDate != nil {
-		conditions = append(conditions, "o.created_at <= $"+strconv.Itoa(len(args)+1))
-		args = append(args, params.EndDate)
-	}
-
-	// Combine all conditions with AND
-	if len(conditions) > 0 {
-		query += " AND " + strings.Join(conditions, " AND ")
-	}
-
-	// Create a count query to get total number of matching orders
-	countQuery := "SELECT COUNT(*) FROM (" + query + ") AS count_query"
-	var total int64
-	err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total)
+	// Query to get paginated orders
+	query := `
+        SELECT id, user_id, total_amount, discount_amount, final_amount, shipping_address_id, 
+               coupon_applied, has_return_request, created_at, updated_at, delivered_at, 
+               order_status, delivery_status
+        FROM orders
+        ORDER BY created_at DESC
+        LIMIT $1 OFFSET $2
+    `
+	rows, err := r.db.QueryContext(ctx, query, limit, offset)
 	if err != nil {
-		log.Printf("error while get count : %v", err)
-		return nil, 0, err
-	}
-
-	// Apply sorting if sort field is provided
-	if params.SortBy != "" {
-		query += " ORDER BY o." + params.SortBy
-		if params.SortOrder != "" {
-			query += " " + params.SortOrder
-		}
-	}
-
-	// Apply pagination
-	query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", len(args)+1, len(args)+2)
-	args = append(args, params.Limit, (params.Page-1)*params.Limit)
-
-	// Execute the final query
-	rows, err := r.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		log.Printf("erorr applying pagination : %v", err)
+		log.Printf("error while fetching orders from orders table : %v", err)
 		return nil, 0, err
 	}
 	defer rows.Close()
 
-	// Iterate through the result set and create Order objects
 	var orders []*domain.Order
 	for rows.Next() {
 		var o domain.Order
-		err := rows.Scan(&o.ID, &o.UserID, &o.TotalAmount,
-			&o.DeliveryStatus, &o.OrderStatus, &o.HasReturnRequest, &o.ShippingAddressID, &o.CreatedAt, &o.UpdatedAt)
+		err := rows.Scan(
+			&o.ID,
+			&o.UserID,
+			&o.TotalAmount,
+			&o.DiscountAmount,
+			&o.FinalAmount,
+			&o.ShippingAddressID,
+			&o.CouponApplied,
+			&o.HasReturnRequest,
+			&o.CreatedAt,
+			&o.UpdatedAt,
+			&o.DeliveredAt,
+			&o.OrderStatus,
+			&o.DeliveryStatus,
+		)
 		if err != nil {
-			log.Printf("db error : %v", err)
+			log.Printf("error while scanning rows : %v", err)
 			return nil, 0, err
 		}
 		orders = append(orders, &o)
 	}
 
-	// Return the list of orders, total count, and nil error if successful
-	return orders, total, nil
+	// capture the errors we didn't got before
+	if err = rows.Err(); err != nil {
+		log.Printf("error while iterating over the rows of orders : %v", err)
+		return nil, 0, err
+	}
+
+	return orders, totalOrders, nil
 }
 
 func (r *orderRepository) UpdateOrderPaymentStatus(ctx context.Context, orderID int64, status string, paymentID string) error {
@@ -616,21 +598,34 @@ func (r *orderRepository) UpdateOrderHasReturnRequest(ctx context.Context, order
 	return nil
 }
 
-func (r *orderRepository) UpdateOrderDeliveryStatus(ctx context.Context, orderID int64, deliveryStatus, orderStatus string, deliveredAt *time.Time) error {
+/*
+UpdateOrderDeliveryStatus:
+- updates delivery_status, order_status, delivered_at of a given order
+*/
+func (r *orderRepository) UpdateOrderDeliveryStatus(ctx context.Context, tx *sql.Tx, orderID int64, deliveryStatus, orderStatus string, deliveredAt *time.Time) error {
 	query := `
         UPDATE orders
         SET delivery_status = $1, order_status = $2, delivered_at = $3, updated_at = NOW()
         WHERE id = $4
     `
-	_, err := r.db.ExecContext(ctx, query, deliveryStatus, orderStatus, deliveredAt, orderID)
-	return err
+	_, err := tx.ExecContext(ctx, query, deliveryStatus, orderStatus, deliveredAt, orderID)
+	if err != nil {
+		log.Printf("error while updating order status and delivery status for the given order: %v", err)
+		return err
+	}
+	return nil
 }
 
+/*
+IsOrderDelivered:
+- Used to check if order exists and is not delivered
+*/
 func (r *orderRepository) IsOrderDelivered(ctx context.Context, orderID int64) (bool, error) {
 	query := `SELECT delivery_status = 'delivered' FROM orders WHERE id = $1`
 	var isDelivered bool
 	err := r.db.QueryRowContext(ctx, query, orderID).Scan(&isDelivered)
 	if err == sql.ErrNoRows {
+		// If order not found , reply with false and error
 		return false, utils.ErrOrderNotFound
 	}
 	return isDelivered, err
@@ -756,11 +751,15 @@ func (r *orderRepository) CreateCancellationRequest(ctx context.Context, orderID
 	return nil
 }
 
+/*
+GetByIDTx:
+- get order details from orders table using order id
+*/
 func (r *orderRepository) GetByIDTx(ctx context.Context, tx *sql.Tx, id int64) (*domain.Order, error) {
 	query := `
         SELECT id, user_id, total_amount, discount_amount, final_amount, delivery_status, 
                order_status, has_return_request, shipping_address_id, coupon_applied, 
-               created_at, updated_at, delivered_at
+               created_at, updated_at, delivered_at, is_cancelled
         FROM orders
         WHERE id = $1
     `
@@ -768,16 +767,28 @@ func (r *orderRepository) GetByIDTx(ctx context.Context, tx *sql.Tx, id int64) (
 	var deliveredAt sql.NullTime
 
 	err := tx.QueryRowContext(ctx, query, id).Scan(
-		&order.ID, &order.UserID, &order.TotalAmount, &order.DiscountAmount, &order.FinalAmount,
-		&order.DeliveryStatus, &order.OrderStatus, &order.HasReturnRequest, &order.ShippingAddressID,
-		&order.CouponApplied, &order.CreatedAt, &order.UpdatedAt, &deliveredAt,
+		&order.ID,
+		&order.UserID,
+		&order.TotalAmount,
+		&order.DiscountAmount,
+		&order.FinalAmount,
+		&order.DeliveryStatus,
+		&order.OrderStatus,
+		&order.HasReturnRequest,
+		&order.ShippingAddressID,
+		&order.CouponApplied,
+		&order.CreatedAt,
+		&order.UpdatedAt,
+		&deliveredAt,
+		&order.IsCancelled,
 	)
 
 	if err == sql.ErrNoRows {
 		return nil, utils.ErrOrderNotFound
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to get order: %w", err)
+		log.Printf("failed to get order: %v", err)
+		return nil, err
 	}
 
 	if deliveredAt.Valid {
@@ -815,12 +826,20 @@ func (r *orderRepository) GetOrderItemsTx(ctx context.Context, tx *sql.Tx, order
 	return items, nil
 }
 
+/*
+GetCancellationRequests:
+- Get order details and cancellation request details
+- orders with order status = 'pending_cancellation' is fetched
+- orders and cancellation_requests tables joined using order id
+*/
 func (r *orderRepository) GetCancellationRequests(ctx context.Context, params domain.CancellationRequestParams) ([]*domain.CancellationRequest, int64, error) {
-	baseQuery := `
-        SELECT cr.id, cr.order_id, cr.user_id, cr.created_at, cr.cancellation_status
+	query := `
+        SELECT cr.id, cr.order_id, cr.user_id, cr.created_at, cr.cancellation_status, cr.is_stock_updated
         FROM cancellation_requests cr
         JOIN orders o ON cr.order_id = o.id
         WHERE o.order_status = 'pending_cancellation'
+        ORDER BY cr.created_at DESC
+        LIMIT $1 OFFSET $2
     `
 	countQuery := `
         SELECT COUNT(*)
@@ -829,52 +848,21 @@ func (r *orderRepository) GetCancellationRequests(ctx context.Context, params do
         WHERE o.order_status = 'pending_cancellation'
     `
 
-	var conditions []string
-	var args []interface{}
-
-	if params.CustomerID != 0 {
-		conditions = append(conditions, "cr.user_id = $"+strconv.Itoa(len(args)+1))
-		args = append(args, params.CustomerID)
-	}
-
-	if params.StartDate != nil {
-		conditions = append(conditions, "cr.created_at >= $"+strconv.Itoa(len(args)+1))
-		args = append(args, params.StartDate)
-	}
-
-	if params.EndDate != nil {
-		conditions = append(conditions, "cr.created_at <= $"+strconv.Itoa(len(args)+1))
-		args = append(args, params.EndDate)
-	}
-
-	if len(conditions) > 0 {
-		baseQuery += " AND " + strings.Join(conditions, " AND ")
-		countQuery += " AND " + strings.Join(conditions, " AND ")
-	}
-
-	// Add sorting
-	if params.SortBy != "" {
-		baseQuery += fmt.Sprintf(" ORDER BY %s %s", params.SortBy, params.SortOrder)
-	} else {
-		baseQuery += " ORDER BY cr.created_at DESC"
-	}
-
-	// Add pagination
-	baseQuery += fmt.Sprintf(" LIMIT $%d OFFSET $%d", len(args)+1, len(args)+2)
-	args = append(args, params.Limit, (params.Page-1)*params.Limit)
+	// Calculate offset
+	offset := (params.Page - 1) * params.Limit
 
 	// Get total count
 	var totalCount int64
-	err := r.db.QueryRowContext(ctx, countQuery, args[:len(args)-2]...).Scan(&totalCount)
+	err := r.db.QueryRowContext(ctx, countQuery).Scan(&totalCount)
 	if err != nil {
-		log.Printf("error while getting total count: %v", err)
+		log.Printf("Error getting total count: %v", err)
 		return nil, 0, err
 	}
 
 	// Execute main query
-	rows, err := r.db.QueryContext(ctx, baseQuery, args...)
+	rows, err := r.db.QueryContext(ctx, query, params.Limit, offset)
 	if err != nil {
-		log.Printf("error while executing main query: %v", err)
+		log.Printf("Error executing main query: %v", err)
 		return nil, 0, err
 	}
 	defer rows.Close()
@@ -882,13 +870,158 @@ func (r *orderRepository) GetCancellationRequests(ctx context.Context, params do
 	var requests []*domain.CancellationRequest
 	for rows.Next() {
 		var req domain.CancellationRequest
-		err := rows.Scan(&req.ID, &req.OrderID, &req.UserID, &req.CreatedAt, &req.CancellationRequestStatus)
+		err := rows.Scan(&req.ID,
+			&req.OrderID,
+			&req.UserID,
+			&req.CreatedAt,
+			&req.CancellationRequestStatus,
+			&req.IsStockUpdated)
 		if err != nil {
-			log.Printf("error while iterating over rows: %v", err)
+			log.Printf("Error scanning row: %v", err)
 			return nil, 0, err
 		}
 		requests = append(requests, &req)
 	}
 
+	if err = rows.Err(); err != nil {
+		log.Printf("Error iterating over rows: %v", err)
+		return nil, 0, err
+	}
+
 	return requests, totalCount, nil
+}
+
+/*
+GetShippingAddress:
+- Get shipping address related values from shipping_addresses table
+*/
+func (r *orderRepository) GetShippingAddress(ctx context.Context, addressID int64) (*domain.ShippingAddress, error) {
+	query := `
+        SELECT user_id,address_id, address_line1, address_line2, city, state,landmark, pincode, phone_number
+        FROM shipping_addresses
+        WHERE id = $1
+    `
+	var address domain.ShippingAddress
+	var addressLine2, landmark sql.NullString
+	err := r.db.QueryRowContext(ctx, query, addressID).Scan(
+		&address.UserID,
+		&address.AddressID,
+		&address.AddressLine1,
+		&addressLine2,
+		&address.City,
+		&address.State,
+		&landmark,
+		&address.PinCode,
+		&address.PhoneNumber,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, utils.ErrAddressNotFound
+		}
+		log.Printf("failed to get shipping address details from shipping addresses table : %v", err)
+		return nil, err
+	}
+	if addressLine2.Valid {
+		address.AddressLine2 = addressLine2.String
+	}
+	if landmark.Valid {
+		address.Landmark = landmark.String
+	}
+	return &address, nil
+}
+
+/*
+UpdateOrderStatusAndSetCancelledTx:
+- Update orders table
+- order_status, is_cancelled
+*/
+func (r *orderRepository) UpdateOrderStatusAndSetCancelledTx(ctx context.Context, tx *sql.Tx, orderID int64, order_status, delivery_status string, isCancelled bool) error {
+	query := `
+		UPDATE orders
+		SET order_status = $1, delivery_status = $2, is_cancelled = $3, updated_at = NOW()
+		WHERE id = $4
+	`
+	_, err := tx.ExecContext(ctx, query,
+		order_status,
+		delivery_status,
+		isCancelled,
+		orderID)
+	if err != nil {
+		log.Printf("failed to update order status and is_cancelled: %v", err)
+		return err
+	}
+	return nil
+}
+
+/*
+CreateCancellationRequestTx:
+- Create cancellation request entry in cancellation_requests table
+*/
+func (r *orderRepository) CreateCancellationRequestTx(ctx context.Context, tx *sql.Tx, request *domain.CancellationRequest) error {
+	query := `
+        INSERT INTO cancellation_requests (order_id, user_id, created_at, cancellation_status, is_stock_updated)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id
+    `
+	err := tx.QueryRowContext(ctx, query,
+		request.OrderID,
+		request.UserID,
+		request.CreatedAt,
+		request.CancellationRequestStatus,
+		request.IsStockUpdated,
+	).Scan(&request.ID)
+
+	if err != nil {
+		log.Printf("failed to create cancellation request: %v", err)
+		return err
+	}
+
+	return nil
+}
+
+/*
+UpdateCancellationRequestTx:
+- Update is_stock_updated column in cancellation_requests table
+*/
+func (r *orderRepository) UpdateCancellationRequestTx(ctx context.Context, tx *sql.Tx, request *domain.CancellationRequest) error {
+	query := `
+        UPDATE cancellation_requests
+        SET is_stock_updated = $1, cancellation_status = $2
+        WHERE id = $3
+    `
+	_, err := tx.ExecContext(ctx, query, request.IsStockUpdated, request.CancellationRequestStatus, request.ID)
+	if err != nil {
+		log.Printf("failed to update cancellation request: %v", err)
+	}
+
+	return err
+}
+
+/*
+GetCancellationRequestByOrderIDTx:
+- get cancellation request details using order id
+*/
+func (r *orderRepository) GetCancellationRequestByOrderIDTx(ctx context.Context, tx *sql.Tx, orderID int64) (*domain.CancellationRequest, error) {
+	query := `
+        SELECT id, order_id, user_id, created_at, cancellation_status, is_stock_updated
+        FROM cancellation_requests
+        WHERE order_id = $1
+    `
+	var request domain.CancellationRequest
+	err := tx.QueryRowContext(ctx, query, orderID).Scan(
+		&request.ID,
+		&request.OrderID,
+		&request.UserID,
+		&request.CreatedAt,
+		&request.CancellationRequestStatus,
+		&request.IsStockUpdated,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, utils.ErrCancellationRequestNotFound
+		}
+		log.Printf("error while getting cancellation request details : %v", err)
+		return nil, err
+	}
+	return &request, nil
 }

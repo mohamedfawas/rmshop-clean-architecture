@@ -136,10 +136,10 @@ type CheckoutRepository interface {
 
 type OrderRepository interface {
 	GetByID(ctx context.Context, id int64) (*domain.Order, error)
-	GetUserOrders(ctx context.Context, userID int64, page, limit int, sortBy, order, status string) ([]*domain.Order, int64, error)
+	GetUserOrders(ctx context.Context, userID int64, page int) ([]*domain.Order, int64, error)
 	UpdateOrderStatus(ctx context.Context, orderID int64, status string) error
 	UpdateRefundStatus(ctx context.Context, orderID int64, refundStatus sql.NullString) error
-	GetOrders(ctx context.Context, params domain.OrderQueryParams) ([]*domain.Order, int64, error)
+	GetOrders(ctx context.Context, limit, offset int) ([]*domain.Order, int64, error)
 	UpdateOrderPaymentStatus(ctx context.Context, orderID int64, status string, paymentID string) error
 	GetPaymentByOrderID(ctx context.Context, orderID int64) (*domain.Payment, error)
 	UpdatePayment(ctx context.Context, payment *domain.Payment) error
@@ -157,7 +157,7 @@ type OrderRepository interface {
 	UpdateOrderHasReturnRequestTx(ctx context.Context, tx *sql.Tx, orderID int64, hasReturnRequest bool) error
 	GetOrderWithItems(ctx context.Context, orderID int64) (*domain.Order, error)
 	UpdateOrderHasReturnRequest(ctx context.Context, orderID int64, hasReturnRequest bool) error
-	UpdateOrderDeliveryStatus(ctx context.Context, orderID int64, deliveryStatus, orderStatus string, deliveredAt *time.Time) error
+	UpdateOrderDeliveryStatus(ctx context.Context, tx *sql.Tx, orderID int64, deliveryStatus, orderStatus string, deliveredAt *time.Time) error
 	IsOrderDelivered(ctx context.Context, orderID int64) (bool, error)
 	GetOrderByID(ctx context.Context, id int64) (*domain.Order, error)
 	CreateCancellationRequest(ctx context.Context, orderID, userID int64) error
@@ -166,6 +166,11 @@ type OrderRepository interface {
 	GetCancellationRequests(ctx context.Context, params domain.CancellationRequestParams) ([]*domain.CancellationRequest, int64, error)
 	GetOrderDetails(ctx context.Context, id int64) (*domain.Order, error)
 	GetOrderItems(ctx context.Context, orderID int64) ([]domain.OrderItem, error)
+	GetShippingAddress(ctx context.Context, addressID int64) (*domain.ShippingAddress, error)
+	UpdateOrderStatusAndSetCancelledTx(ctx context.Context, tx *sql.Tx, orderID int64, order_status, delivery_status string, isCancelled bool) error
+	CreateCancellationRequestTx(ctx context.Context, tx *sql.Tx, request *domain.CancellationRequest) error
+	UpdateCancellationRequestTx(ctx context.Context, tx *sql.Tx, request *domain.CancellationRequest) error
+	GetCancellationRequestByOrderIDTx(ctx context.Context, tx *sql.Tx, orderID int64) (*domain.CancellationRequest, error)
 }
 
 type InventoryRepository interface {

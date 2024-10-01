@@ -59,9 +59,17 @@ const (
 	PaymentStatusAwaitingPayment = "awaiting_payment"
 	PaymentStatusPaid            = "paid"
 
+	// Cancellation status in cancellation_requests table
+	CancellationStatusPendingReview = "pending_review"
+	CancellationStatusCancelled     = "cancelled"
+
 	//wallet
 	WalletTransactionTypeRefund                     = "refund"
 	WalletTransactionReferenceTypeOrderCancellation = "order_cancellation"
+
+	// Refund
+	RefundStatusNotApplicable = "not_applicable"
+	RefundStatusInitiated     = "initiated"
 )
 
 const (
@@ -338,6 +346,11 @@ var (
 	ErrCancellationRequestExists   = errors.New("cancellation request exists")
 	ErrRefundFailed                = errors.New("refund failed")
 	ErrOrderNotPendingCancellation = errors.New("order not pending cancellation")
+	ErrCancellationRequestNotFound = errors.New("cancellation request not found")
+
+	// payment
+	ErrMissingPaymentStatus = errors.New("missing payment status")
+	ErrInvalidPaymentStatus = errors.New("invalid payment status")
 
 	ErrInternalServer = errors.New("internal server error")
 )
