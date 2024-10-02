@@ -30,6 +30,7 @@ const (
 	OrderStatusPendingCancellation = "pending_cancellation"
 	OrderStatusCancelled           = "cancelled"
 	OrderStatusRefunded            = "refunded"
+	OrderStatusReturnApproved      = "return_approved"
 
 	// Delivery status constants
 	DeliveryStatusPending               = "pending"
@@ -324,6 +325,8 @@ var (
 	ErrInvalidRefundAmount           = errors.New("invalid refund amount")
 	ErrRefundNotInitiated            = errors.New("refund not initiated")
 	ErrRefundAlreadyCompleted        = errors.New("refund already completed")
+	ErrAlreadyMarkedAsReturned       = errors.New("already marked as returned")
+	ErrNoStockUpdated                = errors.New("no stock updated")
 
 	// wishlist
 	ErrProductOutOfStock     = errors.New("product is out of stock")

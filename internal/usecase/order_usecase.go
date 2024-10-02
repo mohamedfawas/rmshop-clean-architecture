@@ -323,7 +323,7 @@ func (u *orderUseCase) PlaceOrderRazorpay(ctx context.Context, userID, checkoutI
 		}
 
 		// Update the stock in products table for the respective product
-		err = u.productRepo.UpdateStock(ctx, tx, item.ProductID, -item.Quantity)
+		err = u.productRepo.UpdateStockTx(ctx, tx, item.ProductID, -item.Quantity)
 		if err != nil {
 			log.Printf("failed to update product stock: %v", err)
 			return nil, err
@@ -567,7 +567,7 @@ func (u *orderUseCase) PlaceOrderCOD(ctx context.Context, userID, checkoutID int
 
 		// Update stock_quantity in products table
 		// quantity is in negative bcz we need to reduce stock quantity from products
-		err = u.productRepo.UpdateStock(ctx, tx, item.ProductID, -item.Quantity)
+		err = u.productRepo.UpdateStockTx(ctx, tx, item.ProductID, -item.Quantity)
 		if err != nil {
 			log.Printf("failed to update product stock: %v", err)
 			return nil, err

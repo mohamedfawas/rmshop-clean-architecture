@@ -220,10 +220,10 @@ func NewRouter(userHandler *handlers.UserHandler,
 
 	// order return : admin approve/reject
 	r.HandleFunc("/admin/returns/{returnId}", chainMiddleware(jwtAuth, adminAuth)(returnHandler.UpdateReturnRequest)).Methods("PATCH")
+	// order return : admin marks the order reached the seller/sender
+	r.HandleFunc("/admin/returns/{returnId}/order-returned-to-seller", chainMiddleware(jwtAuth, adminAuth)(returnHandler.MarkOrderReturnedToSeller)).Methods("POST")
 	// order return : admin initiate refund
 	r.HandleFunc("/admin/returns/{returnId}/refund", chainMiddleware(jwtAuth, adminAuth)(returnHandler.InitiateRefund)).Methods("POST")
-	// order return : admin refund complete // Remove this code, belongs to old approach
-	r.HandleFunc("/admin/returns/{returnId}/refund", chainMiddleware(jwtAuth, adminAuth)(returnHandler.CompleteRefund)).Methods("PATCH")
 
 	// Order cancellation
 	// user initiate order cancellation

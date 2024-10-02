@@ -21,12 +21,14 @@ func NewReturnHandler(returnUseCase usecase.ReturnUseCase) *ReturnHandler {
 }
 
 func (h *ReturnHandler) InitiateReturn(w http.ResponseWriter, r *http.Request) {
+	// Extract the user id from the context
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok {
 		api.SendResponse(w, http.StatusUnauthorized, "Failed to initiate return", nil, "User not authenticated")
 		return
 	}
 
+	// extract the order id from the url
 	vars := mux.Vars(r)
 	orderID, err := strconv.ParseInt(vars["orderId"], 10, 64)
 	if err != nil {
@@ -34,6 +36,7 @@ func (h *ReturnHandler) InitiateReturn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// input request body indicating reason for return
 	var input struct {
 		Reason string `json:"reason"`
 	}
@@ -42,6 +45,7 @@ func (h *ReturnHandler) InitiateReturn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Call the usecase method to record initiate order return from user side
 	returnRequest, err := h.returnUseCase.InitiateReturn(r.Context(), userID, orderID, input.Reason)
 	if err != nil {
 		switch err {
@@ -115,6 +119,7 @@ func (h *ReturnHandler) GetUserReturnRequests(w http.ResponseWriter, r *http.Req
 }
 
 func (h *ReturnHandler) UpdateReturnRequest(w http.ResponseWriter, r *http.Request) {
+	// Extract the return id from the url
 	vars := mux.Vars(r)
 	returnID, err := strconv.ParseInt(vars["returnId"], 10, 64)
 	if err != nil {
@@ -122,6 +127,7 @@ func (h *ReturnHandler) UpdateReturnRequest(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// fetch the request body
 	var input struct {
 		IsApproved bool `json:"is_approved"`
 	}
@@ -130,6 +136,7 @@ func (h *ReturnHandler) UpdateReturnRequest(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Call the usecase method
 	updatedReturn, err := h.returnUseCase.UpdateReturnRequest(r.Context(), returnID, input.IsApproved)
 	if err != nil {
 		switch err {
@@ -183,33 +190,33 @@ func (h *ReturnHandler) InitiateRefund(w http.ResponseWriter, r *http.Request) {
 	api.SendResponse(w, http.StatusOK, "Refund initiated successfully", refundDetails, "")
 }
 
-// Remove this code, belongs to old approach
-func (h *ReturnHandler) CompleteRefund(w http.ResponseWriter, r *http.Request) {
-	// Get return ID from URL
+func (h *ReturnHandler) MarkOrderReturnedToSeller(w http.ResponseWriter, r *http.Request) {
+	// Extract return ID from URL
 	vars := mux.Vars(r)
 	returnID, err := strconv.ParseInt(vars["returnId"], 10, 64)
 	if err != nil {
-		api.SendResponse(w, http.StatusBadRequest, "Invalid return ID", nil, "Return ID must be a number")
+		api.SendResponse(w, http.StatusBadRequest, "Failed to mark order as returned", nil, "Invalid return ID")
 		return
 	}
 
-	// Call use case to complete the refund
-	updatedReturn, err := h.returnUseCase.CompleteRefund(r.Context(), returnID)
+	// Call the use case method
+	err = h.returnUseCase.MarkOrderReturnedToSeller(r.Context(), returnID)
 	if err != nil {
 		switch err {
 		case utils.ErrReturnRequestNotFound:
-			api.SendResponse(w, http.StatusNotFound, "Return request not found", nil, "The specified return request does not exist")
-		case utils.ErrRefundNotInitiated:
-			api.SendResponse(w, http.StatusBadRequest, "Refund not initiated", nil, "The refund has not been initiated for this return")
-		case utils.ErrRefundAlreadyCompleted:
-			api.SendResponse(w, http.StatusBadRequest, "Refund already completed", nil, "The refund has already been completed for this return")
-		case utils.ErrInsufficientBalance:
-			api.SendResponse(w, http.StatusInternalServerError, "Insufficient balance", nil, "Unable to complete refund due to insufficient balance")
+			api.SendResponse(w, http.StatusNotFound, "Failed to mark order as returned", nil, "Return request not found")
+		case utils.ErrReturnRequestNotApproved:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to mark order as returned", nil, "Return request not approved")
+		case utils.ErrAlreadyMarkedAsReturned:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to mark order as returned", nil, "Order already marked as returned to seller")
+		case utils.ErrNoStockUpdated:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to mark order as returned", nil, "No stock updated, possibly due to empty order")
 		default:
-			api.SendResponse(w, http.StatusInternalServerError, "Failed to complete refund", nil, "An unexpected error occurred")
+			api.SendResponse(w, http.StatusInternalServerError, "Failed to mark order as returned", nil, "An unexpected error occurred")
 		}
 		return
 	}
 
-	api.SendResponse(w, http.StatusOK, "Refund completed successfully", updatedReturn, "")
+	// Send success response
+	api.SendResponse(w, http.StatusOK, "Order marked as returned to seller successfully", nil, "")
 }

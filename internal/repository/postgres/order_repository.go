@@ -585,6 +585,10 @@ func (r *orderRepository) GetOrderWithItems(ctx context.Context, orderID int64) 
 	return order, nil
 }
 
+/*
+UpdateOrderHasReturnRequest:
+- update "has_return_request" column in orders table
+*/
 func (r *orderRepository) UpdateOrderHasReturnRequest(ctx context.Context, orderID int64, hasReturnRequest bool) error {
 	query := `
 		UPDATE orders
@@ -593,6 +597,7 @@ func (r *orderRepository) UpdateOrderHasReturnRequest(ctx context.Context, order
 	`
 	_, err := r.db.ExecContext(ctx, query, hasReturnRequest, orderID)
 	if err != nil {
+		log.Printf("failed to update has_return_request column : %v", err)
 		return err
 	}
 	return nil
