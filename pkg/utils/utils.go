@@ -327,6 +327,7 @@ var (
 	ErrRefundAlreadyCompleted        = errors.New("refund already completed")
 	ErrAlreadyMarkedAsReturned       = errors.New("already marked as returned")
 	ErrNoStockUpdated                = errors.New("no stock updated")
+	ErrOrderNotReturnedToSeller      = errors.New("order not reached to seller")
 
 	// wishlist
 	ErrProductOutOfStock     = errors.New("product is out of stock")
@@ -405,6 +406,6 @@ func IsDuplicateKeyError(err error) bool {
 	return strings.Contains(err.Error(), "duplicate key value violates unique constraint")
 }
 
-func Ptr[T any](v T) *T {
-	return &v
-}
+// func Ptr[T any](v T) *T {
+// 	return &v
+// }

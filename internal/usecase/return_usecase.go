@@ -202,40 +202,51 @@ func (u *returnUseCase) InitiateRefund(ctx context.Context, returnID int64) (*do
 		return nil, utils.ErrRefundAlreadyInitiated
 	}
 
+	// Check if the order has been marked as returned to the seller
+	if !returnRequest.IsOrderReachedTheSeller {
+		return nil, utils.ErrOrderNotReturnedToSeller
+	}
+
 	// Get the order details
 	order, err := u.orderRepo.GetByID(ctx, returnRequest.OrderID)
 	if err != nil {
+		log.Printf("Failed to get order details: %v", err)
 		return nil, err
 	}
 
 	// Check if the order was cancelled
-	if order.OrderStatus == "cancelled" {
+	if order.OrderStatus == utils.OrderStatusCancelled {
 		return nil, utils.ErrOrderCancelled
 	}
 
 	// Calculate refund amount
 	refundAmount := order.FinalAmount
 
-	// Get current wallet balance
+	// Get wallet details using user id
 	wallet, err := u.walletRepo.GetByUserID(ctx, order.UserID)
 	if err != nil {
+		log.Printf("failed to fetch wallet details of the given user : %v", err)
 		return nil, err
 	}
 
 	// Calculate new balance
 	newBalance := wallet.Balance + refundAmount
 
-	// Update return request
+	// Update return request variables
 	returnRequest.RefundInitiated = true
 	returnRequest.RefundAmount = &refundAmount
+
+	// Update refund related details in return_requests table in db
 	err = u.returnRepo.UpdateRefundDetails(ctx, returnRequest)
 	if err != nil {
+		log.Printf("failed to update refund details : %v", err)
 		return nil, err
 	}
 
 	// Add amount to user's wallet
 	err = u.walletRepo.AddBalance(ctx, tx, order.UserID, refundAmount)
 	if err != nil {
+		log.Printf("failed to add balance in wallet : %v", err)
 		return nil, err
 	}
 
@@ -245,23 +256,27 @@ func (u *returnUseCase) InitiateRefund(ctx context.Context, returnID int64) (*do
 		Amount:          refundAmount,
 		TransactionType: "REFUND",
 		ReferenceID:     &returnID,
-		ReferenceType:   utils.Ptr("RETURN"),
+		ReferenceType:   "ORDER_RETURN",
 		BalanceAfter:    newBalance,
 		CreatedAt:       time.Now().UTC(),
 	}
+	// Create wallet transaction entry in wallet_transactions table
 	err = u.walletRepo.CreateTransaction(ctx, tx, walletTransaction)
 	if err != nil {
+		log.Printf("failed to create transaction entry in wallet_transactions : %v", err)
 		return nil, err
 	}
 
 	// Update order status
-	err = u.orderRepo.UpdateOrderStatusTx(ctx, tx, order.ID, "refunded")
+	err = u.orderRepo.UpdateOrderStatusTx(ctx, tx, order.ID, utils.OrderStatusRefunded)
 	if err != nil {
+		log.Printf("failed to update order status : %v", err)
 		return nil, err
 	}
 
 	// Commit the transaction
 	if err = tx.Commit(); err != nil {
+		log.Printf("failed to commit the transaction : %v", err)
 		return nil, err
 	}
 
@@ -269,7 +284,7 @@ func (u *returnUseCase) InitiateRefund(ctx context.Context, returnID int64) (*do
 		ReturnID:      returnID,
 		OrderID:       order.ID,
 		RefundAmount:  refundAmount,
-		RefundStatus:  "completed",
+		RefundStatus:  utils.RefundStatusInitiated,
 		RefundedAt:    time.Now().UTC(),
 		TransactionID: walletTransaction.ID,
 	}
@@ -277,6 +292,15 @@ func (u *returnUseCase) InitiateRefund(ctx context.Context, returnID int64) (*do
 	return refundDetails, nil
 }
 
+/*
+MarkOrderReturnedToSeller:
+- Start the transaction
+- Get the return request using return id
+- Validate return request variables
+- Update stock for the products which belongs to the order items in the returned order (calls the method "updateStockForReturnedOrder")
+- Update return_requests
+- Commit transaction
+*/
 func (u *returnUseCase) MarkOrderReturnedToSeller(ctx context.Context, returnID int64) error {
 	// Start a transaction
 	tx, err := u.returnRepo.BeginTx(ctx)
@@ -330,6 +354,10 @@ func (u *returnUseCase) MarkOrderReturnedToSeller(ctx context.Context, returnID 
 	return nil
 }
 
+/*
+updateStockForReturnedOrder:
+- Update stock for the products which belongs to the order items in the returned order
+*/
 func (u *returnUseCase) updateStockForReturnedOrder(ctx context.Context, tx *sql.Tx, orderID int64) error {
 	// Get order items
 	orderItems, err := u.orderRepo.GetOrderItems(ctx, orderID)

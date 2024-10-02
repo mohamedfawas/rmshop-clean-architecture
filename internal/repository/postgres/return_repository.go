@@ -141,6 +141,10 @@ func (r *returnRepository) UpdateApprovedOrRejected(ctx context.Context, returnR
 	return err
 }
 
+/*
+UpdateRefundDetails:
+- Update refund related details in return_requests table
+*/
 func (r *returnRepository) UpdateRefundDetails(ctx context.Context, returnRequest *domain.ReturnRequest) error {
 	query := `
         UPDATE return_requests
@@ -152,6 +156,9 @@ func (r *returnRepository) UpdateRefundDetails(ctx context.Context, returnReques
 		returnRequest.RefundInitiated,
 		returnRequest.RefundAmount,
 		returnRequest.ID)
+	if err != nil {
+		log.Printf("failed to update refund details in return_requests table : %v", err)
+	}
 	return err
 }
 

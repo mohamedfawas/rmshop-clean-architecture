@@ -1186,7 +1186,7 @@ func (u *orderUseCase) processRefund(ctx context.Context, tx *sql.Tx, order *dom
 		Amount:          payment.Amount,
 		TransactionType: "refund",
 		ReferenceID:     &order.ID,
-		ReferenceType:   &referenceType,
+		ReferenceType:   referenceType,
 		BalanceAfter:    newBalance,
 		CreatedAt:       time.Now().UTC(),
 	}

@@ -20,6 +20,10 @@ func NewWalletRepository(db *sql.DB) repository.WalletRepository {
 	return &walletRepository{db: db}
 }
 
+/*
+GetByUserID:
+- Get wallet details using user id
+*/
 func (r *walletRepository) GetByUserID(ctx context.Context, userID int64) (*domain.Wallet, error) {
 	query := `
 		SELECT id, user_id, balance, created_at, updated_at
@@ -38,16 +42,26 @@ func (r *walletRepository) GetByUserID(ctx context.Context, userID int64) (*doma
 		if err == sql.ErrNoRows {
 			return nil, utils.ErrWalletNotFound
 		}
+		log.Printf("failed to retrieve wallet details using user id : %v", err)
 		return nil, err
 	}
 	return wallet, nil
 }
 
+/*
+AddBalance:
+- Insert refund details in wallets table
+- Mainly the balance is updated after adding the refund amount
+*/
 func (r *walletRepository) AddBalance(ctx context.Context, tx *sql.Tx, userID int64, amount float64) error {
+	/*
+		query explanation:
+		- If a row with same user id exists then update with the given details
+	*/
 	query := `
         INSERT INTO wallets (user_id, balance, created_at, updated_at)
         VALUES ($1, $2, NOW(), NOW())
-        ON CONFLICT (user_id)
+        ON CONFLICT (user_id) 
         DO UPDATE SET 
             balance = wallets.balance + $2,
             updated_at = NOW()
@@ -57,12 +71,16 @@ func (r *walletRepository) AddBalance(ctx context.Context, tx *sql.Tx, userID in
 	err := tx.QueryRowContext(ctx, query, userID, amount).Scan(&newBalance)
 	if err != nil {
 		log.Printf("Error updating wallet balance: %v", err)
-		return fmt.Errorf("failed to update wallet balance: %w", err)
+		return err
 	}
 	log.Printf("Updated wallet balance for user %d: %f", userID, newBalance)
 	return nil
 }
 
+/*
+CreateTransaction:
+- add transaction entry in wallet_transactions table
+*/
 func (r *walletRepository) CreateTransaction(ctx context.Context, tx *sql.Tx, transaction *domain.WalletTransaction) error {
 	query := `
         INSERT INTO wallet_transactions (user_id, amount, transaction_type, reference_id, reference_type, balance_after, created_at)
