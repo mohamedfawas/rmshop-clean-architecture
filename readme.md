@@ -65,7 +65,7 @@ This project is a robust e-commerce API for a Sports team merchandise shop, buil
 
 ## API Endpoints
 
-For a complete list of endpoints and their descriptions, please refer to the [API documentation]().
+For a complete list of endpoints and their descriptions, please refer to the [API documentation](https://documenter.getpostman.com/view/17830038/2sAXxLDaYW).
 
 ## Contributing
 
