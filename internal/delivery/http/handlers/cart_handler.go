@@ -105,7 +105,7 @@ func (h *CartHandler) UpdateCartItemQuantity(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	err = h.cartUseCase.UpdateCartItemQuantity(r.Context(), userID, itemID, input.Quantity)
+	cartItem, err := h.cartUseCase.UpdateCartItemQuantity(r.Context(), userID, itemID, input.Quantity)
 	if err != nil {
 		switch err {
 		case utils.ErrCartItemNotFound:
@@ -124,7 +124,17 @@ func (h *CartHandler) UpdateCartItemQuantity(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	api.SendResponse(w, http.StatusOK, "Cart item updated successfully", nil, "")
+	updatedCartItemResponse := domain.UpdatedCartItemResponse{
+		ID:        cartItem.ID,
+		UserID:    cartItem.UserID,
+		ProductID: cartItem.ProductID,
+		Quantity:  cartItem.Quantity,
+		Price:     cartItem.Price,
+		Subtotal:  cartItem.Subtotal,
+		UpdatedAt: cartItem.UpdatedAt,
+	}
+
+	api.SendResponse(w, http.StatusOK, "Cart item updated successfully", updatedCartItemResponse, "")
 }
 
 func (h *CartHandler) DeleteCartItem(w http.ResponseWriter, r *http.Request) {
@@ -158,4 +168,20 @@ func (h *CartHandler) DeleteCartItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	api.SendResponse(w, http.StatusOK, "Item removed from cart successfully", nil, "")
+}
+
+func (h *CartHandler) ClearCart(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	if !ok {
+		api.SendResponse(w, http.StatusUnauthorized, "Failed to clear cart", nil, "User not authenticated")
+		return
+	}
+
+	err := h.cartUseCase.ClearCart(r.Context(), userID)
+	if err != nil {
+		api.SendResponse(w, http.StatusInternalServerError, "Failed to clear cart", nil, "An unexpected error occurred")
+		return
+	}
+
+	api.SendResponse(w, http.StatusOK, "Cart cleared successfully", nil, "")
 }

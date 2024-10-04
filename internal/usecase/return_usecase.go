@@ -17,7 +17,8 @@ type ReturnUseCase interface {
 	GetUserReturnRequests(ctx context.Context, userID int64) ([]*domain.ReturnRequest, error)
 	UpdateReturnRequest(ctx context.Context, returnID int64, isApproved bool) (*domain.ReturnRequest, error)
 	InitiateRefund(ctx context.Context, returnID int64) (*domain.RefundDetails, error)
-	MarkOrderReturnedToSeller(ctx context.Context, returnID int64) error
+	MarkOrderReturnedToSeller(ctx context.Context, returnID int64) (*domain.ReturnRequest, error)
+	GetPendingReturnRequests(ctx context.Context, page int) ([]*domain.ReturnRequest, int64, error)
 }
 
 type returnUseCase struct {
@@ -25,17 +26,20 @@ type returnUseCase struct {
 	orderRepo   repository.OrderRepository
 	walletRepo  repository.WalletRepository
 	productRepo repository.ProductRepository
+	paymentRepo repository.PaymentRepository
 }
 
 func NewReturnUseCase(returnRepo repository.ReturnRepository,
 	orderRepo repository.OrderRepository,
 	walletRepo repository.WalletRepository,
-	productRepo repository.ProductRepository) ReturnUseCase {
+	productRepo repository.ProductRepository,
+	paymentRepo repository.PaymentRepository) ReturnUseCase {
 	return &returnUseCase{
 		returnRepo:  returnRepo,
 		orderRepo:   orderRepo,
 		walletRepo:  walletRepo,
 		productRepo: productRepo,
+		paymentRepo: paymentRepo,
 	}
 }
 
@@ -111,16 +115,16 @@ func (u *returnUseCase) InitiateReturn(ctx context.Context, userID, orderID int6
 }
 
 func (u *returnUseCase) GetReturnRequestByOrderID(ctx context.Context, userID, orderID int64) (*domain.ReturnRequest, error) {
-	order, err := u.orderRepo.GetByID(ctx, orderID)
+	returnRequest, err := u.returnRepo.GetReturnRequestByOrderID(ctx, orderID)
 	if err != nil {
 		return nil, err
 	}
 
-	if order.UserID != userID {
+	if returnRequest.UserID != userID {
 		return nil, utils.ErrUnauthorized
 	}
 
-	return u.returnRepo.GetReturnRequestByOrderID(ctx, orderID)
+	return returnRequest, nil
 }
 
 func (u *returnUseCase) GetUserReturnRequests(ctx context.Context, userID int64) ([]*domain.ReturnRequest, error) {
@@ -205,6 +209,20 @@ func (u *returnUseCase) InitiateRefund(ctx context.Context, returnID int64) (*do
 	// Check if the order has been marked as returned to the seller
 	if !returnRequest.IsOrderReachedTheSeller {
 		return nil, utils.ErrOrderNotReturnedToSeller
+	}
+
+	// Get payment details, if the payment status is paid, then only do the refund
+	payment, err := u.paymentRepo.GetByOrderID(ctx, returnRequest.OrderID)
+	if err != nil {
+		if err == utils.ErrPaymentNotFound {
+			return nil, utils.ErrNotEligibleForRefund
+		}
+		log.Printf("failed to fetch payment details : %v", err)
+		return nil, err
+	}
+
+	if payment.Status != utils.PaymentStatusPaid {
+		return nil, utils.ErrNotEligibleForRefund
 	}
 
 	// Get the order details
@@ -301,12 +319,12 @@ MarkOrderReturnedToSeller:
 - Update return_requests
 - Commit transaction
 */
-func (u *returnUseCase) MarkOrderReturnedToSeller(ctx context.Context, returnID int64) error {
+func (u *returnUseCase) MarkOrderReturnedToSeller(ctx context.Context, returnID int64) (*domain.ReturnRequest, error) {
 	// Start a transaction
 	tx, err := u.returnRepo.BeginTx(ctx)
 	if err != nil {
 		log.Printf("failed to start transaction : %v", err)
-		return err
+		return nil, err
 	}
 	defer tx.Rollback()
 
@@ -314,22 +332,22 @@ func (u *returnUseCase) MarkOrderReturnedToSeller(ctx context.Context, returnID 
 	returnRequest, err := u.returnRepo.GetByID(ctx, returnID)
 	if err != nil {
 		log.Printf("failed to fetch the return request : %v", err)
-		return err
+		return nil, err
 	}
 
 	// Check if the return is approved and not already marked as returned
 	if !returnRequest.IsApproved {
-		return utils.ErrReturnRequestNotApproved
+		return nil, utils.ErrReturnRequestNotApproved
 	}
 	if returnRequest.OrderReturnedToSellerAt != nil {
-		return utils.ErrAlreadyMarkedAsReturned
+		return nil, utils.ErrAlreadyMarkedAsReturned
 	}
 
 	// Update stock for returned products
 	err = u.updateStockForReturnedOrder(ctx, tx, returnRequest.OrderID)
 	if err != nil {
 		log.Printf("failed to update stock quantity for the returned order items : %v", err)
-		return err
+		return nil, err
 	}
 
 	// Update return request
@@ -341,17 +359,17 @@ func (u *returnUseCase) MarkOrderReturnedToSeller(ctx context.Context, returnID 
 	err = u.returnRepo.UpdateReturnRequest(ctx, returnRequest)
 	if err != nil {
 		log.Printf("failed to update the return request in the database : %v", err)
-		return err
+		return nil, err
 	}
 
 	// commit the transaction
 	err = tx.Commit()
 	if err != nil {
 		log.Printf("failed to commit the transaction : %v", err)
-		return err
+		return nil, err
 	}
 
-	return nil
+	return returnRequest, nil
 }
 
 /*
@@ -381,4 +399,17 @@ func (u *returnUseCase) updateStockForReturnedOrder(ctx context.Context, tx *sql
 	}
 
 	return nil
+}
+
+func (u *returnUseCase) GetPendingReturnRequests(ctx context.Context, page int) ([]*domain.ReturnRequest, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+
+	params := domain.ReturnRequestParams{
+		Page:  page,
+		Limit: 10,
+	}
+
+	return u.returnRepo.GetPendingReturnRequests(ctx, params)
 }

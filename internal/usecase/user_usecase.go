@@ -277,24 +277,6 @@ func (u *userUseCase) ResendOTP(ctx context.Context, email string) error {
 	return nil
 }
 
-// GetUserProfile retrieves the profile of a user by their userID.
-// It checks if the user exists and is not blocked. If the user is found and not blocked,
-// it returns the user profile. If the user is not found or is blocked, it returns the
-// appropriate error.
-//
-// Parameters:
-//
-//	ctx (context.Context) : The context for managing request-scoped values, deadlines, and cancellation.
-//	userID (int64)        : The ID of the user whose profile is being retrieved.
-//
-// Returns:
-//
-//	(*domain.User, error) : A pointer to the user profile on success, or an error if the operation fails.
-//
-// Possible errors:
-//   - utils.ErrUserNotFound    : If the user with the provided userID does not exist.
-//   - utils.ErrUserBlocked     : If the user is found but is blocked and their profile cannot be accessed.
-//   - utils.ErrInternalServer  : For unexpected errors during the operation.
 func (u *userUseCase) GetUserProfile(ctx context.Context, userID int64) (*domain.User, error) {
 	user, err := u.userRepo.GetByID(ctx, userID)
 	if err != nil {
@@ -312,19 +294,6 @@ func (u *userUseCase) GetUserProfile(ctx context.Context, userID int64) (*domain
 	return user, nil
 }
 
-// UpdateProfile updates the user's profile with the provided update data.
-// It first retrieves the user by their ID, checks if the user is blocked,
-// and then updates their name and phone number if provided.
-// It also sets the current time as the 'updated_at' field and commits the changes to the repository.
-//
-// Parameters:
-//   - ctx: Context for controlling execution and managing timeouts.
-//   - userID: ID of the user whose profile is being updated.
-//   - updateData: Pointer to a UserUpdatedData struct containing the fields to be updated.
-//
-// Returns:
-//   - *domain.User: The updated User object.
-//   - error: Returns ErrUserNotFound if the user is not found, ErrUserBlocked if the user is blocked, or another error if the update fails.
 func (u *userUseCase) UpdateProfile(ctx context.Context, userID int64, updateData *domain.UserUpdatedData) (*domain.User, error) {
 	user, err := u.userRepo.GetByID(ctx, userID)
 	if err != nil {
@@ -457,17 +426,6 @@ func (u *userUseCase) ResetPassword(ctx context.Context, email, otp, newPassword
 	return nil
 }
 
-// AddUserAddress adds a new address for a user, ensuring that the user exists, is not blocked,
-// and that the address is not a duplicate. It first checks if the user exists and is active (not blocked),
-// verifies that the address is unique, and then inserts the new address into the database.
-//
-// Parameters:
-//   - ctx: Context for controlling execution and managing timeouts.
-//   - userAddress: Pointer to a UserAddress struct containing the user's address details to be added.
-//
-// Returns:
-//   - error: Returns an error if the user does not exist, the user is blocked, or the address already exists.
-//     Also returns an error if any operation fails during the process
 func (u *userUseCase) AddUserAddress(ctx context.Context, userAddress *domain.UserAddress) error {
 	// check if the user exists and whether the user is blocked
 	user, err := u.userRepo.GetByID(ctx, userAddress.UserID)
@@ -502,29 +460,6 @@ func (u *userUseCase) AddUserAddress(ctx context.Context, userAddress *domain.Us
 	return nil
 }
 
-// UpdateUserAddress updates the user's address in the system with the provided updated data.
-// It retrieves the existing address by addressID, checks if the address belongs to the user,
-// validates and updates the address fields, and persists the changes in the repository.
-//
-// Parameters:
-//
-//	ctx (context.Context)      : The context for managing request-scoped values, deadlines, and cancellation.
-//	userID (int64)             : The ID of the user attempting to update the address.
-//	addressID (int64)          : The ID of the address to be updated.
-//	updatedAddressData (*domain.UserAddressUpdate) : A pointer to a struct containing the new address data to update.
-//
-// Returns:
-//
-//	(*domain.UserAddress, error) : A pointer to the updated user address on success, or an error if the operation fails.
-//
-// Possible errors:
-//   - utils.ErrAddressNotFound         : If the address with the provided addressID is not found.
-//   - utils.ErrUnauthorized            : If the address does not belong to the user with the provided userID.
-//   - utils.ErrInvalidUserCityEntry    : If the city in the updated data is invalid.
-//   - utils.ErrInvalidUserStateEntry   : If the state in the updated data is invalid.
-//   - utils.ErrInvalidPinCode          : If the provided pin code in the updated data is invalid. (more than than 6 digits)
-//   - utils.ErrInvalidPhoneNumber      : If the phone number in the updated data is invalid. (more than 10 digits)
-//   - Other repository-related errors  : If updating the address in the repository fails.
 func (u *userUseCase) UpdateUserAddress(ctx context.Context, userID, addressID int64, updatedAddressData *domain.UserAddressUpdate) (*domain.UserAddress, error) {
 	// retrieve the existing address
 	userAddress, err := u.userRepo.GetUserAddressByID(ctx, addressID)
@@ -596,24 +531,6 @@ func (u *userUseCase) UpdateUserAddress(ctx context.Context, userID, addressID i
 	return userAddress, nil
 }
 
-// GetUserAddresses retrieves all addresses associated with a given user ID.
-// It first verifies that the user exists and is not blocked. If the user is not found or is blocked,
-// it returns the appropriate error. If the user is valid and not blocked, it proceeds to fetch and return
-// the user's addresses from the repository.
-//
-// Parameters:
-//
-//	ctx (context.Context) : The context for managing request-scoped values, deadlines, and cancellation.
-//	userID (int64)        : The ID of the user whose addresses are being retrieved.
-//
-// Returns:
-//
-//	([]*domain.UserAddress, error) : A slice of pointers to user addresses on success, or an error if the operation fails.
-//
-// Possible errors:
-//   - utils.ErrUserNotFound          : If the user with the provided userID does not exist.
-//   - utils.ErrUserBlocked           : If the user is found but is blocked and cannot access the addresses.
-//   - Other repository-related errors : If retrieving addresses from the repository fails.
 func (u *userUseCase) GetUserAddresses(ctx context.Context, userID int64) ([]*domain.UserAddress, error) {
 	// Check if the user exists and is not blocked
 	user, err := u.userRepo.GetByID(ctx, userID)
@@ -638,25 +555,6 @@ func (u *userUseCase) GetUserAddresses(ctx context.Context, userID int64) ([]*do
 	return addresses, nil
 }
 
-// DeleteUserAddress deletes a user address if it exists and belongs to the specified user.
-// The function first checks if the address exists and belongs to the user. If the address is not found or
-// does not belong to the user, it returns the appropriate error. It also ensures that the address being deleted
-// is not the last address for the user. If it is the last address, it returns an error to prevent deletion.
-// If all checks pass, it performs a soft delete of the address.
-//
-// Parameters:
-//
-//	ctx (context.Context) : The context for managing request-scoped values, deadlines, and cancellation.
-//	userID (int64)        : The ID of the user attempting to delete the address.
-//	addressID (int64)     : The ID of the address to be deleted.
-//
-// Returns:
-//
-//	error : An error if the operation fails. Possible errors include:
-//	  - utils.ErrAddressNotFound : If the address with the given addressID does not exist.
-//	  - utils.ErrUnauthorized    : If the address does not belong to the user with the given userID.
-//	  - utils.ErrLastAddress     : If the address being deleted is the last address for the user.
-//	  - Other repository-related errors if any of the repository operations fail.
 func (u *userUseCase) DeleteUserAddress(ctx context.Context, userID, addressID int64) error {
 	// Check if the address exists and belongs to the user
 	address, err := u.userRepo.GetUserAddressByID(ctx, addressID)

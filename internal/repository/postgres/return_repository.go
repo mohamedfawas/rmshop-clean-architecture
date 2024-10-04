@@ -44,12 +44,15 @@ func (r *returnRepository) CreateReturnRequest(ctx context.Context, returnReques
 
 func (r *returnRepository) GetReturnRequestByOrderID(ctx context.Context, orderID int64) (*domain.ReturnRequest, error) {
 	query := `
-		SELECT id, order_id, user_id, return_reason, is_approved, requested_date, approved_at, rejected_at
+		SELECT id, order_id, user_id, return_reason, is_approved, requested_date, 
+		approved_at, rejected_at, refund_initiated, refund_amount, 
+		order_returned_to_seller_at, is_order_reached_the_seller, is_stock_updated
 		FROM return_requests
 		WHERE order_id = $1
 	`
 	var returnRequest domain.ReturnRequest
-	var approvedAt, rejectedAt sql.NullTime
+	var approvedAt, rejectedAt, orderReturnedToSellerAt sql.NullTime
+	var refund_amount sql.NullFloat64
 	err := r.db.QueryRowContext(ctx, query, orderID).Scan(
 		&returnRequest.ID,
 		&returnRequest.OrderID,
@@ -59,11 +62,17 @@ func (r *returnRepository) GetReturnRequestByOrderID(ctx context.Context, orderI
 		&returnRequest.RequestedDate,
 		&approvedAt,
 		&rejectedAt,
+		&returnRequest.RefundInitiated,
+		&refund_amount,
+		&orderReturnedToSellerAt,
+		&returnRequest.IsOrderReachedTheSeller,
+		&returnRequest.IsStockUpdated,
 	)
 	if err == sql.ErrNoRows {
 		return nil, utils.ErrReturnRequestNotFound
 	}
 	if err != nil {
+		log.Printf("error while fetching return requests using order id : %v", err)
 		return nil, err
 	}
 	if approvedAt.Valid {
@@ -72,18 +81,28 @@ func (r *returnRepository) GetReturnRequestByOrderID(ctx context.Context, orderI
 	if rejectedAt.Valid {
 		returnRequest.RejectedAt = &rejectedAt.Time
 	}
+	if refund_amount.Valid {
+		returnRequest.RefundAmount = &refund_amount.Float64
+	}
+
+	if orderReturnedToSellerAt.Valid {
+		returnRequest.OrderReturnedToSellerAt = &orderReturnedToSellerAt.Time
+	}
 	return &returnRequest, nil
 }
 
 func (r *returnRepository) GetUserReturnRequests(ctx context.Context, userID int64) ([]*domain.ReturnRequest, error) {
 	query := `
-		SELECT id, order_id, user_id, return_reason, is_approved, requested_date, approved_at, rejected_at
+		SELECT id, order_id, user_id, return_reason, is_approved, requested_date, approved_at, rejected_at,
+		refund_initiated, refund_amount, 
+		order_returned_to_seller_at, is_order_reached_the_seller, is_stock_updated
 		FROM return_requests
 		WHERE user_id = $1
 		ORDER BY requested_date DESC
 	`
 	rows, err := r.db.QueryContext(ctx, query, userID)
 	if err != nil {
+		log.Printf("error while executing query in GetUserReturnRequests : %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -91,7 +110,8 @@ func (r *returnRepository) GetUserReturnRequests(ctx context.Context, userID int
 	var returnRequests []*domain.ReturnRequest
 	for rows.Next() {
 		var returnRequest domain.ReturnRequest
-		var approvedAt, rejectedAt sql.NullTime
+		var approvedAt, rejectedAt, orderReturnedToSellerAt sql.NullTime
+		var refund_amount sql.NullFloat64
 		err := rows.Scan(
 			&returnRequest.ID,
 			&returnRequest.OrderID,
@@ -101,8 +121,14 @@ func (r *returnRepository) GetUserReturnRequests(ctx context.Context, userID int
 			&returnRequest.RequestedDate,
 			&approvedAt,
 			&rejectedAt,
+			&returnRequest.RefundInitiated,
+			&refund_amount,
+			&orderReturnedToSellerAt,
+			&returnRequest.IsOrderReachedTheSeller,
+			&returnRequest.IsStockUpdated,
 		)
 		if err != nil {
+			log.Printf("error while iterating over rows of return requests : %v", err)
 			return nil, err
 		}
 		if approvedAt.Valid {
@@ -111,9 +137,17 @@ func (r *returnRepository) GetUserReturnRequests(ctx context.Context, userID int
 		if rejectedAt.Valid {
 			returnRequest.RejectedAt = &rejectedAt.Time
 		}
+		if refund_amount.Valid {
+			returnRequest.RefundAmount = &refund_amount.Float64
+		}
+
+		if orderReturnedToSellerAt.Valid {
+			returnRequest.OrderReturnedToSellerAt = &orderReturnedToSellerAt.Time
+		}
 		returnRequests = append(returnRequests, &returnRequest)
 	}
 	if err = rows.Err(); err != nil {
+		log.Printf("more error captured while iterating over rows : %v", err)
 		return nil, err
 	}
 	return returnRequests, nil
@@ -224,6 +258,11 @@ func (r *returnRepository) MarkOrderReturnedToSeller(ctx context.Context, return
 	return err
 }
 
+/*
+UpdateReturnRequest:
+- Update return_requests table
+- is_stock_updated, order_returned_to_seller_at, is_order_reached_the_seller
+*/
 func (r *returnRepository) UpdateReturnRequest(ctx context.Context, returnRequest *domain.ReturnRequest) error {
 	query := `UPDATE return_requests 
               SET is_stock_updated = $1, order_returned_to_seller_at = $2, is_order_reached_the_seller = $3
@@ -234,4 +273,52 @@ func (r *returnRepository) UpdateReturnRequest(ctx context.Context, returnReques
 		returnRequest.IsOrderReachedTheSeller,
 		returnRequest.ID)
 	return err
+}
+
+func (r *returnRepository) GetPendingReturnRequests(ctx context.Context, params domain.ReturnRequestParams) ([]*domain.ReturnRequest, int64, error) {
+	query := `
+        SELECT id, order_id, user_id, return_reason, is_approved, requested_date, approved_at, rejected_at
+        FROM return_requests
+        WHERE is_approved = false AND rejected_at IS NULL
+        ORDER BY requested_date DESC
+        LIMIT $1 OFFSET $2
+    `
+	countQuery := `
+        SELECT COUNT(*)
+        FROM return_requests
+        WHERE is_approved = false AND rejected_at IS NULL
+    `
+
+	// Get total count
+	var totalCount int64
+	err := r.db.QueryRowContext(ctx, countQuery).Scan(&totalCount)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Execute main query
+	rows, err := r.db.QueryContext(ctx, query, params.Limit, (params.Page-1)*params.Limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var requests []*domain.ReturnRequest
+	for rows.Next() {
+		var req domain.ReturnRequest
+		err := rows.Scan(
+			&req.ID, &req.OrderID, &req.UserID, &req.ReturnReason,
+			&req.IsApproved, &req.RequestedDate, &req.ApprovedAt, &req.RejectedAt,
+		)
+		if err != nil {
+			return nil, 0, err
+		}
+		requests = append(requests, &req)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, 0, err
+	}
+
+	return requests, totalCount, nil
 }

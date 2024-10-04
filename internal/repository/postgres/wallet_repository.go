@@ -104,16 +104,6 @@ func (r *walletRepository) CreateTransaction(ctx context.Context, tx *sql.Tx, tr
 	return nil
 }
 
-func (r *walletRepository) UpdateBalance(ctx context.Context, tx *sql.Tx, userID int64, newBalance float64) error {
-	query := `
-		UPDATE wallets
-		SET balance = $1, updated_at = NOW()
-		WHERE user_id = $2
-	`
-	_, err := tx.ExecContext(ctx, query, newBalance, userID)
-	return err
-}
-
 func (r *walletRepository) GetTransactions(ctx context.Context, userID int64, page, limit int, sort, order, transactionType string) ([]*domain.WalletTransaction, int64, error) {
 	query := `
         SELECT id, user_id, amount, transaction_type, reference_id, reference_type, balance_after, created_at
@@ -202,19 +192,6 @@ func (r *walletRepository) UpdateBalanceTx(ctx context.Context, tx *sql.Tx, user
 		return fmt.Errorf("failed to update wallet balance: %w", err)
 	}
 	return nil
-}
-
-func (r *walletRepository) GetBalanceTx(ctx context.Context, tx *sql.Tx, userID int64) (float64, error) {
-	var balance float64
-	err := tx.QueryRowContext(ctx, "SELECT balance FROM wallets WHERE user_id = $1", userID).Scan(&balance)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			// If no wallet exists, return 0 balance
-			return 0, nil
-		}
-		return 0, fmt.Errorf("failed to get balance: %w", err)
-	}
-	return balance, nil
 }
 
 /*

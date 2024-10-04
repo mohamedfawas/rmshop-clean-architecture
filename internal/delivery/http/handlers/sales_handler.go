@@ -8,6 +8,7 @@ import (
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/api"
+	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/utils"
 )
 
 type SalesHandler struct {
@@ -45,7 +46,7 @@ func (h *SalesHandler) GetDailySalesReport(w http.ResponseWriter, r *http.Reques
 	// Call use case
 	report, err := h.salesUseCase.GenerateDailySalesReport(r.Context(), date, format)
 	if err != nil {
-		if err == usecase.ErrNoDataFound {
+		if err == utils.ErrNoDataFound {
 			api.SendResponse(w, http.StatusNoContent, "No sales data for the specified date", nil, "")
 			return
 		}
@@ -106,7 +107,7 @@ func (h *SalesHandler) GetWeeklySalesReport(w http.ResponseWriter, r *http.Reque
 	// Call use case
 	report, err := h.salesUseCase.GenerateWeeklySalesReport(r.Context(), startDate, format)
 	if err != nil {
-		if err == usecase.ErrNoDataFound {
+		if err == utils.ErrNoDataFound {
 			api.SendResponse(w, http.StatusNoContent, "No sales data for the specified week", nil, "")
 			return
 		}
@@ -162,7 +163,7 @@ func (h *SalesHandler) GetMonthlySalesReport(w http.ResponseWriter, r *http.Requ
 	// Call use case
 	report, err := h.salesUseCase.GenerateMonthlySalesReport(r.Context(), year, time.Month(month), format)
 	if err != nil {
-		if err == usecase.ErrNoDataFound {
+		if err == utils.ErrNoDataFound {
 			api.SendResponse(w, http.StatusNotFound, "No sales data for the specified month", nil, "")
 			return
 		}
@@ -218,11 +219,11 @@ func (h *SalesHandler) GetCustomSalesReport(w http.ResponseWriter, r *http.Reque
 	report, err := h.salesUseCase.GenerateCustomSalesReport(r.Context(), startDate, endDate, format)
 	if err != nil {
 		switch err {
-		case usecase.ErrNoDataFound:
+		case utils.ErrNoDataFound:
 			api.SendResponse(w, http.StatusNotFound, "No sales data for the specified period", nil, "")
-		case usecase.ErrInvalidDateRange:
+		case utils.ErrInvalidDateRange:
 			api.SendResponse(w, http.StatusBadRequest, "Invalid date range", nil, "End date must be after start date")
-		case usecase.ErrFutureDateRange:
+		case utils.ErrFutureDateRange:
 			api.SendResponse(w, http.StatusBadRequest, "Invalid date range", nil, "Cannot generate report for future dates")
 		default:
 			api.SendResponse(w, http.StatusInternalServerError, "Failed to generate report", nil, "An unexpected error occurred")

@@ -181,6 +181,8 @@ func (h *ReturnHandler) InitiateRefund(w http.ResponseWriter, r *http.Request) {
 			api.SendResponse(w, http.StatusBadRequest, "Failed to initiate refund", nil, "Invalid refund amount")
 		case utils.ErrOrderCancelled:
 			api.SendResponse(w, http.StatusBadRequest, "Failed to initiate refund", nil, "Cannot refund a cancelled order")
+		case utils.ErrNotEligibleForRefund:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to initiate refund", nil, "Given order not elgible for refund")
 		default:
 			api.SendResponse(w, http.StatusInternalServerError, "Failed to initiate refund", nil, "An unexpected error occurred")
 		}
@@ -200,7 +202,7 @@ func (h *ReturnHandler) MarkOrderReturnedToSeller(w http.ResponseWriter, r *http
 	}
 
 	// Call the use case method
-	err = h.returnUseCase.MarkOrderReturnedToSeller(r.Context(), returnID)
+	returnRequest, err := h.returnUseCase.MarkOrderReturnedToSeller(r.Context(), returnID)
 	if err != nil {
 		switch err {
 		case utils.ErrReturnRequestNotFound:
@@ -217,6 +219,37 @@ func (h *ReturnHandler) MarkOrderReturnedToSeller(w http.ResponseWriter, r *http
 		return
 	}
 
+	responseMessage := map[string]interface{}{
+		"return_id":               returnRequest.ID,
+		"order_id":                returnRequest.OrderID,
+		"IsOrderReachedTheSeller": returnRequest.IsOrderReachedTheSeller,
+		"IsStockUpdated":          returnRequest.IsStockUpdated,
+	}
+
 	// Send success response
-	api.SendResponse(w, http.StatusOK, "Order marked as returned to seller successfully", nil, "")
+	api.SendResponse(w, http.StatusOK, "Order marked as returned to seller successfully", responseMessage, "")
+}
+
+func (h *ReturnHandler) GetPendingReturnRequests(w http.ResponseWriter, r *http.Request) {
+	pageStr := r.URL.Query().Get("page")
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 1 {
+		page = 1
+	}
+
+	requests, totalCount, err := h.returnUseCase.GetPendingReturnRequests(r.Context(), page)
+	if err != nil {
+		api.SendResponse(w, http.StatusInternalServerError, "Failed to retrieve return requests", nil, "An unexpected error occurred")
+		return
+	}
+
+	response := map[string]interface{}{
+		"return_requests": requests,
+		"total_count":     totalCount,
+		"page":            page,
+		"limit":           10,
+		"total_pages":     (totalCount + 9) / 10, // Ceiling division by 10
+	}
+
+	api.SendResponse(w, http.StatusOK, "Return requests retrieved successfully", response, "")
 }

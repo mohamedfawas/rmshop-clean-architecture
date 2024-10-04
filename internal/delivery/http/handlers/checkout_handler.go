@@ -3,9 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
 
-	"github.com/gorilla/mux"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/delivery/http/middleware"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/usecase"
@@ -24,28 +22,27 @@ func NewCheckoutHandler(checkoutUseCase usecase.CheckoutUseCase, couponUseCase u
 }
 
 func (h *CheckoutHandler) CreateCheckout(w http.ResponseWriter, r *http.Request) {
-	// Extract the userID from the context
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok {
 		api.SendResponse(w, http.StatusUnauthorized, "Failed to create checkout", nil, "User not authenticated")
 		return
 	}
 
-	// Call CreateCheckout method in use case layer
-	session, err := h.checkoutUseCase.CreateCheckout(r.Context(), userID)
+	session, err := h.checkoutUseCase.CreateOrUpdateCheckout(r.Context(), userID)
 	if err != nil {
 		switch err {
 		case utils.ErrEmptyCart:
 			api.SendResponse(w, http.StatusBadRequest, "Failed to create checkout", nil, "Cart is empty")
 		case utils.ErrInsufficientStock:
 			api.SendResponse(w, http.StatusBadRequest, "Failed to create checkout", nil, "Insufficient stock for one or more items")
+
 		default:
 			api.SendResponse(w, http.StatusInternalServerError, "Failed to create checkout", nil, "An unexpected error occurred")
 		}
 		return
 	}
 
-	api.SendResponse(w, http.StatusCreated, "Checkout created successfully", session, "")
+	api.SendResponse(w, http.StatusCreated, "Checkout created or updated successfully", session, "")
 }
 
 func (h *CheckoutHandler) ApplyCoupon(w http.ResponseWriter, r *http.Request) {
@@ -56,17 +53,9 @@ func (h *CheckoutHandler) ApplyCoupon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get checkout ID from URL
-	vars := mux.Vars(r)
-	checkoutID, err := strconv.ParseInt(vars["checkout_id"], 10, 64)
-	if err != nil {
-		api.SendResponse(w, http.StatusBadRequest, "Failed to apply coupon", nil, "Invalid checkout ID")
-		return
-	}
-
 	// Parse request body
 	var input domain.ApplyCouponInput
-	err = json.NewDecoder(r.Body).Decode(&input)
+	err := json.NewDecoder(r.Body).Decode(&input)
 	if err != nil {
 		api.SendResponse(w, http.StatusBadRequest, "Failed to apply coupon", nil, "Invalid request body")
 		return
@@ -79,17 +68,13 @@ func (h *CheckoutHandler) ApplyCoupon(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Apply coupon
-	response, err := h.checkoutUseCase.ApplyCoupon(r.Context(), userID, checkoutID, input.CouponCode)
+	response, err := h.checkoutUseCase.ApplyCoupon(r.Context(), userID, input.CouponCode)
 	if err != nil {
 		switch err {
-		case utils.ErrCheckoutNotFound:
-			api.SendResponse(w, http.StatusNotFound, "Failed to apply coupon", nil, "Checkout not found")
-		case utils.ErrUnauthorized:
-			api.SendResponse(w, http.StatusForbidden, "Failed to apply coupon", nil, "Unauthorized access to this checkout")
-		case utils.ErrEmptyCheckout:
-			api.SendResponse(w, http.StatusBadRequest, "Failed to apply coupon", nil, "Cannot apply coupon to an empty checkout")
+		case utils.ErrEmptyCart:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to apply coupon", nil, "Cannot apply coupon to an empty cart")
 		case utils.ErrCouponAlreadyApplied:
-			api.SendResponse(w, http.StatusBadRequest, "Failed to apply coupon", nil, "A coupon is already applied to this checkout")
+			api.SendResponse(w, http.StatusBadRequest, "Failed to apply coupon", nil, "A coupon is already applied to this cart")
 		case utils.ErrInvalidCouponCode:
 			api.SendResponse(w, http.StatusBadRequest, "Failed to apply coupon", nil, "Invalid coupon code")
 		case utils.ErrCouponInactive:
@@ -115,14 +100,6 @@ func (h *CheckoutHandler) UpdateCheckoutAddress(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// Extract the checkout id from the url
-	vars := mux.Vars(r)
-	checkoutID, err := strconv.ParseInt(vars["checkout_id"], 10, 64)
-	if err != nil {
-		api.SendResponse(w, http.StatusBadRequest, "Failed to update address", nil, "Invalid checkout ID")
-		return
-	}
-
 	// Input address id to use for shipping address
 	var input struct {
 		AddressID int64 `json:"address_id"`
@@ -139,7 +116,7 @@ func (h *CheckoutHandler) UpdateCheckoutAddress(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	updatedCheckout, err := h.checkoutUseCase.UpdateCheckoutAddress(r.Context(), userID, checkoutID, input.AddressID)
+	updatedCheckout, err := h.checkoutUseCase.UpdateCheckoutAddress(r.Context(), userID, input.AddressID)
 	if err != nil {
 		switch err {
 		case utils.ErrCheckoutNotFound:
@@ -162,33 +139,23 @@ func (h *CheckoutHandler) UpdateCheckoutAddress(w http.ResponseWriter, r *http.R
 }
 
 func (h *CheckoutHandler) GetCheckoutSummary(w http.ResponseWriter, r *http.Request) {
-	// extract the user id from the context values
+	// Extract the user id from the context values
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok {
 		api.SendResponse(w, http.StatusUnauthorized, "Failed to get checkout summary", nil, "User not authenticated")
 		return
 	}
 
-	// Extract the checkout id from the url query
-	vars := mux.Vars(r)
-	checkoutID, err := strconv.ParseInt(vars["checkout_id"], 10, 64)
-	if err != nil {
-		api.SendResponse(w, http.StatusBadRequest, "Failed to get checkout summary", nil, "Invalid checkout ID")
-		return
-	}
-
 	// Call the GetCheckoutSummary method from the usecase layer
-	summary, err := h.checkoutUseCase.GetCheckoutSummary(r.Context(), userID, checkoutID)
+	summary, err := h.checkoutUseCase.GetCheckoutSummary(r.Context(), userID)
 	if err != nil {
 		switch err {
-		case utils.ErrEmptyCart:
-			api.SendResponse(w, http.StatusBadRequest, "Failed to get checkout summary", nil, "Checkout is empty")
-		case utils.ErrCheckoutNotFound:
-			api.SendResponse(w, http.StatusNotFound, "Failed to get checkout summary", nil, "Checkout not found")
 		case utils.ErrUnauthorized:
 			api.SendResponse(w, http.StatusForbidden, "Failed to get checkout summary", nil, "You don't have permission to access this checkout")
-		case utils.ErrShippingAddressNotAssigned:
-			api.SendResponse(w, http.StatusBadRequest, "Failed to get checkout summary", nil, "Shipping address not assigned for this checkout session")
+		case utils.ErrCheckoutNotFound:
+			api.SendResponse(w, http.StatusForbidden, "Failed to get checkout summary", nil, "Checkout not created for the authenticated user")
+		case utils.ErrCartUpdatedAfterCreatingCheckoutSession:
+			api.SendResponse(w, http.StatusConflict, "Failed to get checkout summary", nil, "Cart is updated after creating checkout session, please create the checkout session again.")
 		default:
 			api.SendResponse(w, http.StatusInternalServerError, "Failed to get checkout summary", nil, "An unexpected error occurred")
 		}
@@ -206,22 +173,12 @@ func (h *CheckoutHandler) RemoveAppliedCoupon(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Extract checkout ID from URL
-	vars := mux.Vars(r)
-	checkoutID, err := strconv.ParseInt(vars["checkout_id"], 10, 64)
-	if err != nil {
-		api.SendResponse(w, http.StatusBadRequest, "Failed to remove coupon", nil, "Invalid checkout ID")
-		return
-	}
-
 	// Call use case method to remove the coupon
-	updatedCheckout, err := h.checkoutUseCase.RemoveAppliedCoupon(r.Context(), userID, checkoutID)
+	updatedCheckout, err := h.checkoutUseCase.RemoveAppliedCoupon(r.Context(), userID)
 	if err != nil {
 		switch err {
 		case utils.ErrCheckoutNotFound:
-			api.SendResponse(w, http.StatusNotFound, "Failed to remove coupon", nil, "Checkout not found")
-		case utils.ErrUnauthorized:
-			api.SendResponse(w, http.StatusForbidden, "Failed to remove coupon", nil, "Unauthorized access to this checkout")
+			api.SendResponse(w, http.StatusNotFound, "Failed to remove coupon", nil, "No active checkout session found")
 		case utils.ErrNoCouponApplied:
 			api.SendResponse(w, http.StatusBadRequest, "Failed to remove coupon", nil, "No coupon is applied to this checkout")
 		case utils.ErrCheckoutCompleted:

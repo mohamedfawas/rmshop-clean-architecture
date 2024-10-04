@@ -7,6 +7,8 @@ type CartItem struct {
 	UserID    int64     `json:"user_id"`
 	ProductID int64     `json:"product_id"`
 	Quantity  int       `json:"quantity"`
+	Price     float64   `json:"price"`
+	Subtotal  float64   `json:"subtotal"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -22,7 +24,17 @@ type CartItemWithProduct struct {
 	ProductPrice float64 `json:"product_price"`
 }
 
-type Cart struct {
-	Items      []*CartItemWithProduct `json:"items"`
-	TotalValue float64                `json:"total_value"`
+type CartResponse struct {
+	Items      []*CartItem `json:"cart_items"`
+	TotalValue float64     `json:"total_value"`
+}
+
+type UpdatedCartItemResponse struct {
+	ID        int64     `json:"id"`
+	UserID    int64     `json:"user_id"`
+	ProductID int64     `json:"product_id"`
+	Quantity  int       `json:"quantity"`
+	Price     float64   `json:"price"`
+	Subtotal  float64   `json:"subtotal"`
+	UpdatedAt time.Time `json:"updated_at"`
 }

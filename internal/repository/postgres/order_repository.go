@@ -119,20 +119,6 @@ func (r *orderRepository) UpdateOrderStatus(ctx context.Context, orderID int64, 
 	return nil
 }
 
-func (r *orderRepository) UpdateRefundStatus(ctx context.Context, orderID int64, refundStatus sql.NullString) error {
-	query := `
-		UPDATE orders
-		SET refund_status = $1, updated_at = NOW()
-		WHERE id = $2
-	`
-	_, err := r.db.ExecContext(ctx, query, refundStatus, orderID)
-	if err != nil {
-		log.Printf("Error updating refund status: %v", err)
-		return err
-	}
-	return nil
-}
-
 /*
 GetOrders:
 - Get orders based on on offset and limit
@@ -197,19 +183,6 @@ func (r *orderRepository) GetOrders(ctx context.Context, limit, offset int) ([]*
 	return orders, totalOrders, nil
 }
 
-func (r *orderRepository) UpdateOrderPaymentStatus(ctx context.Context, orderID int64, status string, paymentID string) error {
-	query := `
-        UPDATE orders
-        SET payment_status = $1, razorpay_payment_id = $2, updated_at = NOW()
-        WHERE id = $3
-    `
-	_, err := r.db.ExecContext(ctx, query, status, paymentID, orderID)
-	if err != nil {
-		return fmt.Errorf("error updating order payment status: %w", err)
-	}
-	return nil
-}
-
 func (r *orderRepository) UpdatePayment(ctx context.Context, payment *domain.Payment) error {
 	query := `
         UPDATE payments
@@ -219,16 +192,6 @@ func (r *orderRepository) UpdatePayment(ctx context.Context, payment *domain.Pay
 	_, err := r.db.ExecContext(ctx, query,
 		payment.Status, payment.RazorpayPaymentID, payment.RazorpaySignature, payment.ID,
 	)
-	return err
-}
-
-func (r *orderRepository) SetOrderDeliveredAt(ctx context.Context, orderID int64, deliveredAt *time.Time) error {
-	query := `
-        UPDATE orders
-        SET delivered_at = $1, updated_at = NOW()
-        WHERE id = $2
-    `
-	_, err := r.db.ExecContext(ctx, query, deliveredAt, orderID)
 	return err
 }
 
@@ -246,32 +209,6 @@ func (r *orderRepository) UpdateOrderStatusTx(ctx context.Context, tx *sql.Tx, o
 	if err != nil {
 		log.Printf("error while updating order status : %v", err)
 	}
-	return err
-}
-
-func (r *orderRepository) UpdateRefundStatusTx(ctx context.Context, tx *sql.Tx, orderID int64, refundStatus sql.NullString) error {
-	query := `
-        UPDATE orders
-        SET refund_status = $1, updated_at = NOW()
-        WHERE id = $2
-    `
-	_, err := tx.ExecContext(ctx, query, refundStatus, orderID)
-	return err
-}
-
-func (r *orderRepository) CreateRefundTx(ctx context.Context, tx *sql.Tx, refund *domain.Refund) error {
-	query := `
-        INSERT INTO refunds (order_id, amount, status, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING id
-    `
-	err := tx.QueryRowContext(ctx, query,
-		refund.OrderID,
-		refund.Amount,
-		refund.Status,
-		refund.CreatedAt,
-		refund.UpdatedAt,
-	).Scan(&refund.ID)
 	return err
 }
 
@@ -337,39 +274,6 @@ func (r *orderRepository) UpdateOrderRazorpayID(ctx context.Context, orderID int
 		log.Printf("failed to update razorpay_order_id in payments table : %v", err)
 	}
 	return err
-}
-
-func (r *orderRepository) GetPaymentByRazorpayOrderID(ctx context.Context, razorpayOrderID string) (*domain.Payment, error) {
-	query := `
-		SELECT id, order_id, amount, payment_method, payment_status, created_at, updated_at, 
-			   razorpay_order_id, razorpay_payment_id, razorpay_signature
-		FROM payments
-		WHERE razorpay_order_id = $1
-	`
-	var payment domain.Payment
-	var razorpayPaymentID, razorpaySignature sql.NullString
-	err := r.db.QueryRowContext(ctx, query, razorpayOrderID).Scan(
-		&payment.ID, &payment.OrderID, &payment.Amount, &payment.PaymentMethod, &payment.Status,
-		&payment.CreatedAt, &payment.UpdatedAt, &payment.RazorpayOrderID,
-		&razorpayPaymentID, &razorpaySignature,
-	)
-	if err == sql.ErrNoRows {
-		log.Printf("No payment found for Razorpay order ID: %s", razorpayOrderID)
-		return nil, utils.ErrPaymentNotFound
-	}
-	if err != nil {
-		log.Printf("Error querying payment by Razorpay order ID %s: %v", razorpayOrderID, err)
-		return nil, fmt.Errorf("database error: %w", err)
-	}
-
-	if razorpayPaymentID.Valid {
-		payment.RazorpayPaymentID = razorpayPaymentID.String
-	}
-	if razorpaySignature.Valid {
-		payment.RazorpaySignature = razorpaySignature.String
-	}
-
-	return &payment, nil
 }
 
 /*
@@ -510,79 +414,6 @@ func (r *orderRepository) UpdateOrderHasReturnRequestTx(ctx context.Context, tx 
 	`
 	_, err := tx.ExecContext(ctx, query, hasReturnRequest, orderID)
 	return err
-}
-
-func (r *orderRepository) GetOrderWithItems(ctx context.Context, orderID int64) (*domain.Order, error) {
-	query := `
-        SELECT o.id, o.user_id, o.total_amount, o.discount_amount, o.final_amount, 
-               o.delivery_status, o.order_status, o.has_return_request, 
-               o.shipping_address_id, o.coupon_applied, o.created_at, o.updated_at, o.delivered_at,
-               oi.id, oi.product_id, oi.quantity, oi.price,
-               p.name AS product_name,
-               sa.address_line1, sa.address_line2, sa.city, sa.state, sa.pincode, sa.phone_number
-        FROM orders o
-        LEFT JOIN order_items oi ON o.id = oi.order_id
-        LEFT JOIN products p ON oi.product_id = p.id
-        LEFT JOIN shipping_addresses sa ON o.shipping_address_id = sa.id
-        WHERE o.id = $1
-    `
-	rows, err := r.db.QueryContext(ctx, query, orderID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var order *domain.Order
-	itemMap := make(map[int64]*domain.OrderItem)
-
-	for rows.Next() {
-		if order == nil {
-			order = &domain.Order{}
-		}
-		var item domain.OrderItem
-		var productName string
-		var deliveredAt sql.NullTime
-		var addressLine1, addressLine2, city, state, pincode, phoneNumber sql.NullString
-		err := rows.Scan(
-			&order.ID, &order.UserID, &order.TotalAmount, &order.DiscountAmount, &order.FinalAmount,
-			&order.DeliveryStatus, &order.OrderStatus, &order.HasReturnRequest,
-			&order.ShippingAddressID, &order.CouponApplied, &order.CreatedAt, &order.UpdatedAt, &deliveredAt,
-			&item.ID, &item.ProductID, &item.Quantity, &item.Price,
-			&productName,
-			&addressLine1, &addressLine2, &city, &state, &pincode, &phoneNumber,
-		)
-		if err != nil {
-			return nil, err
-		}
-		if deliveredAt.Valid {
-			order.DeliveredAt = &deliveredAt.Time
-		}
-		item.OrderID = order.ID
-		item.ProductName = productName
-		itemMap[item.ID] = &item
-
-		if order.ShippingAddress == nil && addressLine1.Valid {
-			order.ShippingAddress = &domain.ShippingAddress{
-				AddressLine1: addressLine1.String,
-				AddressLine2: addressLine2.String,
-				City:         city.String,
-				State:        state.String,
-				PinCode:      pincode.String,
-				PhoneNumber:  phoneNumber.String,
-			}
-		}
-	}
-
-	if order == nil {
-		return nil, utils.ErrOrderNotFound
-	}
-
-	order.Items = make([]domain.OrderItem, 0, len(itemMap))
-	for _, item := range itemMap {
-		order.Items = append(order.Items, *item)
-	}
-
-	return order, nil
 }
 
 /*
@@ -733,27 +564,6 @@ func (r *orderRepository) GetPaymentByOrderID(ctx context.Context, orderID int64
 		return nil, err
 	}
 	return &payment, nil
-}
-
-func (r *orderRepository) CreateCancellationRequest(ctx context.Context, orderID, userID int64) error {
-	query := `
-        INSERT INTO cancellation_requests (order_id, user_id, created_at, cancellation_status)
-        VALUES ($1, $2, $3, $4)
-    `
-
-	now := time.Now().UTC()
-
-	_, err := r.db.ExecContext(ctx, query, orderID, userID, now, "pending_review")
-	if err != nil {
-		// Check for unique constraint violation
-		if utils.IsDuplicateKeyError(err) {
-			return utils.ErrCancellationRequestExists
-		}
-		log.Printf("Error creating cancellation request: %v", err)
-		return err
-	}
-
-	return nil
 }
 
 /*

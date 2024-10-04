@@ -276,13 +276,14 @@ var (
 	ErrCheckoutCompleted         = errors.New("checkout is already completed")
 
 	// checkout
-	ErrCheckoutNotFound      = errors.New("checkout session not found")
-	ErrEmptyCheckout         = errors.New("empty checkout")
-	ErrInvalidCheckoutState  = errors.New("invalid checkout state")
-	ErrInvalidAddressInput   = errors.New("invalid address input")
-	ErrMissingRequiredFields = errors.New("missing required fields")
-	ErrOrderAlreadyPlaced    = errors.New("order already placed")
-	ErrInvalidAddress        = errors.New("invalid address")
+	ErrCheckoutNotFound                        = errors.New("checkout session not found")
+	ErrEmptyCheckout                           = errors.New("empty checkout")
+	ErrInvalidCheckoutState                    = errors.New("invalid checkout state")
+	ErrInvalidAddressInput                     = errors.New("invalid address input")
+	ErrMissingRequiredFields                   = errors.New("missing required fields")
+	ErrOrderAlreadyPlaced                      = errors.New("order already placed")
+	ErrInvalidAddress                          = errors.New("invalid address")
+	ErrCartUpdatedAfterCreatingCheckoutSession = errors.New("cart updated after creating checkout session")
 
 	// order
 	ErrOrderNotFound             = errors.New("order not found")
@@ -328,6 +329,7 @@ var (
 	ErrAlreadyMarkedAsReturned       = errors.New("already marked as returned")
 	ErrNoStockUpdated                = errors.New("no stock updated")
 	ErrOrderNotReturnedToSeller      = errors.New("order not reached to seller")
+	ErrNotEligibleForRefund          = errors.New("not elgible for refund")
 
 	// wishlist
 	ErrProductOutOfStock     = errors.New("product is out of stock")
@@ -344,6 +346,7 @@ var (
 	ErrInvalidFormat       = errors.New("invalid format")
 	ErrNoDataFound         = errors.New("no data found")
 	ErrFailedToGeneratePDF = errors.New("failed to generate pdf")
+	ErrFutureDateRange     = errors.New("future date range")
 
 	// cancel
 	ErrCancellationWindowExpired   = errors.New("cancellation window expired")
@@ -355,6 +358,10 @@ var (
 	// payment
 	ErrMissingPaymentStatus = errors.New("missing payment status")
 	ErrInvalidPaymentStatus = errors.New("invalid payment status")
+
+	// ErrNoDataFound      = errors.New("no data found")
+	// ErrInvalidFormat    = errors.New("invalid format")
+	// ErrInvalidDateRange = errors.New("invalid date range")
 
 	ErrInternalServer = errors.New("internal server error")
 )
@@ -405,7 +412,3 @@ func IsDuplicateKeyError(err error) bool {
 	// Generic check (less reliable, but can work as a fallback)
 	return strings.Contains(err.Error(), "duplicate key value violates unique constraint")
 }
-
-// func Ptr[T any](v T) *T {
-// 	return &v
-// }

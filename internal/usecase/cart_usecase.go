@@ -12,9 +12,10 @@ import (
 
 type CartUseCase interface {
 	AddToCart(ctx context.Context, userID, productID int64, quantity int) (*domain.CartItem, error)
-	GetUserCart(ctx context.Context, userID int64) (*domain.Cart, error)
-	UpdateCartItemQuantity(ctx context.Context, userID, itemID int64, quantity int) error
+	GetUserCart(ctx context.Context, userID int64) (*domain.CartResponse, error)
+	UpdateCartItemQuantity(ctx context.Context, userID, itemID int64, quantity int) (*domain.CartItem, error)
 	DeleteCartItem(ctx context.Context, userID, itemID int64) error
+	ClearCart(ctx context.Context, userID int64) error
 }
 
 type cartUseCase struct {
@@ -65,6 +66,9 @@ func (u *cartUseCase) AddToCart(ctx context.Context, userID, productID int64, qu
 		return nil, utils.ErrInsufficientStock
 	}
 
+	// Calculate subtotal
+	subtotal := product.Price * float64(quantity)
+
 	// Check if item already exists in cart
 	existingItem, err := u.cartRepo.GetCartItemByProductID(ctx, userID, productID)
 	// If any error other than cart item not found happens
@@ -82,6 +86,9 @@ func (u *cartUseCase) AddToCart(ctx context.Context, userID, productID int64, qu
 
 		// If not violates max limit , Update quantity of existing item
 		existingItem.Quantity += quantity
+		existingItem.Price = product.Price // Update price in case it has changed
+		existingItem.Subtotal = float64(existingItem.Quantity) * product.Price
+		existingItem.UpdatedAt = time.Now().UTC()
 
 		// Update cart item details
 		err = u.cartRepo.UpdateCartItem(ctx, existingItem)
@@ -98,6 +105,8 @@ func (u *cartUseCase) AddToCart(ctx context.Context, userID, productID int64, qu
 		UserID:    userID,
 		ProductID: productID,
 		Quantity:  quantity,
+		Price:     product.Price,
+		Subtotal:  subtotal,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
@@ -112,7 +121,7 @@ func (u *cartUseCase) AddToCart(ctx context.Context, userID, productID int64, qu
 	return newItem, nil
 }
 
-func (u *cartUseCase) GetUserCart(ctx context.Context, userID int64) (*domain.Cart, error) {
+func (u *cartUseCase) GetUserCart(ctx context.Context, userID int64) (*domain.CartResponse, error) {
 	// Check if user exists and is not blocked
 	user, err := u.userRepo.GetByID(ctx, userID)
 	if err != nil {
@@ -134,54 +143,60 @@ func (u *cartUseCase) GetUserCart(ctx context.Context, userID int64) (*domain.Ca
 	// Calculate total value
 	var totalValue float64
 	for _, item := range cartItems {
-		totalValue += float64(item.Quantity) * item.ProductPrice
+		totalValue += item.Subtotal
 	}
 
-	return &domain.Cart{
+	return &domain.CartResponse{
 		Items:      cartItems,
 		TotalValue: totalValue,
 	}, nil
 }
 
-func (u *cartUseCase) UpdateCartItemQuantity(ctx context.Context, userID, itemID int64, quantity int) error {
-	if quantity < 0 {
-		return utils.ErrInvalidQuantity
+func (u *cartUseCase) UpdateCartItemQuantity(ctx context.Context, userID, itemID int64, quantity int) (*domain.CartItem, error) {
+	if quantity <= 0 {
+		return nil, utils.ErrInvalidQuantity
 	}
 
 	if quantity > utils.MaxCartItemQuantity {
-		return utils.ErrExceedsMaxQuantity
+		return nil, utils.ErrExceedsMaxQuantity
 	}
 
 	// Check if the cart item exists and belongs to the user
 	existingItem, err := u.cartRepo.GetCartItemByID(ctx, itemID)
 	if err != nil {
 		if err == utils.ErrCartItemNotFound {
-			return utils.ErrCartItemNotFound
+			return nil, utils.ErrCartItemNotFound
 		}
-		return err
+		return nil, err
 	}
 
 	if existingItem.UserID != userID {
-		return utils.ErrUnauthorized
-	}
-
-	// If quantity is 0, remove the item from the cart
-	if quantity == 0 {
-		return u.cartRepo.DeleteCartItem(ctx, itemID)
+		return nil, utils.ErrUnauthorized
 	}
 
 	// Check product availability
 	product, err := u.productRepo.GetByID(ctx, existingItem.ProductID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if product.StockQuantity < quantity {
-		return utils.ErrInsufficientStock
+		return nil, utils.ErrInsufficientStock
+	}
+
+	// Update quantity
+	existingItem.Quantity = quantity
+	existingItem.Subtotal = float64(quantity) * existingItem.Price
+	existingItem.UpdatedAt = time.Now().UTC()
+
+	err = u.cartRepo.UpdateCartItemQuantity(ctx, existingItem)
+	if err != nil {
+		log.Printf("failed to update cart item quantity : %v", err)
+		return nil, err
 	}
 
 	// Update the quantity
-	return u.cartRepo.UpdateCartItemQuantity(ctx, userID, itemID, quantity)
+	return existingItem, err
 }
 
 func (u *cartUseCase) DeleteCartItem(ctx context.Context, userID, itemID int64) error {
@@ -210,4 +225,8 @@ func (u *cartUseCase) DeleteCartItem(ctx context.Context, userID, itemID int64) 
 	}
 
 	return nil
+}
+
+func (u *cartUseCase) ClearCart(ctx context.Context, userID int64) error {
+	return u.cartRepo.ClearCart(ctx, userID)
 }

@@ -8,18 +8,20 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// IPRateLimiter is a struct that handles rate limiting based on IP addresses.
-// It maintains a map of IP addresses to their rate limiters, a mutex for concurrent access,
-// and rate limit configurations.
+/*
+This struct keeps track of how many requests each IP address has made
+*/
 type IPRateLimiter struct {
-	ips map[string]*rate.Limiter // A map to hold the rate limiters for each IP address
+	ips map[string]*rate.Limiter // A map that stores IP addresses and their corresponding rate limiters
 	mu  *sync.RWMutex            // A mutex to allow safe concurrent access to the map
-	r   rate.Limit               // The rate limit (requests per second)
-	b   int                      // The burst size (maximum number of requests allowed at once)
+	//ensures the ips map is accessed safely when multiple users are making requests at the same time.
+
+	r rate.Limit //  means how many requests per second are allowed for each IP
+	b int        // The burst size (maximum number of requests allowed at once)
 }
 
-// NewIPRateLimiter initializes and returns an IPRateLimiter.
-// It takes the rate limit and burst size as arguments.
+// constructor function to initialize
+// returns an instance of IPRateLimiter
 func NewIPRateLimiter(r rate.Limit, b int) *IPRateLimiter {
 	i := &IPRateLimiter{
 		ips: make(map[string]*rate.Limiter), // Initialize the map to hold IPs and their rate limiters
@@ -32,9 +34,9 @@ func NewIPRateLimiter(r rate.Limit, b int) *IPRateLimiter {
 }
 
 // AddIP creates a new rate limiter for the given IP address and adds it to the map.
-// It acquires a write lock on the mutex to ensure safe access.
+// This function creates a new rate limiter for an IP address that doesn't already have one
 func (i *IPRateLimiter) AddIP(ip string) *rate.Limiter {
-	i.mu.Lock()         // Lock the mutex to prevent concurrent writes
+	i.mu.Lock()         // locks the map so no other requests can modify it while it's being updated
 	defer i.mu.Unlock() // Unlock the mutex once the IP limiter is added
 
 	limiter := rate.NewLimiter(i.r, i.b) // Create a new rate limiter for the IP using the provided rate limit and burst size
@@ -44,7 +46,7 @@ func (i *IPRateLimiter) AddIP(ip string) *rate.Limiter {
 	return limiter
 }
 
-// GetLimiter retrieves the rate limiter for the given IP address.
+// GetLimiter checks if an IP already has a rate limiter
 // If the rate limiter doesn't exist for the IP, it creates one.
 func (i *IPRateLimiter) GetLimiter(ip string) *rate.Limiter {
 	i.mu.Lock()                  // Lock the mutex to safely access the map

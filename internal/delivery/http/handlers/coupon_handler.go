@@ -66,14 +66,6 @@ func (h *CouponHandler) GetAllCoupons(w http.ResponseWriter, r *http.Request) {
 		api.SendResponse(w, http.StatusInternalServerError, "Failed to retrieve coupons", nil, "An unexpected error occured")
 		return
 	}
-
-	// Prepare the response data
-	// Create a map containing:
-	// - `coupons`: the retrieved coupon data
-	// - `total_count`: the total number of coupons available
-	// - `page`: the current page number from the query parameters
-	// - `limit`: the number of items per page from the query parameters
-	// - `total_pages`: calculated by dividing the total count by the limit, rounding up
 	response := map[string]interface{}{
 		"coupons":     coupons,
 		"total_count": totalCount,
@@ -86,26 +78,6 @@ func (h *CouponHandler) GetAllCoupons(w http.ResponseWriter, r *http.Request) {
 	api.SendResponse(w, http.StatusOK, "Coupons retrieved successfully", response, "")
 }
 
-// parseGetCouponsQueryParams extracts and parses coupon query parameters from the HTTP request.
-// It populates a domain.CouponQueryParams struct with pagination, sorting, filtering, and search values,
-// returning default values for page and limit if not provided.
-//
-// Parameters:
-// - r: the incoming *http.Request containing query parameters for coupon filtering.
-//
-// Returns:
-//   - domain.CouponQueryParams: a struct containing the parsed query parameters including page, limit, sort, order,
-//     status, search, and discount filters.
-//
-// Query parameters:
-// - page: the page number for pagination (defaults to 1 if not provided or invalid).
-// - limit: the number of results per page (defaults to 10 if not provided or invalid).
-// - sort: the field to sort the results by (e.g., "created_at").
-// - order: the sorting order ("asc" or "desc").
-// - status: filter by coupon status (e.g., "active").
-// - search: search term for coupon code or description.
-// - min_discount: minimum discount percentage filter.
-// - max_discount: maximum discount percentage filter.
 func parseGetCouponsQueryParams(r *http.Request) domain.CouponQueryParams {
 	// Initialize the query parameters struct with default values
 	// Default page is set to 1, and default limit (results per page) is set to 10.

@@ -13,11 +13,11 @@ import (
 )
 
 type CheckoutUseCase interface {
-	CreateCheckout(ctx context.Context, userID int64) (*domain.CheckoutSession, error)
-	ApplyCoupon(ctx context.Context, userID int64, checkoutID int64, couponCode string) (*domain.ApplyCouponResponse, error)
-	UpdateCheckoutAddress(ctx context.Context, userID, checkoutID, addressID int64) (*domain.CheckoutSession, error)
-	GetCheckoutSummary(ctx context.Context, userID, checkoutID int64) (*domain.CheckoutSummary, error)
-	RemoveAppliedCoupon(ctx context.Context, userID, checkoutID int64) (*domain.CheckoutSession, error)
+	CreateOrUpdateCheckout(ctx context.Context, userID int64) (*domain.CheckoutSession, error)
+	ApplyCoupon(ctx context.Context, userID int64, couponCode string) (*domain.ApplyCouponResponse, error)
+	UpdateCheckoutAddress(ctx context.Context, userID, addressID int64) (*domain.CheckoutSession, error)
+	GetCheckoutSummary(ctx context.Context, userID int64) (*domain.CheckoutSummary, error)
+	RemoveAppliedCoupon(ctx context.Context, userID int64) (*domain.CheckoutSession, error)
 }
 
 type checkoutUseCase struct {
@@ -48,19 +48,11 @@ func NewCheckoutUseCase(checkoutRepo repository.CheckoutRepository,
 	}
 }
 
-/*
-CreateCheckout:
-- Gets cart items currently in user's cart
-- Iterate over each cart item entry in cart_items table and retrieves the entries
-- Creates checkout_sessions entry
-- Add the cart items to checkout_items and associate it to the created checkout_session
-- Updates the total_amount, final_amount and discount_amount values
-*/
-func (u *checkoutUseCase) CreateCheckout(ctx context.Context, userID int64) (*domain.CheckoutSession, error) {
+func (u *checkoutUseCase) CreateOrUpdateCheckout(ctx context.Context, userID int64) (*domain.CheckoutSession, error) {
 	// Get cart items
-	cartItems, err := u.checkoutRepo.GetCartItems(ctx, userID)
+	cartItems, err := u.cartRepo.GetCartByUserID(ctx, userID)
 	if err != nil {
-		log.Printf("error while retrieving cart items and product details : %v", err)
+		log.Printf("error while retrieving cart items: %v", err)
 		return nil, err
 	}
 
@@ -68,62 +60,48 @@ func (u *checkoutUseCase) CreateCheckout(ctx context.Context, userID int64) (*do
 		return nil, utils.ErrEmptyCart
 	}
 
-	// Validate items and calculate total
+	// Calculate total amount and validate stock
 	var totalAmount float64
-	var checkoutItems []*domain.CheckoutItem
-
-	// Iterate over cartitems
+	// Iterate through each cart item
 	for _, item := range cartItems {
-		// Get product details to get the current stock quantity
 		product, err := u.productRepo.GetByID(ctx, item.ProductID)
 		if err != nil {
-			log.Printf("error while retrieving product details from products table : %v", err)
+			log.Printf("error while retrieving product details: %v", err)
 			return nil, err
 		}
 
-		// Compare with stock quantity of the product
 		if product.StockQuantity < item.Quantity {
 			return nil, utils.ErrInsufficientStock
 		}
 
-		// Calculate the subtotal for each product
-		subtotal := float64(item.Quantity) * product.Price
-
-		// Add each checkout item
-		checkoutItems = append(checkoutItems, &domain.CheckoutItem{
-			ProductID: item.ProductID,
-			Quantity:  item.Quantity,
-			Price:     product.Price,
-			Subtotal:  subtotal,
-		})
-
-		totalAmount += subtotal
+		totalAmount += item.Subtotal
 	}
 
-	// First we need to create checkout session
-	session, err := u.checkoutRepo.CreateCheckoutSession(ctx, userID)
+	// Get or create checkout session
+	session, err := u.checkoutRepo.GetOrCreateCheckoutSession(ctx, userID)
 	if err != nil {
-		log.Printf("error while creating checkout session : %v", err)
+		log.Printf("error while getting or creating checkout session: %v", err)
 		return nil, err
 	}
 
-	// Add items to checkout items table and associate it to created checkout sessions
-	err = u.checkoutRepo.AddCheckoutItems(ctx, session.ID, checkoutItems)
-	if err != nil {
-		log.Printf("error while adding items to checkout_items table : %v", err)
-		return nil, err
+	// If the session is updated after applying the coupon, then the applied coupon will be removed
+	if session.CouponApplied {
+		session.CouponApplied = false
+		session.CouponCode = ""
 	}
 
+	totalAmount = math.Round(totalAmount*100) / 100
 	// Update the session with calculated values
 	session.TotalAmount = totalAmount
-	session.ItemCount = len(checkoutItems) // item count : different product items, there is a limit for max different product items you can include in a checkout
-	session.FinalAmount = totalAmount      // final amount is same as total amount, bcz coupon not applied
+	session.ItemCount = len(cartItems)
+	session.FinalAmount = totalAmount // final amount is same as total amount, as coupon is not applied
 	session.UpdatedAt = time.Now().UTC()
+	session.DiscountAmount = 0
 
 	// Update the checkout session in the database
 	err = u.checkoutRepo.UpdateCheckoutDetails(ctx, session)
 	if err != nil {
-		log.Printf("error while updating checkout details : %v", err)
+		log.Printf("error while updating checkout details: %v", err)
 		return nil, err
 	}
 
@@ -141,39 +119,40 @@ ApplyCoupon:
 - Checks if discount applied is above maximum discount value
 - After applying the coupon, details of checkout session is updated
 */
-func (u *checkoutUseCase) ApplyCoupon(ctx context.Context, userID int64, checkoutID int64, couponCode string) (*domain.ApplyCouponResponse, error) {
-	// Get the checkout session
-	checkout, err := u.checkoutRepo.GetCheckoutByID(ctx, checkoutID)
+func (u *checkoutUseCase) ApplyCoupon(ctx context.Context, userID int64, couponCode string) (*domain.ApplyCouponResponse, error) {
+	// Get or create checkout session
+	checkout, err := u.checkoutRepo.GetOrCreateCheckoutSession(ctx, userID)
 	if err != nil {
-		log.Printf("error while retrieving checkout session details using id : %v", err)
+		log.Printf("error while getting or creating checkout session: %v", err)
 		return nil, err
 	}
 
-	// Verify the checkout belongs to the user
-	if checkout.UserID != userID {
-		return nil, utils.ErrUnauthorized
-	}
-
-	// Double-check if the checkout is empty by counting items
-	items, err := u.checkoutRepo.GetCheckoutItems(ctx, checkoutID)
-	if err != nil {
-		log.Printf("error while retrieving checkout item values : %v", err)
-		return nil, err
-	}
-
-	if len(items) == 0 {
-		return nil, utils.ErrEmptyCheckout
-	}
-
-	// Update ItemCount if it's inconsistent
-	if checkout.ItemCount != len(items) {
-		checkout.ItemCount = len(items)
-	}
-
+	log.Printf("coupon already applied : %v", err)
 	// Check if a coupon is already applied
 	if checkout.CouponApplied {
 		return nil, utils.ErrCouponAlreadyApplied
 	}
+
+	// Get cart items
+	cartItems, err := u.cartRepo.GetCartByUserID(ctx, userID)
+	if err != nil {
+		log.Printf("error while retrieving cart items: %v", err)
+		return nil, err
+	}
+
+	if len(cartItems) == 0 {
+		return nil, utils.ErrEmptyCart
+	}
+
+	// Calculate total amount from cart items
+	var totalAmount float64
+	for _, item := range cartItems {
+		totalAmount += item.Subtotal
+	}
+
+	// Update checkout with calculated values
+	checkout.TotalAmount = math.Round(totalAmount*100) / 100
+	checkout.ItemCount = len(cartItems)
 
 	// Get the coupon
 	coupon, err := u.couponRepo.GetByCode(ctx, couponCode)
@@ -242,17 +221,12 @@ UpdateCheckoutAddress:
 - Update checkout_sessions table with new shipping_address_id
 - Get updated checkout session details from checkout_sessions table
 */
-func (u *checkoutUseCase) UpdateCheckoutAddress(ctx context.Context, userID, checkoutID, addressID int64) (*domain.CheckoutSession, error) {
-	// Get the checkout session
-	checkout, err := u.checkoutRepo.GetCheckoutByID(ctx, checkoutID)
+func (u *checkoutUseCase) UpdateCheckoutAddress(ctx context.Context, userID, addressID int64) (*domain.CheckoutSession, error) {
+	// Get or create checkout session
+	checkout, err := u.checkoutRepo.GetOrCreateCheckoutSession(ctx, userID)
 	if err != nil {
-		log.Printf("error whiler retrieving checkout data using checkout id : %v", err)
+		log.Printf("error while getting or creating checkout session: %v", err)
 		return nil, err
-	}
-
-	// Check if the checkout belongs to the user
-	if checkout.UserID != userID {
-		return nil, utils.ErrUnauthorized
 	}
 
 	// Check if the checkout is in a valid state to update the address
@@ -279,15 +253,15 @@ func (u *checkoutUseCase) UpdateCheckoutAddress(ctx context.Context, userID, che
 	}
 
 	// Update checkout_sessions table with new shipping address ID
-	err = u.checkoutRepo.UpdateCheckoutShippingAddress(ctx, checkoutID, shippingAddressID)
+	err = u.checkoutRepo.UpdateCheckoutShippingAddress(ctx, checkout.ID, shippingAddressID)
 	if err != nil {
-		log.Printf("error while updating checkout session details with new shipping_address_id : %v", err)
+		log.Printf("error while updating checkout session details with new shipping_address_id: %v", err)
 		return nil, err
 	}
 	// Fetch the updated checkout session details from checkout_sessions table
-	updatedCheckout, err := u.checkoutRepo.GetCheckoutByID(ctx, checkoutID)
+	updatedCheckout, err := u.checkoutRepo.GetCheckoutByID(ctx, checkout.ID)
 	if err != nil {
-		log.Printf("error while fetching checkout session details form checkout_sessions table : %v", err)
+		log.Printf("error while fetching checkout session details from checkout_sessions table: %v", err)
 		return nil, err
 	}
 
@@ -300,24 +274,16 @@ RemoveAppliedCoupon :
 - Remove the applied coupon details from the retrieved sessions details
 - Update the session details in the database, by removing all the applied coupon related details
 */
-func (u *checkoutUseCase) RemoveAppliedCoupon(ctx context.Context, userID, checkoutID int64) (*domain.CheckoutSession, error) {
-	// Get the checkout session
-	checkout, err := u.checkoutRepo.GetCheckoutByID(ctx, checkoutID)
+func (u *checkoutUseCase) RemoveAppliedCoupon(ctx context.Context, userID int64) (*domain.CheckoutSession, error) {
+	// Get or create checkout session
+	checkout, err := u.checkoutRepo.GetOrCreateCheckoutSession(ctx, userID)
 	if err != nil {
-		if err == utils.ErrCheckoutNotFound {
-			return nil, utils.ErrCheckoutNotFound
-		}
-		log.Printf("error while getting checkout using ID : %v", err)
+		log.Printf("error while getting or creating checkout session: %v", err)
 		return nil, err
 	}
 
-	// Verify the checkout belongs to the user
-	if checkout.UserID != userID {
-		return nil, utils.ErrUnauthorized
-	}
-
 	// Check if the checkout is in a valid state to remove coupon
-	if checkout.Status == utils.CheckoutStatusCompleted { // can;t remove coupon from completed checkouts
+	if checkout.Status == utils.CheckoutStatusCompleted {
 		return nil, utils.ErrCheckoutCompleted
 	}
 
@@ -335,96 +301,99 @@ func (u *checkoutUseCase) RemoveAppliedCoupon(ctx context.Context, userID, check
 	// Update the checkout in the repository
 	err = u.checkoutRepo.UpdateCheckoutDetails(ctx, checkout)
 	if err != nil {
+		log.Printf("error while updating checkout details: %v", err)
 		return nil, err
 	}
 
 	return checkout, nil
 }
 
-/*
-GetCheckoutSummary:
-- Get details from checkout_sessions, checkout_items, products, shipping address tables
-*/
-func (u *checkoutUseCase) GetCheckoutSummary(ctx context.Context, userID, checkoutID int64) (*domain.CheckoutSummary, error) {
-	// Get checkout details
-	checkout, err := u.checkoutRepo.GetCheckoutByID(ctx, checkoutID)
+func (u *checkoutUseCase) GetCheckoutSummary(ctx context.Context, userID int64) (*domain.CheckoutSummary, error) {
+	// Get cart items
+	cartItems, err := u.cartRepo.GetCartByUserID(ctx, userID)
 	if err != nil {
-		log.Printf("error while retrieving checkout details from checkout_sessions table : %v", err)
+		log.Printf("error while retrieving cart items: %v", err)
 		return nil, err
 	}
 
-	// Verify the checkout belongs to the user
-	if checkout.UserID != userID {
-		return nil, utils.ErrUnauthorized
+	if len(cartItems) == 0 {
+		return &domain.CheckoutSummary{
+			UserID:         userID,
+			Status:         utils.CheckoutStatusPending,
+			TotalAmount:    0,
+			DiscountAmount: 0,
+			FinalAmount:    0,
+			ItemCount:      0,
+		}, nil
 	}
 
-	// Get checkout items with product details
-	items, err := u.checkoutRepo.GetCheckoutItemsWithProductDetails(ctx, checkoutID)
-	if err != nil {
-		log.Printf("error while retrieving details from checkout_items and products table : %v", err)
-		return nil, err
-	}
+	// Calculate totals
+	var totalAmount float64
+	var itemCount int
+	var items []*domain.CheckoutItemDetail
 
-	// Calculate actual item count and update if necessary
-	actualItemCount := len(items) // count of different product items part of this checkout
-
-	// Update the item count if it's different from item count associated with the checkout
-	if actualItemCount != checkout.ItemCount {
-		if err := u.checkoutRepo.UpdateCheckoutItemCount(ctx, checkoutID, actualItemCount); err != nil {
-			log.Printf("error while updating the item count in checkout_sessions table : %v", err)
+	for _, cartItem := range cartItems {
+		product, err := u.productRepo.GetByID(ctx, cartItem.ProductID)
+		if err != nil {
+			log.Printf("error retrieving product details: %v", err)
 			return nil, err
 		}
-		// Update the variable associated with the checkout data
-		checkout.ItemCount = actualItemCount
+
+		totalAmount += cartItem.Subtotal
+
+		items = append(items, &domain.CheckoutItemDetail{
+			ID:        cartItem.ID,
+			ProductID: cartItem.ProductID,
+			Name:      product.Name,
+			Quantity:  cartItem.Quantity,
+			Price:     cartItem.Price,
+			Subtotal:  cartItem.Subtotal,
+		})
+	}
+	itemCount = len(cartItems)
+
+	// Get checkout session
+	checkout, err := u.checkoutRepo.GetCheckoutSession(ctx, userID)
+	if err != nil {
+		log.Printf("error getting or creating checkout session: %v", err)
+		return nil, err
+	}
+
+	if itemCount != checkout.ItemCount {
+		return nil, utils.ErrCartUpdatedAfterCreatingCheckoutSession
 	}
 
 	// Get shipping address if set
-	var address *domain.ShippingAddress
+	var addressResponse *domain.ShippingAddressResponseInCheckoutSummary
 	if checkout.ShippingAddressID != 0 {
-		address, err = u.checkoutRepo.GetShippingAddress(ctx, checkout.ShippingAddressID)
-		if err != nil {
-			log.Printf("error while retrieving shipping address details : %v", err)
-			return nil, err
+		address, err := u.checkoutRepo.GetShippingAddress(ctx, checkout.ShippingAddressID)
+		if err == nil {
+			addressResponse = &domain.ShippingAddressResponseInCheckoutSummary{
+				ID:           address.ID,
+				AddressID:    address.AddressID,
+				AddressLine1: address.AddressLine1,
+				AddressLine2: address.AddressLine2,
+				City:         address.City,
+				State:        address.State,
+				Landmark:     address.Landmark,
+				PinCode:      address.PinCode,
+				PhoneNumber:  address.PhoneNumber,
+			}
 		}
-	} else {
-		return nil, utils.ErrShippingAddressNotAssigned
 	}
 
-	// Update values for address response in checkout summmary
-	addressResponse := &domain.ShippingAddressResponseInCheckoutSummary{
-		ID:           address.ID,
-		AddressID:    address.AddressID,
-		AddressLine1: address.AddressLine1,
-		AddressLine2: address.AddressLine2,
-		City:         address.City,
-		State:        address.State,
-		Landmark:     address.Landmark,
-		PinCode:      address.PinCode,
-		PhoneNumber:  address.PhoneNumber,
-	}
-
-	// Assemble the checkout summary
 	summary := &domain.CheckoutSummary{
 		ID:             checkout.ID,
-		UserID:         checkout.UserID,
+		UserID:         userID,
 		TotalAmount:    checkout.TotalAmount,
 		DiscountAmount: checkout.DiscountAmount,
 		FinalAmount:    checkout.FinalAmount,
-		ItemCount:      checkout.ItemCount,
+		ItemCount:      itemCount,
 		Status:         checkout.Status,
 		CouponCode:     checkout.CouponCode,
 		CouponApplied:  checkout.CouponApplied,
 		Address:        addressResponse,
 		Items:          items,
-	}
-
-	// Handle empty checkout
-	if len(items) == 0 {
-		summary.Status = "empty"
-		summary.TotalAmount = 0
-		summary.DiscountAmount = 0
-		summary.FinalAmount = 0
-		summary.ItemCount = 0
 	}
 
 	return summary, nil

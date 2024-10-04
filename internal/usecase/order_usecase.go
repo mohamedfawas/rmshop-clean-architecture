@@ -23,10 +23,10 @@ type OrderUseCase interface {
 	UpdatePayment(ctx context.Context, payment *domain.Payment) error
 	ProcessPayment(ctx context.Context, tx *sql.Tx, orderID int64, paymentMethod string, amount float64) (*domain.Payment, error)
 	VerifyAndUpdateRazorpayPayment(ctx context.Context, input domain.RazorpayPaymentInput) error
-	PlaceOrderRazorpay(ctx context.Context, userID, checkoutID int64) (*domain.Order, error)
+	PlaceOrderRazorpay(ctx context.Context, userID int64) (*domain.Order, error)
 	UpdateOrderRazorpayID(ctx context.Context, orderID int64, razorpayOrderID string) error
 	InitiateReturn(ctx context.Context, userID, orderID int64, reason string) (*domain.ReturnRequest, error)
-	PlaceOrderCOD(ctx context.Context, userID, checkoutID int64) (*domain.Order, error)
+	PlaceOrderCOD(ctx context.Context, userID int64) (*domain.Order, error)
 	GenerateInvoice(ctx context.Context, userID, orderID int64) ([]byte, error)
 	UpdateOrderDeliveryStatus(ctx context.Context, orderID int64, deliveryStatus, orderStatus, paymentStatus string) error
 	CreateRazorpayOrder(ctx context.Context, amount float64, currency string) (*razorpay.Order, error)
@@ -207,7 +207,7 @@ PlaceOrderRazorpay:
 - update checkout status
 - clear user's cart
 */
-func (u *orderUseCase) PlaceOrderRazorpay(ctx context.Context, userID, checkoutID int64) (*domain.Order, error) {
+func (u *orderUseCase) PlaceOrderRazorpay(ctx context.Context, userID int64) (*domain.Order, error) {
 	// Start transaction
 	tx, err := u.orderRepo.BeginTx(ctx)
 	if err != nil {
@@ -217,49 +217,38 @@ func (u *orderUseCase) PlaceOrderRazorpay(ctx context.Context, userID, checkoutI
 	defer tx.Rollback()
 
 	// Get checkout session details
-	checkout, err := u.checkoutRepo.GetCheckoutByID(ctx, checkoutID)
+	checkout, err := u.checkoutRepo.GetCheckoutSession(ctx, userID)
 	if err != nil {
 		if err == utils.ErrCheckoutNotFound {
 			return nil, utils.ErrCheckoutNotFound
 		}
-		log.Printf("error while retrieving checkout session details using checkout id : %v", err)
+		log.Printf("error while retrieving checkout session details: %v", err)
 		return nil, err
 	}
 
-	// verify whether the checkout belongs to the user
-	if checkout.UserID != userID {
-		return nil, utils.ErrUnauthorized
-	}
-
-	// Verify the checkout is in valid state for placing the order
-	if checkout.Status != utils.CheckoutStatusPending {
-		return nil, utils.ErrOrderAlreadyPlaced
-	}
-
-	// Retrieve details of the checkout items using the checkout id
-	items, err := u.checkoutRepo.GetCheckoutItems(ctx, checkoutID)
+	// Get cart items
+	cartItems, err := u.cartRepo.GetCartByUserID(ctx, userID)
 	if err != nil {
-		log.Printf("error while retrieving checkout items details using checkout id : %v", err)
+		log.Printf("error while retrieving cart items: %v", err)
 		return nil, err
 	}
 
-	// If there are no items in checkout
-	if len(items) == 0 {
-		return nil, utils.ErrEmptyCheckout
+	if len(cartItems) == 0 {
+		return nil, utils.ErrEmptyCart
 	}
 
-	// Iterate through checkout items
-	for _, item := range items {
-		// Get product details of respective checkout item
+	// Validate stock and calculate total
+	var totalAmount float64
+	for _, item := range cartItems {
 		product, err := u.productRepo.GetByID(ctx, item.ProductID)
 		if err != nil {
-			log.Printf("error while retrieving product details specified in the checkout items : %v", err)
+			log.Printf("error while retrieving product details: %v", err)
 			return nil, err
 		}
-		// ensure stock is available for the respective product
 		if product.StockQuantity < item.Quantity {
 			return nil, utils.ErrInsufficientStock
 		}
+		totalAmount += float64(item.Quantity) * product.Price
 	}
 
 	// make sure proper shipping address is provided
@@ -307,22 +296,20 @@ func (u *orderUseCase) PlaceOrderRazorpay(ctx context.Context, userID, checkoutI
 		return nil, err
 	}
 
-	// Iterate through each checkout item and create respective order item
-	for _, item := range items {
+	// Create order items and update stock
+	for _, item := range cartItems {
 		orderItem := &domain.OrderItem{
 			OrderID:   order.ID,
 			ProductID: item.ProductID,
 			Quantity:  item.Quantity,
 			Price:     item.Price,
 		}
-		// Add the respective order item entry in order_items table
 		err = u.orderRepo.AddOrderItem(ctx, tx, orderItem)
 		if err != nil {
 			log.Printf("failed to add order item: %v", err)
 			return nil, err
 		}
 
-		// Update the stock in products table for the respective product
 		err = u.productRepo.UpdateStockTx(ctx, tx, item.ProductID, -item.Quantity)
 		if err != nil {
 			log.Printf("failed to update product stock: %v", err)
@@ -330,12 +317,10 @@ func (u *orderUseCase) PlaceOrderRazorpay(ctx context.Context, userID, checkoutI
 		}
 	}
 
-	// Order created and order items also created. So checkout is completed
-	// Update checkout status in the checkout_sessions table
-	checkout.Status = utils.CheckoutStatusCompleted
-	err = u.checkoutRepo.UpdateCheckoutStatus(ctx, tx, checkout)
+	// Mark the checkout as deleted
+	err = u.checkoutRepo.MarkCheckoutAsDeleted(ctx, tx, checkout.ID)
 	if err != nil {
-		log.Printf("failed to update checkout status: %v", err)
+		log.Printf("error while marking checkout as deleted: %v", err)
 		return nil, err
 	}
 
@@ -445,7 +430,7 @@ PlaceOrderCOD:
 - Clear the cart after checkout status is completed
 - Commit the transaction
 */
-func (u *orderUseCase) PlaceOrderCOD(ctx context.Context, userID, checkoutID int64) (*domain.Order, error) {
+func (u *orderUseCase) PlaceOrderCOD(ctx context.Context, userID int64) (*domain.Order, error) {
 	// Start a database transaction
 	tx, err := u.orderRepo.BeginTx(ctx)
 	if err != nil {
@@ -454,19 +439,14 @@ func (u *orderUseCase) PlaceOrderCOD(ctx context.Context, userID, checkoutID int
 	}
 	defer tx.Rollback()
 
-	// Get the checkout session details using checkout id
-	checkout, err := u.checkoutRepo.GetCheckoutByID(ctx, checkoutID)
+	// Get the checkout session details using user ID
+	checkout, err := u.checkoutRepo.GetCheckoutSession(ctx, userID)
 	if err != nil {
 		if err == utils.ErrCheckoutNotFound {
 			return nil, utils.ErrCheckoutNotFound
 		}
-		log.Printf("error while retrieving checkout details using checkout id : %v", err)
+		log.Printf("error while retrieving checkout details using user ID : %v", err)
 		return nil, err
-	}
-
-	// Verify the checkout belongs to the user
-	if checkout.UserID != userID {
-		return nil, utils.ErrUnauthorized
 	}
 
 	// Check if the checkout is in a valid state to place an order
@@ -479,23 +459,22 @@ func (u *orderUseCase) PlaceOrderCOD(ctx context.Context, userID, checkoutID int
 		return nil, utils.ErrCODLimitExceeded
 	}
 
-	// Get checkout items
-	items, err := u.checkoutRepo.GetCheckoutItems(ctx, checkoutID)
+	// Get cart items
+	cartItems, err := u.cartRepo.GetCartByUserID(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	// If checkout is empty , then you can't place the order
-	if len(items) == 0 {
+	// If cart is empty, then you can't place the order
+	if len(cartItems) == 0 {
 		return nil, utils.ErrEmptyCart
 	}
 
 	// Verify that all items have sufficient stock
-	for _, item := range items {
-		// Retrieve current stock availability of each product
+	for _, item := range cartItems {
 		product, err := u.productRepo.GetByID(ctx, item.ProductID)
 		if err != nil {
-			log.Printf("error while retrieiving product details to check stock availability : %v", err)
+			log.Printf("error while retrieving product details to check stock availability : %v", err)
 			return nil, err
 		}
 		if product.StockQuantity < item.Quantity {
@@ -548,25 +527,20 @@ func (u *orderUseCase) PlaceOrderCOD(ctx context.Context, userID, checkoutID int
 		return nil, err
 	}
 
-	// order.id is already created, now add order items related to it
-	// To create order items, iterate through each checkout items
 	// Create order items and update product stock
-	for _, item := range items {
+	for _, item := range cartItems {
 		orderItem := &domain.OrderItem{
 			OrderID:   order.ID,
 			ProductID: item.ProductID,
 			Quantity:  item.Quantity,
 			Price:     item.Price,
 		}
-		// Create order item entry in order_items table
 		err = u.orderRepo.AddOrderItem(ctx, tx, orderItem)
 		if err != nil {
 			log.Printf("error while adding order item entry in order_items table : %v", err)
 			return nil, err
 		}
 
-		// Update stock_quantity in products table
-		// quantity is in negative bcz we need to reduce stock quantity from products
 		err = u.productRepo.UpdateStockTx(ctx, tx, item.ProductID, -item.Quantity)
 		if err != nil {
 			log.Printf("failed to update product stock: %v", err)
@@ -574,12 +548,10 @@ func (u *orderUseCase) PlaceOrderCOD(ctx context.Context, userID, checkoutID int
 		}
 	}
 
-	// Now we completed creating order and added order items
-	// So, we can Update checkout status to completed
-	checkout.Status = utils.CheckoutStatusCompleted
-	err = u.checkoutRepo.UpdateCheckoutStatus(ctx, tx, checkout)
+	// Mark the checkout as deleted
+	err = u.checkoutRepo.MarkCheckoutAsDeleted(ctx, tx, checkout.ID)
 	if err != nil {
-		log.Printf("error while updating checkout status to completed : %v", err)
+		log.Printf("error while marking checkout as deleted : %v", err)
 		return nil, err
 	}
 

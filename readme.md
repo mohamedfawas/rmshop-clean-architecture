@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project is a robust e-commerce API for a Real Madrid merchandise shop, built using Go and following clean architecture principles. It provides a set of endpoints for managing users, products, categories, and orders in a secure and efficient manner.
+This project is a robust e-commerce API for a Sports team merchandise shop, built using Go and following clean architecture principles. It provides a set of endpoints for managing users, products, categories, and orders in a secure and efficient manner.
 
 ## Features
 
@@ -10,11 +10,19 @@ This project is a robust e-commerce API for a Real Madrid merchandise shop, buil
 - User authentication and authorization
 - Product management (CRUD operations)
 - Category and subcategory management
+- Shopping cart functionality
 - Order processing
-- Admin panel functionality
+- Wishlist management
+- User profile and address management
+- Admin panel for store management
+- Coupon system
+- Payment integration (Razorpay)
+- Inventory management
+- Sales reporting and analytics
+- Return and refund processing
+- Order cancellation and refund processing
+- Wallet system to manage refund
 - Email verification for user registration
-- JWT-based authentication
-- PostgreSQL database integration
 
 ## Technology Stack
 
@@ -23,42 +31,8 @@ This project is a robust e-commerce API for a Real Madrid merchandise shop, buil
 - JWT for authentication
 - Gorilla Mux for routing
 - SMTP for email sending
-
-## Project Structure
-
-The project follows a clean architecture pattern:
-
-```
-rmshop-clean-architecture/
-│
-├── cmd/
-│   ├── api/
-│   │   └── main.go                 # Main application entry point
-│   └── seedadmin/
-│       └── main.go                 # Admin seeding command
-│
-├── internal/
-│   ├── config/
-│   ├── delivery/
-│   │   └── http/
-│   ├── domain/
-│   ├── repository/
-│   ├── usecase/
-│   └── server/
-│
-├── migrations/
-├── pkg/
-│   ├── auth/
-│   ├── database/
-│   ├── email/
-│   └── validator/
-│
-├── scripts/
-├── .env.example
-├── go.mod
-├── go.sum
-└── README.md
-```
+- Cloudinary for image storage
+- Razorpay for payment processing
 
 ## Setup and Installation
 
@@ -77,55 +51,21 @@ rmshop-clean-architecture/
    go mod tidy
    ```
 
-4. Set up your PostgreSQL database and update the `.env` file with your database credentials.
+4. Set up your PostgreSQL database and update the configuration in `config.yaml`.
 
 5. Run database migrations:
    ```
-   ./scripts/run_migrations.sh
+   go run cmd/migrate/main.go
    ```
 
-6. Start the server:
+6. Build and run the application:
    ```
    go run cmd/api/main.go
    ```
 
 ## API Endpoints
 
-The API provides the following main endpoints:
-
-- User Management:
-  - POST /user/signup
-  - POST /user/verify-otp
-  - POST /user/resend-otp
-  - POST /user/login
-  - POST /user/logout
-
-- Admin Management:
-  - POST /admin/login
-  - POST /admin/logout
-
-- Category Management:
-  - POST /admin/categories
-  - GET /admin/categories
-  - GET /admin/categories/{categoryId}
-  - PUT /admin/categories/{categoryId}
-  - DELETE /admin/categories/{categoryId}
-
-- Subcategory Management:
-  - POST /admin/categories/{categoryId}/subcategories
-  - GET /admin/categories/{categoryId}/subcategories
-  - GET /admin/categories/{categoryId}/subcategories/{subcategoryId}
-  - PUT /admin/categories/{categoryId}/subcategories/{subcategoryId}
-  - DELETE /admin/categories/{categoryId}/subcategories/{subcategoryId}
-
-- Product Management:
-  - POST /admin/products
-  - GET /admin/products
-  - GET /admin/products/{productId}
-  - PUT /admin/products/{productId}
-  - DELETE /admin/products/{productId}
-
-For a complete list of endpoints and their descriptions, please refer to the API documentation.
+For a complete list of endpoints and their descriptions, please refer to the [API documentation]().
 
 ## Contributing
 

@@ -21,9 +21,6 @@ type userRepository struct {
 func NewUserRepository(db *sql.DB) *userRepository {
 	return &userRepository{db: db} //creates a new userRepository with the provided database connection and returns it.
 }
-
-//This approach follows the dependency injection principle, where the database connection is provided from outside rather than created within the repository. This makes the code more flexible and easier to test.
-
 func (r *userRepository) CreateUserSignUpVerifcationEntry(ctx context.Context, entry *domain.VerificationEntry) error {
 
 	query := `INSERT INTO verification_entries (email, otp_code, user_data, password_hash, expires_at, is_verified, created_at)
@@ -258,15 +255,6 @@ func (r *userRepository) GetByID(ctx context.Context, id int64) (*domain.User, e
 	return &user, nil
 }
 
-// Update updates the details of an existing user in the database.
-// It updates the user's name, phone number, and the timestamp for when the update was made.
-//
-// Parameters:
-//   - ctx: Context for controlling execution and managing timeouts.
-//   - user: Pointer to a User domain object containing the updated user information.
-//
-// Returns:
-//   - error: Returns an error if the update operation fails, otherwise returns nil
 func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
 	query := `UPDATE users 	SET name=$1, phone_number=$2,updated_at= NOW() WHERE id=$3`
 	_, err := r.db.ExecContext(ctx, query, user.Name, user.PhoneNumber, user.ID)
@@ -373,17 +361,6 @@ func (r *userRepository) FindPasswordResetEntryByEmail(ctx context.Context, emai
 	return &entry, nil
 }
 
-// UserAddressExists checks if a given user address already exists in the database.
-// It verifies the existence of a user address by matching the user ID, address line, city, state, and pincode,
-// while also ensuring the address hasn't been soft-deleted (i.e., 'deleted_at' is NULL).
-//
-// Parameters:
-//   - ctx: Context for controlling execution and managing timeouts.
-//   - address: Pointer to a UserAddress struct containing the user's address details to be checked.
-//
-// Returns:
-//   - bool: True if the address exists, false otherwise.
-//   - error: Returns an error if there is any issue executing the query or scanning the result.
 func (r *userRepository) UserAddressExists(ctx context.Context, address *domain.UserAddress) (bool, error) {
 	query := `SELECT EXISTS (
 	SELECT 1 FROM user_address 
@@ -400,16 +377,6 @@ func (r *userRepository) UserAddressExists(ctx context.Context, address *domain.
 	return exists, err
 }
 
-// AddUserAddress inserts a new user address into the database and populates the address object
-// with the generated ID, created_at, and updated_at timestamps.
-// It stores the user's address details including user ID, address lines, state, city, pincode, landmark, and phone number.
-//
-// Parameters:
-//   - ctx: Context for controlling execution and managing timeouts.
-//   - address: Pointer to a UserAddress struct containing the details of the address to be added.
-//
-// Returns:
-//   - error: Returns an error if the insert operation fails, otherwise returns nil
 func (r *userRepository) AddUserAddress(ctx context.Context, address *domain.UserAddress) error {
 	query := `
 				INSERT INTO user_address (user_id, address_line1, address_line2, state, city, pincode, landmark, phone_number)
@@ -462,16 +429,6 @@ func (r *userRepository) GetUserAddressByID(ctx context.Context, addressID int64
 	return &address, nil
 }
 
-// UpdateUserAddress updates an existing user address in the database.
-// It modifies the address details such as address lines, city, state, pincode, landmark, phone number,
-// and updates the 'updated_at' field to the current time, ensuring that the address hasn't been soft-deleted.
-//
-// Parameters:
-//   - ctx: Context for controlling execution and managing timeouts.
-//   - address: Pointer to a UserAddress struct containing the updated address details.
-//
-// Returns:
-//   - error: Returns an error if the update operation fails, otherwise returns nil
 func (r *userRepository) UpdateUserAddress(ctx context.Context, address *domain.UserAddress) error {
 	query := `
 			UPDATE user_address SET
@@ -489,22 +446,6 @@ func (r *userRepository) UpdateUserAddress(ctx context.Context, address *domain.
 	return err
 }
 
-// GetUserAddresses retrieves all addresses associated with a given user ID from the database.
-// The addresses are filtered to exclude soft-deleted records (where deleted_at is not null),
-// and they are returned in descending order of creation date.
-//
-// Parameters:
-//
-//	ctx (context.Context) : The context for managing request-scoped values, deadlines, and cancellation.
-//	userID (int64)        : The ID of the user whose addresses are being retrieved.
-//
-// Returns:
-//
-//	([]*domain.UserAddress, error) : A slice of pointers to user addresses on success, or an error if the operation fails.
-//
-// Possible errors:
-//   - If there is an error executing the query or scanning rows from the database, it returns the error and logs a message.
-//   - If there is an error while iterating over the database rows, it logs the error and returns it.
 func (r *userRepository) GetUserAddresses(ctx context.Context, userID int64) ([]*domain.UserAddress, error) {
 	query := `
         SELECT id, user_id, address_line1, address_line2, state, city, pincode, landmark, phone_number, created_at, updated_at
@@ -544,20 +485,6 @@ func (r *userRepository) GetUserAddresses(ctx context.Context, userID int64) ([]
 	return addresses, nil
 }
 
-// GetUserAddressCount retrieves the count of non-deleted addresses associated with a given user ID from the database.
-// It counts the number of addresses where the user_id matches the provided userID and deleted_at is NULL.
-//
-// Parameters:
-//
-//	ctx (context.Context) : The context for managing request-scoped values, deadlines, and cancellation.
-//	userID (int64)        : The ID of the user whose address count is being retrieved.
-//
-// Returns:
-//
-//	(int, error) : The count of user addresses on success, or an error if the operation fails.
-//
-// Possible errors:
-//   - If there is an error executing the query or scanning the result, it returns the error and logs a message.
 func (r *userRepository) GetUserAddressCount(ctx context.Context, userID int64) (int, error) {
 	query := `
 		SELECT COUNT(*)
@@ -573,20 +500,6 @@ func (r *userRepository) GetUserAddressCount(ctx context.Context, userID int64) 
 	return count, nil
 }
 
-// DeleteUserAddress performs a soft delete of a user address by setting the deleted_at timestamp
-// for the address with the specified addressID. The address is only soft-deleted if it is not
-// already marked as deleted (i.e., deleted_at is NULL).
-//
-// Parameters:
-//
-//	ctx (context.Context) : The context for managing request-scoped values, deadlines, and cancellation.
-//	addressID (int64)     : The ID of the address to be soft-deleted.
-//
-// Returns:
-//
-//	error : An error if the operation fails. Possible errors include:
-//	  - If there is an error executing the update query or checking rows affected, it returns the error and logs a message.
-//	  - utils.ErrAddressNotFound if no address with the given addressID was found to be soft-deleted.
 func (r *userRepository) DeleteUserAddress(ctx context.Context, addressID int64) error {
 	query := `
 		UPDATE user_address

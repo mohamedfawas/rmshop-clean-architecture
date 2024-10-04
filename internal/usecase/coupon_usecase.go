@@ -30,24 +30,6 @@ func NewCouponUseCase(couponRepo repository.CouponRepository, checkoutRepo repos
 	}
 }
 
-// CreateCoupon handles the creation of a new coupon by validating the input,
-// checking for existing coupons with the same code,
-// and inserting the new coupon into the database.
-// It returns the created coupon if successful or an error if validation fails,
-// the coupon already exists, or if there is an issue with database operations.
-//
-// Parameters:
-// - ctx: context for managing request-scoped values and cancellation signals.
-// - input: domain.CreateCouponInput object containing the details of the coupon to be created.
-//
-// Returns:
-// - *domain.Coupon: a pointer to the created Coupon object if the creation is successful.
-// - error: an error if the creation fails due to validation errors, existing coupon with the same code, or database errors.
-//
-// Possible errors:
-// - utils.ErrInvalidExpiryDate: returned if the provided expiry date is invalid and cannot be parsed.
-// - utils.ErrDuplicateCouponCode: returned if a coupon with the same code already exists in the database.
-// - error: returned if any other error occurs during the coupon retrieval or creation process.
 func (u *couponUseCase) CreateCoupon(ctx context.Context, input domain.CreateCouponInput) (*domain.Coupon, error) {
 	// Validate input coupon details
 	if err := validator.ValidateCouponInput(input); err != nil {
@@ -98,22 +80,6 @@ func (u *couponUseCase) CreateCoupon(ctx context.Context, input domain.CreateCou
 	return coupon, nil
 }
 
-// GetAllCoupons validates the query parameters, sets default values for pagination and sorting,
-// and delegates the query execution to the coupon repository to retrieve a list of coupons.
-// It ensures that pagination limits, sorting fields, and sort order are within valid bounds
-// and sets the current time to filter out expired coupons.
-//
-// Parameters:
-//   - ctx: A context object that manages request deadlines, cancelation signals,
-//          and other request-scoped values.
-//   - params: A CouponQueryParams struct containing filters such as status,
-//             discount range, pagination, and sorting.
-//
-// Returns:
-//   - []*domain.Coupon: A slice of pointers to Coupon objects that match the query parameters.
-//   - int64: The total count of matching coupons for pagination purposes.
-//   - error: Returns an error if any issue occurs during query validation or execution.
-
 func (u *couponUseCase) GetAllCoupons(ctx context.Context, params domain.CouponQueryParams) ([]*domain.Coupon, int64, error) {
 	// Validate and set default values
 	if params.Page < 1 {
@@ -142,19 +108,6 @@ func (u *couponUseCase) GetAllCoupons(ctx context.Context, params domain.CouponQ
 	return u.couponRepo.GetAllCoupons(ctx, params)
 }
 
-// UpdateCoupon updates an existing coupon with the provided input data.
-// It validates the input fields before updating the coupon and ensures that the
-// coupon code, discount percentage, minimum order amount, and expiry date are valid.
-//
-// Parameters:
-//   - ctx: The context for managing request flow, cancellation, and timeouts.
-//   - couponID: The ID of the coupon to be updated.
-//   - input: A domain.CouponUpdateInput struct containing the fields to update.
-//
-// Returns:
-//   - *domain.Coupon: Returns the updated coupon object upon successful update.
-//   - error: Returns an error if the coupon is not found, if validation fails, or if
-//     there is an issue updating the coupon in the repository.
 func (u *couponUseCase) UpdateCoupon(ctx context.Context, couponID int64, input domain.CouponUpdateInput) (*domain.Coupon, error) {
 	coupon, err := u.couponRepo.GetByID(ctx, couponID)
 	if err != nil {

@@ -9,26 +9,26 @@ import (
 )
 
 type UserRepository interface {
-	Create(ctx context.Context, user *domain.User) error                //fz
-	GetByEmail(ctx context.Context, email string) (*domain.User, error) //fz
+	Create(ctx context.Context, user *domain.User) error
+	GetByEmail(ctx context.Context, email string) (*domain.User, error)
 	UpdateLastLogin(ctx context.Context, userID int64) error
 	BlacklistToken(ctx context.Context, token string, expiresAt time.Time) error
 	IsTokenBlacklisted(ctx context.Context, token string) (bool, error)
 	CreateOTP(ctx context.Context, otp *domain.OTP) error
-	CreateUserSignUpVerifcationEntry(ctx context.Context, entry *domain.VerificationEntry) error //fz
-	UpdateSignUpVerificationEntry(ctx context.Context, entry *domain.VerificationEntry) error    //fz
+	CreateUserSignUpVerifcationEntry(ctx context.Context, entry *domain.VerificationEntry) error
+	UpdateSignUpVerificationEntry(ctx context.Context, entry *domain.VerificationEntry) error
 	DeleteSignUpVerificationEntry(ctx context.Context, email string) error
 	DeleteExpiredVerificationEntries(ctx context.Context) error
 	GetOTPByEmail(ctx context.Context, email string) (*domain.OTP, error)
 	UpdateEmailVerificationStatus(ctx context.Context, userID int64, status bool) error
 	DeleteOTP(ctx context.Context, email string) error
-	GetOTPResendInfo(ctx context.Context, email string) (int, time.Time, error)                             //fz
-	UpdateOTPResendInfo(ctx context.Context, email string) error                                            //fz
-	UpdateSignUpVerificationEntryAfterResendOTP(ctx context.Context, entry *domain.VerificationEntry) error //fz
-	GetByID(ctx context.Context, id int64) (*domain.User, error)                                            //fz
-	Update(ctx context.Context, user *domain.User) error                                                    //fz
-	UpdatePassword(ctx context.Context, userID int64, newPasswordHash string) error                         //fz
-	CreatePasswordResetEntry(ctx context.Context, entry *domain.PasswordResetEntry) error                   //fz
+	GetOTPResendInfo(ctx context.Context, email string) (int, time.Time, error)
+	UpdateOTPResendInfo(ctx context.Context, email string) error
+	UpdateSignUpVerificationEntryAfterResendOTP(ctx context.Context, entry *domain.VerificationEntry) error
+	GetByID(ctx context.Context, id int64) (*domain.User, error)
+	Update(ctx context.Context, user *domain.User) error
+	UpdatePassword(ctx context.Context, userID int64, newPasswordHash string) error
+	CreatePasswordResetEntry(ctx context.Context, entry *domain.PasswordResetEntry) error
 	FindSignUpVerificationEntryByEmail(ctx context.Context, email string) (*domain.VerificationEntry, error)
 	FindPasswordResetEntryByEmail(ctx context.Context, email string) (*domain.PasswordResetEntry, error)
 	DeletePasswordResetVerificationEntry(ctx context.Context, email string) error
@@ -42,48 +42,47 @@ type UserRepository interface {
 }
 
 type AdminRepository interface {
-	GetByUsername(ctx context.Context, username string) (*domain.Admin, error)   //fz
-	BlacklistToken(ctx context.Context, token string, expiresAt time.Time) error //fz
-	IsTokenBlacklisted(ctx context.Context, token string) (bool, error)          //fz
+	GetByUsername(ctx context.Context, username string) (*domain.Admin, error)
+	BlacklistToken(ctx context.Context, token string, expiresAt time.Time) error
+	IsTokenBlacklisted(ctx context.Context, token string) (bool, error)
 }
 
 type CategoryRepository interface {
-	Create(ctx context.Context, category *domain.Category) error   //fz
-	GetByID(ctx context.Context, id int) (*domain.Category, error) // fz
+	Create(ctx context.Context, category *domain.Category) error
+	GetByID(ctx context.Context, id int) (*domain.Category, error)
 	GetAll(ctx context.Context) ([]*domain.Category, error)
 	Update(ctx context.Context, category *domain.Category) error
 	SoftDelete(ctx context.Context, id int) error
-	// Add other methods as needed (GetByID, Update, Delete, etc.)
 }
 
 type SubCategoryRepository interface {
-	Create(ctx context.Context, subCategory *domain.SubCategory) error //fz
+	Create(ctx context.Context, subCategory *domain.SubCategory) error
 	GetByCategoryID(ctx context.Context, categoryID int) ([]*domain.SubCategory, error)
-	GetByID(ctx context.Context, id int) (*domain.SubCategory, error) //fz
+	GetByID(ctx context.Context, id int) (*domain.SubCategory, error)
 	Update(ctx context.Context, subCategory *domain.SubCategory) error
 	SoftDelete(ctx context.Context, id int) error
 }
 
 type ProductRepository interface {
-	Create(ctx context.Context, product *domain.Product) error                              //fz
-	SlugExists(ctx context.Context, slug string) (bool, error)                              //fz
-	NameExists(ctx context.Context, name string) (bool, error)                              //fz
-	Update(ctx context.Context, product *domain.Product) error                              //fz
-	SoftDelete(ctx context.Context, id int64) error                                         //fz
-	GetByID(ctx context.Context, id int64) (*domain.Product, error)                         //fz
-	NameExistsBeforeUpdate(ctx context.Context, name string, excludeID int64) (bool, error) //fz
-	AddImage(ctx context.Context, productID int64, imageURL string, isPrimary bool) error   //fz
-	GetImageCount(ctx context.Context, productID int64) (int, error)                        //fz
-	DeleteImage(ctx context.Context, productID int64, imageURL string) error                //fz
-	GetProductImages(ctx context.Context, productID int64) ([]*domain.ProductImage, error)  //fz
-	SetImageAsPrimary(ctx context.Context, productID int64, imageID int64) error            //fz
+	Create(ctx context.Context, product *domain.Product) error
+	SlugExists(ctx context.Context, slug string) (bool, error)
+	NameExists(ctx context.Context, name string) (bool, error)
+	Update(ctx context.Context, product *domain.Product) error
+	SoftDelete(ctx context.Context, id int64) error
+	GetByID(ctx context.Context, id int64) (*domain.Product, error)
+	NameExistsBeforeUpdate(ctx context.Context, name string, excludeID int64) (bool, error)
+	AddImage(ctx context.Context, productID int64, imageURL string, isPrimary bool) error
+	GetImageCount(ctx context.Context, productID int64) (int, error)
+	DeleteImage(ctx context.Context, productID int64, imageURL string) error
+	GetProductImages(ctx context.Context, productID int64) ([]*domain.ProductImage, error)
+	SetImageAsPrimary(ctx context.Context, productID int64, imageID int64) error
 	UpdateProductPrimaryImage(ctx context.Context, productID int64, imageID *int64) error
 	GetImageByURL(ctx context.Context, productID int64, imageURL string) (*domain.ProductImage, error)
 	GetPrimaryImage(ctx context.Context, productID int64) (*domain.ProductImage, error)
 	UpdateImagePrimary(ctx context.Context, imageID int64, isPrimary bool) error
-	GetImageByID(ctx context.Context, imageID int64) (*domain.ProductImage, error) //fz
-	DeleteImageByID(ctx context.Context, imageID int64) error                      //fz
-	GetAll(ctx context.Context) ([]*domain.Product, error)                         //fz
+	GetImageByID(ctx context.Context, imageID int64) (*domain.ProductImage, error)
+	DeleteImageByID(ctx context.Context, imageID int64) error
+	GetAll(ctx context.Context) ([]*domain.Product, error)
 	UpdateStockQuantity(ctx context.Context, productID int64, quantity int) error
 	GetProducts(ctx context.Context, params domain.ProductQueryParams) ([]*domain.Product, int64, error)
 	GetPublicProductByID(ctx context.Context, id int64) (*domain.PublicProduct, error)
@@ -94,14 +93,10 @@ type CartRepository interface {
 	AddCartItem(ctx context.Context, item *domain.CartItem) error
 	GetCartItemByProductID(ctx context.Context, userID, productID int64) (*domain.CartItem, error)
 	UpdateCartItem(ctx context.Context, item *domain.CartItem) error
-	GetCartByUserID(ctx context.Context, userID int64) ([]*domain.CartItemWithProduct, error)
-	UpdateCartItemQuantity(ctx context.Context, userID, itemID int64, quantity int) error
+	GetCartByUserID(ctx context.Context, userID int64) ([]*domain.CartItem, error)
+	UpdateCartItemQuantity(ctx context.Context, cartItem *domain.CartItem) error
 	GetCartItemByID(ctx context.Context, itemID int64) (*domain.CartItem, error)
 	DeleteCartItem(ctx context.Context, itemID int64) error
-	GetCartTotal(ctx context.Context, userID int64) (float64, error)
-	ApplyCoupon(ctx context.Context, userID int64, coupon *domain.Coupon) error
-	RemoveCoupon(ctx context.Context, userID int64) error
-	GetAppliedCoupon(ctx context.Context, userID int64) (*domain.Coupon, error)
 	ClearCart(ctx context.Context, userID int64) error
 }
 
@@ -116,36 +111,26 @@ type CouponRepository interface {
 
 type CheckoutRepository interface {
 	CreateCheckoutSession(ctx context.Context, userID int64) (*domain.CheckoutSession, error)
-	AddCheckoutItems(ctx context.Context, sessionID int64, items []*domain.CheckoutItem) error
 	GetCartItems(ctx context.Context, userID int64) ([]*domain.CartItemWithProduct, error)
 	GetCheckoutByID(ctx context.Context, checkoutID int64) (*domain.CheckoutSession, error)
-	GetCheckoutItems(ctx context.Context, checkoutID int64) ([]*domain.CheckoutItem, error)
-	UpdateCheckoutAddress(ctx context.Context, checkoutID int64, addressID int64) error
-	AddNewAddressToCheckout(ctx context.Context, checkoutID int64, address *domain.UserAddress) error
 	UpdateCheckoutDetails(ctx context.Context, checkout *domain.CheckoutSession) error
 	UpdateCheckoutStatus(ctx context.Context, tx *sql.Tx, checkout *domain.CheckoutSession) error
 	BeginTx(ctx context.Context) (*sql.Tx, error)
 	CreateOrGetShippingAddress(ctx context.Context, userID, addressID int64) (int64, error)
 	UpdateCheckoutShippingAddress(ctx context.Context, checkoutID, shippingAddressID int64) error
-	GetCheckoutWithAddressByID(ctx context.Context, checkoutID int64) (*domain.CheckoutSession, error)
-	GetCheckoutItemsWithProductDetails(ctx context.Context, checkoutID int64) ([]*domain.CheckoutItemDetail, error)
 	GetShippingAddress(ctx context.Context, addressID int64) (*domain.ShippingAddress, error)
-	UpdateCheckoutItemCount(ctx context.Context, checkoutID int64, itemCount int) error
+	GetOrCreateCheckoutSession(ctx context.Context, userID int64) (*domain.CheckoutSession, error)
+	GetCheckoutSession(ctx context.Context, userID int64) (*domain.CheckoutSession, error)
+	MarkCheckoutAsDeleted(ctx context.Context, tx *sql.Tx, checkoutID int64) error
 }
 
 type OrderRepository interface {
 	GetByID(ctx context.Context, id int64) (*domain.Order, error)
 	GetUserOrders(ctx context.Context, userID int64, page int) ([]*domain.Order, int64, error)
 	UpdateOrderStatus(ctx context.Context, orderID int64, status string) error
-	UpdateRefundStatus(ctx context.Context, orderID int64, refundStatus sql.NullString) error
 	GetOrders(ctx context.Context, limit, offset int) ([]*domain.Order, int64, error)
-	UpdateOrderPaymentStatus(ctx context.Context, orderID int64, status string, paymentID string) error
 	GetPaymentByOrderID(ctx context.Context, orderID int64) (*domain.Payment, error)
 	UpdatePayment(ctx context.Context, payment *domain.Payment) error
-	GetPaymentByRazorpayOrderID(ctx context.Context, razorpayOrderID string) (*domain.Payment, error)
-	SetOrderDeliveredAt(ctx context.Context, orderID int64, deliveredAt *time.Time) error
-	CreateRefundTx(ctx context.Context, tx *sql.Tx, refund *domain.Refund) error
-	UpdateRefundStatusTx(ctx context.Context, tx *sql.Tx, orderID int64, refundStatus sql.NullString) error
 	UpdateOrderStatusTx(ctx context.Context, tx *sql.Tx, orderID int64, status string) error
 	CreateReturnRequestTx(ctx context.Context, tx *sql.Tx, returnRequest *domain.ReturnRequest) error
 	BeginTx(ctx context.Context) (*sql.Tx, error)
@@ -154,12 +139,10 @@ type OrderRepository interface {
 	AddOrderItem(ctx context.Context, tx *sql.Tx, item *domain.OrderItem) error
 	UpdateOrderRazorpayID(ctx context.Context, orderID int64, razorpayOrderID string) error
 	UpdateOrderHasReturnRequestTx(ctx context.Context, tx *sql.Tx, orderID int64, hasReturnRequest bool) error
-	GetOrderWithItems(ctx context.Context, orderID int64) (*domain.Order, error)
 	UpdateOrderHasReturnRequest(ctx context.Context, orderID int64, hasReturnRequest bool) error
 	UpdateOrderDeliveryStatus(ctx context.Context, tx *sql.Tx, orderID int64, deliveryStatus, orderStatus string, deliveredAt *time.Time) error
 	IsOrderDelivered(ctx context.Context, orderID int64) (bool, error)
 	GetOrderByID(ctx context.Context, id int64) (*domain.Order, error)
-	CreateCancellationRequest(ctx context.Context, orderID, userID int64) error
 	GetByIDTx(ctx context.Context, tx *sql.Tx, id int64) (*domain.Order, error)
 	GetOrderItemsTx(ctx context.Context, tx *sql.Tx, orderID int64) ([]*domain.OrderItem, error)
 	GetCancellationRequests(ctx context.Context, params domain.CancellationRequestParams) ([]*domain.CancellationRequest, int64, error)
@@ -188,11 +171,9 @@ type WalletRepository interface {
 	GetByUserID(ctx context.Context, userID int64) (*domain.Wallet, error)
 	AddBalance(ctx context.Context, tx *sql.Tx, userID int64, amount float64) error
 	CreateTransaction(ctx context.Context, tx *sql.Tx, transaction *domain.WalletTransaction) error
-	UpdateBalance(ctx context.Context, tx *sql.Tx, userID int64, newBalance float64) error
 	GetTransactions(ctx context.Context, userID int64, page, limit int, sort, order, transactionType string) ([]*domain.WalletTransaction, int64, error)
 	CreateTransactionTx(ctx context.Context, tx *sql.Tx, transaction *domain.WalletTransaction) error
 	UpdateBalanceTx(ctx context.Context, tx *sql.Tx, userID int64, amount float64) error
-	GetBalanceTx(ctx context.Context, tx *sql.Tx, userID int64) (float64, error)
 	GetWalletTx(ctx context.Context, tx *sql.Tx, userID int64) (*domain.Wallet, error)
 	UpdateWalletBalanceTx(ctx context.Context, tx *sql.Tx, userID int64, newBalance float64) error
 	CreateWalletTransactionTx(ctx context.Context, tx *sql.Tx, transaction *domain.WalletTransaction) error
@@ -221,6 +202,7 @@ type ReturnRepository interface {
 	UpdateRefundDetails(ctx context.Context, returnRequest *domain.ReturnRequest) error
 	BeginTx(ctx context.Context) (*sql.Tx, error)
 	UpdateReturnRequest(ctx context.Context, returnRequest *domain.ReturnRequest) error
+	GetPendingReturnRequests(ctx context.Context, params domain.ReturnRequestParams) ([]*domain.ReturnRequest, int64, error)
 }
 
 type PaymentRepository interface {

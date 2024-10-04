@@ -10,14 +10,10 @@ import (
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/repository"
 	utils "github.com/mohamedfawas/rmshop-clean-architecture/pkg/sales_report"
+	utilsVars "github.com/mohamedfawas/rmshop-clean-architecture/pkg/utils"
 )
 
-var (
-	ErrNoDataFound      = errors.New("no data found")
-	ErrInvalidFormat    = errors.New("invalid format")
-	ErrInvalidDateRange = errors.New("invalid date range")
-	ErrFutureDateRange  = errors.New("future date range")
-)
+var ()
 
 type SalesUseCase interface {
 	GenerateDailySalesReport(ctx context.Context, date time.Time, format string) ([]byte, error)
@@ -44,7 +40,7 @@ func (u *salesUseCase) GenerateDailySalesReport(ctx context.Context, date time.T
 
 	// If no sales data retrieved
 	if len(salesData) == 0 {
-		return nil, ErrNoDataFound
+		return nil, utilsVars.ErrNoDataFound
 	}
 
 	// Generate report based on format
@@ -56,7 +52,7 @@ func (u *salesUseCase) GenerateDailySalesReport(ctx context.Context, date time.T
 	case "excel":
 		return utils.GenerateExcelReport(salesData)
 	default:
-		return nil, ErrInvalidFormat
+		return nil, utilsVars.ErrInvalidFormat
 	}
 }
 
@@ -69,7 +65,7 @@ func (u *salesUseCase) GenerateWeeklySalesReport(ctx context.Context, startDate 
 
 	// If no sales data retrieved
 	if len(salesData) == 0 {
-		return nil, ErrNoDataFound
+		return nil, utilsVars.ErrNoDataFound
 	}
 
 	// Calculate weekly totals
@@ -100,7 +96,7 @@ func (u *salesUseCase) GenerateWeeklySalesReport(ctx context.Context, startDate 
 	case "excel":
 		return utils.GenerateWeeklyExcelReport(weeklyReport)
 	default:
-		return nil, ErrInvalidFormat
+		return nil, utilsVars.ErrInvalidFormat
 	}
 }
 
@@ -119,7 +115,7 @@ func (u *salesUseCase) GenerateMonthlySalesReport(ctx context.Context, year int,
 
 	// If no sales data retrieved
 	if len(salesData) == 0 {
-		return nil, ErrNoDataFound
+		return nil, utilsVars.ErrNoDataFound
 	}
 
 	// Calculate monthly totals
@@ -150,19 +146,19 @@ func (u *salesUseCase) GenerateMonthlySalesReport(ctx context.Context, year int,
 	case "excel":
 		return utils.GenerateMonthlyExcelReport(monthlyReport)
 	default:
-		return nil, ErrInvalidFormat
+		return nil, utilsVars.ErrInvalidFormat
 	}
 }
 
 func (u *salesUseCase) GenerateCustomSalesReport(ctx context.Context, startDate, endDate time.Time, format string) ([]byte, error) {
 	// Validate date range
 	if endDate.Before(startDate) {
-		return nil, ErrInvalidDateRange
+		return nil, utilsVars.ErrInvalidDateRange
 	}
 
 	// Check if date range is in the future
 	if startDate.After(time.Now()) {
-		return nil, ErrFutureDateRange
+		return nil, utilsVars.ErrFutureDateRange
 	}
 
 	// Get sales data from repository
@@ -173,7 +169,7 @@ func (u *salesUseCase) GenerateCustomSalesReport(ctx context.Context, startDate,
 
 	// If no sales data retrieved
 	if len(salesData) == 0 {
-		return nil, ErrNoDataFound
+		return nil, utilsVars.ErrNoDataFound
 	}
 
 	// Calculate totals
@@ -203,6 +199,6 @@ func (u *salesUseCase) GenerateCustomSalesReport(ctx context.Context, startDate,
 	case "excel":
 		return utils.GenerateCustomExcelReport(report)
 	default:
-		return nil, ErrInvalidFormat
+		return nil, utilsVars.ErrInvalidFormat
 	}
 }

@@ -17,3 +17,8 @@ type ReturnRequest struct {
 	IsOrderReachedTheSeller bool       `json:"is_order_reached_the_seller"`
 	IsStockUpdated          bool       `json:"is_stock_updated"`
 }
+
+type ReturnRequestParams struct {
+	Page  int
+	Limit int
+}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"log"
-	"time"
 
 	"github.com/mohamedfawas/rmshop-clean-architecture/internal/domain"
 	"github.com/mohamedfawas/rmshop-clean-architecture/pkg/utils"
@@ -25,8 +24,8 @@ AddCartItem:
 */
 func (r *cartRepository) AddCartItem(ctx context.Context, item *domain.CartItem) error {
 	query := `
-		INSERT INTO cart_items (user_id, product_id, quantity, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO cart_items (user_id, product_id, quantity,price, subtotal, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id
 	`
 
@@ -34,6 +33,8 @@ func (r *cartRepository) AddCartItem(ctx context.Context, item *domain.CartItem)
 		item.UserID,
 		item.ProductID,
 		item.Quantity,
+		item.Price,
+		item.Subtotal,
 		item.CreatedAt,
 		item.UpdatedAt).Scan(&item.ID)
 	if err != nil {
@@ -80,26 +81,28 @@ UpdateCartItem:
 func (r *cartRepository) UpdateCartItem(ctx context.Context, item *domain.CartItem) error {
 	query := `
 		UPDATE cart_items
-		SET quantity = $1, updated_at = $2
-		WHERE id = $3
+        SET quantity = $1, price = $2, subtotal = $3, updated_at = $4
+        WHERE id = $5
 	`
-	_, err := r.db.ExecContext(ctx, query, item.Quantity, time.Now(), item.ID)
+	_, err := r.db.ExecContext(ctx, query,
+		item.Quantity,
+		item.Price,
+		item.Subtotal,
+		item.UpdatedAt,
+		item.ID)
 	if err != nil {
 		log.Printf("error while updating quantity of the given cart item : %v", err)
 	}
 	return err
 }
 
-func (r *cartRepository) GetCartByUserID(ctx context.Context, userID int64) ([]*domain.CartItemWithProduct, error) {
+func (r *cartRepository) GetCartByUserID(ctx context.Context, userID int64) ([]*domain.CartItem, error) {
 	query := `
-		SELECT ci.id, ci.user_id, ci.product_id, ci.quantity, ci.created_at, ci.updated_at,
-			   p.name, p.price
-		FROM cart_items ci
-		JOIN products p ON ci.product_id = p.id
-		WHERE ci.user_id = $1 AND p.deleted_at IS NULL
-		ORDER BY ci.created_at DESC
+		SELECT id, user_id, product_id, quantity, created_at, updated_at, price, subtotal
+		FROM cart_items
+		WHERE user_id = $1
+		ORDER BY created_at DESC
 	`
-
 	rows, err := r.db.QueryContext(ctx, query, userID)
 	if err != nil {
 		log.Printf("error while retrieving cart using userID : %v", err)
@@ -107,12 +110,18 @@ func (r *cartRepository) GetCartByUserID(ctx context.Context, userID int64) ([]*
 	}
 	defer rows.Close()
 
-	var cartItems []*domain.CartItemWithProduct
+	var cartItems []*domain.CartItem
 	for rows.Next() {
-		var ci domain.CartItemWithProduct
+		var ci domain.CartItem
 		err := rows.Scan(
-			&ci.ID, &ci.UserID, &ci.ProductID, &ci.Quantity, &ci.CreatedAt, &ci.UpdatedAt,
-			&ci.ProductName, &ci.ProductPrice,
+			&ci.ID,
+			&ci.UserID,
+			&ci.ProductID,
+			&ci.Quantity,
+			&ci.CreatedAt,
+			&ci.UpdatedAt,
+			&ci.Price,
+			&ci.Subtotal,
 		)
 		if err != nil {
 			log.Printf("db error : %v", err)
@@ -129,11 +138,14 @@ func (r *cartRepository) GetCartByUserID(ctx context.Context, userID int64) ([]*
 	return cartItems, nil
 }
 
-func (r *cartRepository) UpdateCartItemQuantity(ctx context.Context, userID, itemID int64, quantity int) error {
+func (r *cartRepository) UpdateCartItemQuantity(ctx context.Context, cartItem *domain.CartItem) error {
 	query := `UPDATE cart_items
-				SET quantity=$1, updated_at = NOW()
-				WHERE id=$2 AND user_id=$3`
-	result, err := r.db.ExecContext(ctx, query, quantity, itemID, userID)
+				SET quantity=$1, subtotal= $2, updated_at = NOW()
+				WHERE id=$3 `
+	result, err := r.db.ExecContext(ctx, query,
+		cartItem.Quantity,
+		cartItem.Subtotal,
+		cartItem.ID)
 	if err != nil {
 		log.Printf("error while updating the cart_items : %v", err)
 		return err
@@ -180,7 +192,7 @@ func (r *cartRepository) DeleteCartItem(ctx context.Context, itemID int64) error
 // - Retrieve cart item details from cart_items table
 func (r *cartRepository) GetCartItemByID(ctx context.Context, itemID int64) (*domain.CartItem, error) {
 	query := `
-        SELECT id, user_id, product_id, quantity, created_at, updated_at
+        SELECT id, user_id, product_id, quantity, created_at, updated_at, price, subtotal
         FROM cart_items
         WHERE id = $1
     `
@@ -192,6 +204,8 @@ func (r *cartRepository) GetCartItemByID(ctx context.Context, itemID int64) (*do
 		&item.Quantity,
 		&item.CreatedAt,
 		&item.UpdatedAt,
+		&item.Price,
+		&item.Subtotal,
 	)
 	if err == sql.ErrNoRows {
 		return nil, utils.ErrCartItemNotFound
@@ -201,66 +215,6 @@ func (r *cartRepository) GetCartItemByID(ctx context.Context, itemID int64) (*do
 		return nil, err
 	}
 	return &item, nil
-}
-
-func (r *cartRepository) GetCartTotal(ctx context.Context, userID int64) (float64, error) {
-	// COALESCE ensures that the result is 0 instead of NULL
-	query := `SELECT COALESCE(SUM(ci.quantity * p.price), 0) 
-              FROM cart_items ci 
-              JOIN products p ON ci.product_id = p.id 
-              WHERE ci.user_id = $1`
-
-	var total float64
-	err := r.db.QueryRowContext(ctx, query, userID).Scan(&total)
-	if err != nil {
-		log.Printf("error while getting cart total : %v", err)
-		return 0, err
-	}
-	return total, nil
-}
-
-func (r *cartRepository) ApplyCoupon(ctx context.Context, userID int64, coupon *domain.Coupon) error {
-	query := `INSERT INTO applied_coupons (user_id, coupon_id) VALUES ($1, $2)
-              ON CONFLICT (user_id) DO UPDATE SET coupon_id = $2`
-
-	_, err := r.db.ExecContext(ctx, query, userID, coupon.ID)
-	if err != nil {
-		log.Printf("error while adding to applied coupons : %v", err)
-	}
-	return err
-}
-
-func (r *cartRepository) RemoveCoupon(ctx context.Context, userID int64) error {
-	query := `DELETE FROM applied_coupons WHERE user_id = $1`
-
-	_, err := r.db.ExecContext(ctx, query, userID)
-	if err != nil {
-		log.Printf("error while removing applied coupon : %v", err)
-	}
-	return err
-}
-
-func (r *cartRepository) GetAppliedCoupon(ctx context.Context, userID int64) (*domain.Coupon, error) {
-	query := `SELECT c.id, c.code, c.discount_percentage, c.min_order_amount, c.is_active, c.created_at, c.updated_at, c.expires_at
-              FROM applied_coupons ac
-              JOIN coupons c ON ac.coupon_id = c.id
-              WHERE ac.user_id = $1`
-
-	var coupon domain.Coupon
-	err := r.db.QueryRowContext(ctx, query, userID).Scan(
-		&coupon.ID, &coupon.Code, &coupon.DiscountPercentage, &coupon.MinOrderAmount,
-		&coupon.IsActive, &coupon.CreatedAt, &coupon.UpdatedAt, &coupon.ExpiresAt,
-	)
-
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		log.Printf("error while retrieving applied coupon details : %v", err)
-		return nil, err
-	}
-
-	return &coupon, nil
 }
 
 /*

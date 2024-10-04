@@ -157,7 +157,7 @@ func NewRouter(userHandler *handlers.UserHandler,
 	r.HandleFunc("/user/signup", userHandler.InitiateSignUp).Methods("POST")
 	r.HandleFunc("/user/verify-otp", userHandler.VerifyOTP).Methods("POST")
 	// Create a new IP rate limiter
-	otpResendLimiter := middleware.NewIPRateLimiter(rate.Every(30*time.Second), 1)
+	otpResendLimiter := middleware.NewIPRateLimiter(rate.Every(30*time.Second), 1) // 1 request every 30 seconds
 	// Allow 1 request per 30 seconds for OTP resend
 	r.HandleFunc("/user/resend-otp", middleware.RateLimitMiddleware(userHandler.ResendOTP, otpResendLimiter)).Methods("POST")
 
@@ -188,23 +188,24 @@ func NewRouter(userHandler *handlers.UserHandler,
 	r.HandleFunc("/user/cart", chainMiddleware(jwtAuth, userAuth)(cartHandler.GetUserCart)).Methods("GET")
 	r.HandleFunc("/user/cart/items/{itemId}", chainMiddleware(jwtAuth, userAuth)(cartHandler.UpdateCartItemQuantity)).Methods("PATCH")
 	r.HandleFunc("/user/cart/items/{itemId}", chainMiddleware(jwtAuth, userAuth)(cartHandler.DeleteCartItem)).Methods("DELETE")
+	r.HandleFunc("/user/cart/clear-cart", chainMiddleware(jwtAuth, userAuth)(cartHandler.ClearCart)).Methods("DELETE")
 
 	// User routes : Checkout
 	r.HandleFunc("/user/checkout", chainMiddleware(jwtAuth, userAuth)(checkoutHandler.CreateCheckout)).Methods("POST")
 	// apply coupon
-	r.HandleFunc("/user/checkout/{checkout_id}/apply-coupon", chainMiddleware(jwtAuth, userAuth)(checkoutHandler.ApplyCoupon)).Methods("POST")
+	r.HandleFunc("/user/checkout/apply-coupon", chainMiddleware(jwtAuth, userAuth)(checkoutHandler.ApplyCoupon)).Methods("POST")
 	// remove coupon
-	r.HandleFunc("/user/checkout/{checkout_id}/apply-coupon", chainMiddleware(jwtAuth, userAuth)(checkoutHandler.RemoveAppliedCoupon)).Methods("DELETE")
+	r.HandleFunc("/user/checkout/remove-coupon", chainMiddleware(jwtAuth, userAuth)(checkoutHandler.RemoveAppliedCoupon)).Methods("DELETE")
 	// add shipping address to checkout
-	r.HandleFunc("/user/checkout/{checkout_id}/address", chainMiddleware(jwtAuth, userAuth)(checkoutHandler.UpdateCheckoutAddress)).Methods("PATCH")
+	r.HandleFunc("/user/checkout/address", chainMiddleware(jwtAuth, userAuth)(checkoutHandler.UpdateCheckoutAddress)).Methods("PATCH")
 	// get checkout summary
-	r.HandleFunc("/user/checkout/{checkout_id}/summary", chainMiddleware(jwtAuth, userAuth)(checkoutHandler.GetCheckoutSummary)).Methods("GET")
+	r.HandleFunc("/user/checkout/summary", chainMiddleware(jwtAuth, userAuth)(checkoutHandler.GetCheckoutSummary)).Methods("GET")
 
 	// User routes : Order management
 	// place order using razorpay
-	r.HandleFunc("/user/checkout/{checkout_id}/place-order/razorpay", chainMiddleware(jwtAuth, userAuth)(orderHandler.PlaceOrderRazorpay)).Methods("POST")
+	r.HandleFunc("/user/checkout/place-order/razorpay", chainMiddleware(jwtAuth, userAuth)(orderHandler.PlaceOrderRazorpay)).Methods("POST")
 	// place order using cod
-	r.HandleFunc("/user/checkout/{checkout_id}/place-order/cod", chainMiddleware(jwtAuth, userAuth)(orderHandler.PlaceOrderCOD)).Methods("POST")
+	r.HandleFunc("/user/checkout/place-order/cod", chainMiddleware(jwtAuth, userAuth)(orderHandler.PlaceOrderCOD)).Methods("POST")
 	// Get order details by order id
 	r.HandleFunc("/user/orders/{order_id}", chainMiddleware(jwtAuth, userAuth)(orderHandler.GetOrderDetails)).Methods("GET")
 	// Get order history
@@ -215,6 +216,8 @@ func NewRouter(userHandler *handlers.UserHandler,
 	r.HandleFunc("/user/orders/{orderId}/return", chainMiddleware(jwtAuth, userAuth)(returnHandler.GetReturnRequestByOrderID)).Methods("GET")
 	r.HandleFunc("/user/returns", chainMiddleware(jwtAuth, userAuth)(returnHandler.GetUserReturnRequests)).Methods("GET")
 
+	// order return : get all pending return requests to be reviewed by admin
+	r.HandleFunc("/admin/returns", chainMiddleware(jwtAuth, adminAuth)(returnHandler.GetPendingReturnRequests)).Methods("GET")
 	// admin : order delivery update
 	r.HandleFunc("/admin/orders/{orderId}/delivery-status", chainMiddleware(jwtAuth, adminAuth)(orderHandler.UpdateOrderDeliveryStatus)).Methods("PATCH")
 
