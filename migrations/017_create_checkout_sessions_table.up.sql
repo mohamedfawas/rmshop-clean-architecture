@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS checkout_sessions (
     discount_amount DECIMAL(10, 2) NOT NULL DEFAULT 0 CHECK (discount_amount >= 0),
     final_amount DECIMAL(10, 2) NOT NULL DEFAULT 0 CHECK (final_amount >= 0 AND final_amount <= total_amount),
     shipping_address_id BIGINT,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_checkout_sessions_user FOREIGN KEY (user_id)
