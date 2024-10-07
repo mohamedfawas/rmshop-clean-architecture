@@ -1,3 +1,0 @@
-ALTER TABLE cart_items
-DROP COLUMN IF  EXISTS price ,
-DROP COLUMN IF  EXISTS subtotal;
