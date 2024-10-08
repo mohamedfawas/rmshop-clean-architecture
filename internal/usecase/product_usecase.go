@@ -17,7 +17,7 @@ import (
 
 type ProductUseCase interface {
 	CreateProduct(ctx context.Context, product *domain.Product) error
-	UpdateProduct(ctx context.Context, product *domain.Product) error
+	UpdateProduct(ctx context.Context, productID int64, updateFields map[string]interface{}) (*domain.Product, error)
 	GetProductByID(ctx context.Context, id int64) (*domain.Product, error)
 	SoftDeleteProduct(ctx context.Context, id int64) error
 	AddImage(ctx context.Context, productID int64, files []multipart.File, fileKeys []string, fileHeaders []multipart.FileHeader, isPrimary bool) error
@@ -142,50 +142,132 @@ func (u *productUseCase) SoftDeleteProduct(ctx context.Context, id int64) error 
 	return nil
 }
 
-func (u *productUseCase) UpdateProduct(ctx context.Context, product *domain.Product) error {
-	existingProduct, err := u.productRepo.GetByID(ctx, product.ID)
+// func (u *productUseCase) UpdateProduct(ctx context.Context, product *domain.Product) error {
+// 	existingProduct, err := u.productRepo.GetByID(ctx, product.ID)
+// 	if err != nil {
+// 		log.Printf("Error while retrieving product details using product ID, %v: ", err)
+// 		return err
+// 	}
+
+// 	// Check if the subcategory exists and is not soft deleted
+// 	if product.SubCategoryID != existingProduct.SubCategoryID {
+// 		subCategory, err := u.subCategoryRepo.GetByID(ctx, product.SubCategoryID)
+// 		if err != nil {
+// 			return utils.ErrInvalidSubCategory
+// 		}
+// 		if subCategory.DeletedAt != nil {
+// 			return utils.ErrInvalidSubCategory
+// 		}
+// 	}
+
+// 	// Generate new slug if name has changed
+// 	if product.Name != existingProduct.Name {
+// 		product.Slug = utils.GenerateSlug(product.Name)
+// 	} else {
+// 		product.Slug = existingProduct.Slug
+// 	}
+
+// 	// Check for duplicate name only if the name has changed
+// 	if product.Name != existingProduct.Name {
+// 		exists, err := u.productRepo.NameExistsBeforeUpdate(ctx, product.Name, product.ID) //check whether any active product names exist with the updated name
+// 		if err != nil {
+// 			return err
+// 		}
+// 		if exists {
+// 			return utils.ErrDuplicateProductName
+// 		}
+// 	}
+
+// 	// Update the product
+// 	err = u.productRepo.Update(ctx, product)
+// 	if err != nil {
+// 		log.Printf("Error while updating product details, %v: ", err)
+// 		return err
+// 	}
+
+// 	return nil
+// }
+
+func (u *productUseCase) UpdateProduct(ctx context.Context, productID int64, updateFields map[string]interface{}) (*domain.Product, error) {
+	// Get the existing product details
+	existingProduct, err := u.productRepo.GetByID(ctx, productID)
 	if err != nil {
-		log.Printf("Error while retrieving product details using product ID, %v: ", err)
-		return err
+		log.Printf("failed to fetch existing product details : %v", err)
+		return nil, err
 	}
 
-	// Check if the subcategory exists and is not soft deleted
-	if product.SubCategoryID != existingProduct.SubCategoryID {
-		subCategory, err := u.subCategoryRepo.GetByID(ctx, product.SubCategoryID)
-		if err != nil {
-			return utils.ErrInvalidSubCategory
+	// Iterate through the feilds to be updated
+	for key, value := range updateFields {
+		switch key {
+		case "name":
+			if name, ok := value.(string); ok {
+				existingProduct.Name = strings.ToLower(strings.TrimSpace(name))
+				err = validator.ValidateProductName(existingProduct.Name)
+				if err != nil {
+					return nil, err
+				}
+				existingProduct.Slug = utils.GenerateSlug(existingProduct.Name)
+			}
+		case "description":
+			if description, ok := value.(string); ok {
+				existingProduct.Description = strings.TrimSpace(description)
+				err = validator.ValidateProductDescription(existingProduct.Description)
+				if err != nil {
+					return nil, err
+				}
+			}
+		case "price":
+			if price, ok := value.(float64); ok {
+				existingProduct.Price = price
+				err = validator.ValidateProductPrice(existingProduct.Price)
+				if err != nil {
+					return nil, err
+				}
+			}
+		case "stock_quantity":
+			if quantity, ok := value.(float64); ok {
+				existingProduct.StockQuantity = int(quantity)
+				err = validator.ValidateProductStockQuantity(existingProduct.StockQuantity)
+				if err != nil {
+					return nil, err
+				}
+			}
+		case "sub_category_id":
+			// Convert the sub category id from float to int
+			if subCategoryID, ok := value.(float64); ok {
+				newSubCategoryID := int(subCategoryID)
+				err = validator.ValidateProductSubCategoryID(newSubCategoryID)
+				if err != nil {
+					return nil, err
+				}
+				// If sub cat id is updated, fetch the new sub cat id details
+				if newSubCategoryID != existingProduct.SubCategoryID {
+					subCategory, err := u.subCategoryRepo.GetByID(ctx, newSubCategoryID)
+					if err != nil || subCategory.DeletedAt != nil {
+						return nil, utils.ErrInvalidSubCategory
+					}
+					existingProduct.SubCategoryID = newSubCategoryID
+				}
+			}
 		}
-		if subCategory.DeletedAt != nil {
-			return utils.ErrInvalidSubCategory
-		}
 	}
 
-	// Generate new slug if name has changed
-	if product.Name != existingProduct.Name {
-		product.Slug = utils.GenerateSlug(product.Name)
-	} else {
-		product.Slug = existingProduct.Slug
-	}
-
-	// Check for duplicate name only if the name has changed
-	if product.Name != existingProduct.Name {
-		exists, err := u.productRepo.NameExistsBeforeUpdate(ctx, product.Name, product.ID) //check whether any active product names exist with the updated name
+	if _, ok := updateFields["name"]; ok {
+		exists, err := u.productRepo.NameExistsBeforeUpdate(ctx, existingProduct.Name, existingProduct.ID)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if exists {
-			return utils.ErrDuplicateProductName
+			return nil, utils.ErrDuplicateProductName
 		}
 	}
 
-	// Update the product
-	err = u.productRepo.Update(ctx, product)
+	err = u.productRepo.Update(ctx, existingProduct)
 	if err != nil {
-		log.Printf("Error while updating product details, %v: ", err)
-		return err
+		return nil, err
 	}
 
-	return nil
+	return existingProduct, nil
 }
 
 func (u *productUseCase) AddImage(ctx context.Context, productID int64, files []multipart.File, fileKeys []string, fileHeaders []multipart.FileHeader, isPrimary bool) error {

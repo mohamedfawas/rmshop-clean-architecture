@@ -115,12 +115,20 @@ func (r *productRepository) GetByID(ctx context.Context, id int64) (*domain.Prod
 }
 
 func (r *productRepository) Update(ctx context.Context, product *domain.Product) error {
-	query := `UPDATE products SET name = $1, slug = $2, description = $3, price = $4, 
+	query := `UPDATE products 
+			SET name = $1, slug = $2, description = $3, price = $4, 
               stock_quantity = $5, sub_category_id = $6, updated_at = $7
               WHERE id = $8 AND is_deleted = false`
 
-	result, err := r.db.ExecContext(ctx, query, product.Name, product.Slug, product.Description,
-		product.Price, product.StockQuantity, product.SubCategoryID, time.Now(), product.ID)
+	result, err := r.db.ExecContext(ctx, query,
+		product.Name,
+		product.Slug,
+		product.Description,
+		product.Price,
+		product.StockQuantity,
+		product.SubCategoryID,
+		time.Now().UTC(),
+		product.ID)
 
 	if err != nil {
 		pqErr, ok := err.(*pq.Error)

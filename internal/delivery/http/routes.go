@@ -134,7 +134,7 @@ func NewRouter(userHandler *handlers.UserHandler,
 	r.HandleFunc("/admin/products", chainMiddleware(jwtAuth, adminAuth)(productHandler.CreateProduct)).Methods("POST")
 	r.HandleFunc("/admin/products", chainMiddleware(jwtAuth, adminAuth)(productHandler.GetAllProducts)).Methods("GET")
 	r.HandleFunc("/admin/products/{productId}", chainMiddleware(jwtAuth, adminAuth)(productHandler.GetProductByID)).Methods("GET")
-	r.HandleFunc("/admin/products/{productId}", chainMiddleware(jwtAuth, adminAuth)(productHandler.UpdateProduct)).Methods("PUT")
+	r.HandleFunc("/admin/products/{productId}", chainMiddleware(jwtAuth, adminAuth)(productHandler.UpdateProduct)).Methods("PATCH")
 	r.HandleFunc("/admin/products/{productId}", chainMiddleware(jwtAuth, adminAuth)(productHandler.SoftDeleteProduct)).Methods("DELETE")
 
 	// Admin routes : Product image management

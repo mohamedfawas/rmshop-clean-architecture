@@ -76,6 +76,7 @@ func (h *ProductHandler) CreateProduct(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ProductHandler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
+	// Extract the product id from the URL
 	vars := mux.Vars(r)
 	productID, err := strconv.ParseInt(vars["productId"], 10, 64)
 	if err != nil {
@@ -83,105 +84,30 @@ func (h *ProductHandler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the existing product
-	existingProduct, err := h.productUseCase.GetProductByID(r.Context(), productID)
-	if err != nil {
-		if err == utils.ErrProductNotFound {
-			api.SendResponse(w, http.StatusNotFound, "Failed to update product", nil, "Product not found")
-		} else {
-			api.SendResponse(w, http.StatusInternalServerError, "Failed to update product", nil, "An unexpected error occurred")
-		}
-		return
-	}
-
-	// Decode the request body into a map
-	var updateFields map[string]interface{} // interface can take any data type
+	// Fetch the updated fields from the request body
+	var updateFields map[string]interface{}
 	err = json.NewDecoder(r.Body).Decode(&updateFields)
 	if err != nil {
 		api.SendResponse(w, http.StatusBadRequest, "Invalid request", nil, "Failed to parse request body")
 		return
 	}
 
-	// If the request body is empty, return success without making any changes
-	if len(updateFields) == 0 {
-		api.SendResponse(w, http.StatusOK, "No changes made to the product", existingProduct, "")
-		return
-	}
-
-	// Update and validate only the provided fields
-	updatedProduct := *existingProduct
-	for key, value := range updateFields {
-		switch key {
-		case "name":
-			if name, ok := value.(string); ok {
-				updatedProduct.Name = strings.ToLower(strings.TrimSpace(name))
-				if err := validator.ValidateProductName(updatedProduct.Name); err != nil {
-					switch err {
-					case utils.ErrProductNameTooShort:
-						api.SendResponse(w, http.StatusBadRequest, "Validation failed", nil, "Product name should have atleast 2 characters")
-					case utils.ErrProductNameTooLong:
-						api.SendResponse(w, http.StatusBadRequest, "Validation failed", nil, "Product name should not have more than 255 characters")
-					}
-					return
-				}
-			} else {
-				api.SendResponse(w, http.StatusBadRequest, "Invalid field", nil, "Name must be a string")
-				return
-			}
-		case "description":
-			if description, ok := value.(string); ok {
-				updatedProduct.Description = strings.TrimSpace(description)
-				if err := validator.ValidateProductDescription(updatedProduct.Description); err != nil {
-					api.SendResponse(w, http.StatusBadRequest, "Validation failed", nil, "Product description should be between 10 and 5000 characters")
-					return
-				}
-			} else {
-				api.SendResponse(w, http.StatusBadRequest, "Invalid field", nil, "Description must be a string")
-				return
-			}
-		case "price":
-			if price, ok := value.(float64); ok {
-				updatedProduct.Price = price
-				if err := validator.ValidateProductPrice(updatedProduct.Price); err != nil {
-					api.SendResponse(w, http.StatusBadRequest, "Validation failed", nil, err.Error())
-					return
-				}
-			} else {
-				api.SendResponse(w, http.StatusBadRequest, "Invalid field", nil, "Price must be a number")
-				return
-			}
-		case "stock_quantity":
-			if quantity, ok := value.(float64); ok {
-				updatedProduct.StockQuantity = int(quantity)
-				if err := validator.ValidateProductStockQuantity(updatedProduct.StockQuantity); err != nil {
-					api.SendResponse(w, http.StatusBadRequest, "Validation failed", nil, err.Error())
-					return
-				}
-			} else {
-				api.SendResponse(w, http.StatusBadRequest, "Invalid field", nil, "Stock quantity must be a number")
-				return
-			}
-		case "sub_category_id":
-			if subCategoryID, ok := value.(float64); ok {
-				updatedProduct.SubCategoryID = int(subCategoryID)
-				if err := validator.ValidateProductSubCategoryID(updatedProduct.SubCategoryID); err != nil {
-					api.SendResponse(w, http.StatusBadRequest, "Validation failed", nil, err.Error())
-					return
-				}
-			} else {
-				api.SendResponse(w, http.StatusBadRequest, "Invalid field", nil, "Sub-category ID must be a number")
-				return
-			}
-		default:
-			// Ignore unknown fields
-			continue
-		}
-	}
-
-	// Update the product
-	err = h.productUseCase.UpdateProduct(r.Context(), &updatedProduct)
+	// Call the usecase method
+	updatedProduct, err := h.productUseCase.UpdateProduct(r.Context(), productID, updateFields)
 	if err != nil {
 		switch err {
+		case utils.ErrProductNameTooShort:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update product", nil, "Product name should have more than 2 characters")
+		case utils.ErrProductNameTooLong:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update product", nil, "Product name should be less than 255 characters")
+		case utils.ErrProductDescriptionRequired:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update product", nil, "A valid product description is required")
+		case utils.ErrInvalidProductPrice:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update product", nil, "Please provide a valid product price")
+		case utils.ErrInvalidStockQuantity:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update product", nil, "Please provide a valid stock quantity for the product")
+		case utils.ErrInvalidSubCategoryID:
+			api.SendResponse(w, http.StatusBadRequest, "Failed to update product", nil, "Please provide a valid sub category id")
 		case utils.ErrProductNotFound:
 			api.SendResponse(w, http.StatusNotFound, "Failed to update product", nil, "Product not found")
 		case utils.ErrInvalidSubCategory:
@@ -195,7 +121,6 @@ func (h *ProductHandler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
 	}
 
 	api.SendResponse(w, http.StatusOK, "Product updated successfully", updatedProduct, "")
-
 }
 
 func (h *ProductHandler) SoftDeleteProduct(w http.ResponseWriter, r *http.Request) {
