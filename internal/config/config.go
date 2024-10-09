@@ -6,6 +6,8 @@ import (
 	"github.com/spf13/viper"
 )
 
+// add this to github
+
 type Config struct {
 	Server     ServerConfig
 	DB         DBConfig
