@@ -142,52 +142,6 @@ func (u *productUseCase) SoftDeleteProduct(ctx context.Context, id int64) error 
 	return nil
 }
 
-// func (u *productUseCase) UpdateProduct(ctx context.Context, product *domain.Product) error {
-// 	existingProduct, err := u.productRepo.GetByID(ctx, product.ID)
-// 	if err != nil {
-// 		log.Printf("Error while retrieving product details using product ID, %v: ", err)
-// 		return err
-// 	}
-
-// 	// Check if the subcategory exists and is not soft deleted
-// 	if product.SubCategoryID != existingProduct.SubCategoryID {
-// 		subCategory, err := u.subCategoryRepo.GetByID(ctx, product.SubCategoryID)
-// 		if err != nil {
-// 			return utils.ErrInvalidSubCategory
-// 		}
-// 		if subCategory.DeletedAt != nil {
-// 			return utils.ErrInvalidSubCategory
-// 		}
-// 	}
-
-// 	// Generate new slug if name has changed
-// 	if product.Name != existingProduct.Name {
-// 		product.Slug = utils.GenerateSlug(product.Name)
-// 	} else {
-// 		product.Slug = existingProduct.Slug
-// 	}
-
-// 	// Check for duplicate name only if the name has changed
-// 	if product.Name != existingProduct.Name {
-// 		exists, err := u.productRepo.NameExistsBeforeUpdate(ctx, product.Name, product.ID) //check whether any active product names exist with the updated name
-// 		if err != nil {
-// 			return err
-// 		}
-// 		if exists {
-// 			return utils.ErrDuplicateProductName
-// 		}
-// 	}
-
-// 	// Update the product
-// 	err = u.productRepo.Update(ctx, product)
-// 	if err != nil {
-// 		log.Printf("Error while updating product details, %v: ", err)
-// 		return err
-// 	}
-
-// 	return nil
-// }
-
 func (u *productUseCase) UpdateProduct(ctx context.Context, productID int64, updateFields map[string]interface{}) (*domain.Product, error) {
 	// Get the existing product details
 	existingProduct, err := u.productRepo.GetByID(ctx, productID)
