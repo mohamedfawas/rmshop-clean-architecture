@@ -75,11 +75,17 @@ func Load() (*Config, error) {
 
 	err := viper.ReadInConfig() //Reads configuration files
 	if err != nil {
-		log.Printf("Error reading config file: %v", err)
-		return nil, err
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			// Config file not found; ignore error if desired
+			log.Println("No config file found. Using environment variables.")
+		} else {
+			// Config file was found but another error was produced
+			log.Printf("Error reading config file: %v", err)
+			return nil, err
+		}
+	} else {
+		log.Printf("Config file used: %s", viper.ConfigFileUsed())
 	}
-
-	log.Printf("Config file used: %s", viper.ConfigFileUsed())
 
 	var config Config
 	err = viper.Unmarshal(&config) //unmarshal the configuration values from a Viper instance into a struct
