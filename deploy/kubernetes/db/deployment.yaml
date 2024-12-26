@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: rmshop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: db-credentials  # Changed from rmshop-secrets
+              key: username        # Changed from db_user
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: db-credentials  # Changed from rmshop-secrets
+              key: password        # Changed from db_password
+        - name: POSTGRES_DB
+          value: "rmshop_db"
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+        - name: postgres-config
+          mountPath: /etc/postgresql/postgresql.conf
+          subPath: postgresql.conf
+        - name: postgres-config
+          mountPath: /etc/postgresql/pg_hba.conf
+          subPath: pg_hba.conf
+        readinessProbe:          # Add health checks
+          exec:
+            command: ["pg_isready", "-U", "postgres"]
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:           # Add health checks
+          exec:
+            command: ["pg_isready", "-U", "postgres"]
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: postgres-storage
+        persistentVolumeClaim:
+          claimName: postgres-pvc
+      - name: postgres-config
+        configMap:
+          name: postgres-config

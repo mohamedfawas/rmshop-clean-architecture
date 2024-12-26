@@ -7,7 +7,7 @@ import (
 )
 
 func NewPostgresConnection(host, port, user, password, dbname string) (*sql.DB, error) {
-	psqlinfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=require TimeZone=UTC",
+	psqlinfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable  TimeZone=UTC",
 		host, port, user, password, dbname)
 
 	db, err := sql.Open("postgres", psqlinfo) //opens a database connection using the PostgreSQL driver.

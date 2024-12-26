@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy  # Wait for db to be healthy
+    environment:
+      # Database Configuration
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=rmshop_db
+
+      # Admin Credentials
+      - ADMIN_USERNAME=adm
+      - ADMIN_PASSWORD=ad
+      
+      # SMTP Configuration
+      - SMTP_HOST=smtp.gmail.com
+      - SMTP_PORT=587
+      - SMTP_USERNAME=f@gmail.com
+      - SMTP_PASSWORD=jhkrvxk
+      
+      # Cloudinary Configuration
+      - CLOUDINARY_CLOUD_NAME=dd7bb
+      - CLOUDINARY_API_KEY=788461
+      - CLOUDINARY_API_SECRET=-sWHLzpsUi4
+      
+      # JWT Configuration
+      - JWT_SECRET=fawas-cr-shop
+      
+      # Razorpay Configuration
+      - RAZORPAY_KEY_ID=rzp_t1Vdh9vR
+      - RAZORPAY_KEY_SECRET=YgoCk5t
+
+  db:
+    image: postgres:15-alpine
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=rmshop_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
