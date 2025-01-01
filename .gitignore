@@ -3,3 +3,4 @@ config.yaml
 deploy/kubernetes/secrets/*
 secrets.yaml
 rmshop-secrets.yaml
+.dockerignore
