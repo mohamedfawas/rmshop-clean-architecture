@@ -1,0 +1,64 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: rmshop
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: rmshop
+spec: # Specification for the Deployment
+  replicas: 1  # The number of pod replicas to run
+  selector: # Defines how to identify the pods managed by this Deployment
+    matchLabels:
+      app: postgres # The label selector matches pods with this label
+  template:
+    metadata:
+      labels:
+        app: postgres # Assigns a label to the pods created by this Deployment
+    spec: # Specification for the containers in the pod
+      containers:
+      - name: postgres # The name of the container
+        image: postgres:15-alpine # The Docker image for the container
+        env: # Environment variables passed to the container
+        - name: POSTGRES_USER # Environment variable for the PostgreSQL username
+          valueFrom:
+            secretKeyRef: # Fetches the value from a Kubernetes Secret
+              name: rmshop-secrets # Name of the Secret to fetch from
+              key: db_username # The specific key in the Secret containing the value
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: rmshop-secrets
+              key: db_password
+        - name: POSTGRES_DB
+          value: "rmshop_db"
+        ports:
+        - containerPort: 5432 # Exposes the container's PostgreSQL port
+        volumeMounts:  # Mounts a volume into the container
+        - name: postgres-storage # References a volume defined in PVC
+          mountPath: /var/lib/postgresql/data # Path inside the container where the volume is mounted
+      volumes: # Defines the volumes to be used by the pod
+      - name: postgres-storage # Name of the volume
+        persistentVolumeClaim:
+          claimName: postgres-pvc # Name of the PersistentVolumeClaim to use
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: rmshop
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

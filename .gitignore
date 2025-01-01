@@ -1,4 +1,5 @@
 config.yaml
 .env
 deploy/kubernetes/secrets/*
-secret.yaml
+secrets.yaml
+rmshop-secrets.yaml

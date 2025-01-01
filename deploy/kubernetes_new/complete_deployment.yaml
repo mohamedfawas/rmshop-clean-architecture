@@ -1,0 +1,272 @@
+# namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rmshop
+
+---
+# config.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rmshop-config
+  namespace: rmshop
+data:
+  DB_HOST: "postgres"
+  DB_PORT: "5432"
+  DB_NAME: "rmshop_db"
+  SMTP_HOST: "smtp.gmail.com"
+  SMTP_PORT: "587"
+
+---
+# secrets.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rmshop-secrets
+  namespace: rmshop
+type: Opaque
+data:
+  # Database credentials
+  db_username: cG9zdGdyZXM=  # echo -n "postgres" | base64
+  db_password: cG9zdGdyZXM=  # echo -n "postgres" | base64
+
+  # Admin credentials
+  admin_username: YWRtaW4=    # echo -n "admin" | base64
+  admin_password: YWRtaW5AMTIz    # echo -n "admin" | base64
+  
+  # SMTP credentials
+  smtp_username: ZmF3YXN0ZXN0QGdtYWlsLmNvbQ==   # Your base64 encoded SMTP username
+  smtp_password: amhrZXNlaGx0cWhjcnZ4aw==           # Your base64 encoded SMTP password
+  
+  # Cloudinary credentials
+  cloudinary_cloud_name: ZGRzZG9qN2Ji    # Your base64 encoded cloud name
+  cloudinary_api_key: Nzg4ODc5NDQ4NzE5NDYx           # Your base64 encoded API key
+  cloudinary_api_secret: LXNXSEw3TE5kdl95Q1Z6ZUlUcFlXenBzVWk0    # Your base64 encoded API secret
+  
+  # JWT secret
+  jwt_secret: ZmF3YXMtY3JlYXRpbmctZ29sYW5nLWJhY2tlbmQtYXBwLWZvci1yZWFsLW1hZHJpZC1zaG9w               # Your base64 encoded JWT secret
+  
+  # Razorpay credentials
+  razorpay_key_id: cnpwX3Rlc3Rfd3dmd3ZIUzFWZGg5dlI=      # Your base64 encoded Razorpay key ID
+  razorpay_key_secret: WWdvQ3J1aVhpVXdSaUMzRGtEWjQ0azV0  # Your base64 encoded Razorpay secret
+
+---
+# postgres.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: rmshop
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: rmshop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        env:
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: rmshop-secrets
+              key: db_username
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: rmshop-secrets
+              key: db_password
+        - name: POSTGRES_DB
+          value: "rmshop_db"
+        ports:
+        - containerPort: 5432
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+      volumes:
+      - name: postgres-storage
+        persistentVolumeClaim:
+          claimName: postgres-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: rmshop
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+# app.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: rmshop
+  namespace: rmshop
+  labels:
+    app: rmshop
+spec:
+  selector:
+    app: rmshop
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+  type: LoadBalancer
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rmshop
+  namespace: rmshop
+  labels:
+    app: rmshop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rmshop
+  template:
+    metadata:
+      labels:
+        app: rmshop
+    spec:
+      containers:
+      - name: rmshop
+        image: mohamedfawas/rmshop:latest
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 8080
+        env:
+          # Server Configuration
+          - name: SERVER_PORT
+            value: "8080"
+          
+          # Database Configuration
+          - name: DB_HOST
+            value: "postgres"
+          - name: DB_PORT
+            value: "5432"
+          - name: DB_USER
+            valueFrom:
+              secretKeyRef:
+                name: rmshop-secrets
+                key: db_username
+          - name: DB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: rmshop-secrets
+                key: db_password
+          - name: DB_NAME
+            value: "rmshop_db"
+          
+          # Admin Configuration
+          - name: ADMIN_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: rmshop-secrets
+                key: admin_username
+          - name: ADMIN_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: rmshop-secrets
+                key: admin_password
+          
+          # SMTP Configuration
+          - name: SMTP_HOST
+            value: "smtp.gmail.com"
+          - name: SMTP_PORT
+            value: "587"
+          - name: SMTP_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: rmshop-secrets
+                key: smtp_username
+          - name: SMTP_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: rmshop-secrets
+                key: smtp_password
+          
+          # Cloudinary Configuration
+          - name: CLOUDINARY_CLOUD_NAME
+            valueFrom:
+              secretKeyRef:
+                name: rmshop-secrets
+                key: cloudinary_cloud_name
+          - name: CLOUDINARY_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: rmshop-secrets
+                key: cloudinary_api_key
+          - name: CLOUDINARY_API_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: rmshop-secrets
+                key: cloudinary_api_secret
+          
+          # JWT Configuration
+          - name: JWT_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: rmshop-secrets
+                key: jwt_secret
+          
+          # Razorpay Configuration
+          - name: RAZORPAY_KEY_ID
+            valueFrom:
+              secretKeyRef:
+                name: rmshop-secrets
+                key: razorpay_key_id
+          - name: RAZORPAY_KEY_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: rmshop-secrets
+                key: razorpay_key_secret
+        
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        
+        # Health checks
+        # readinessProbe:
+        #   httpGet:
+        #     path: /health
+        #     port: http
+        #   initialDelaySeconds: 15
+        #   periodSeconds: 10
+        
+        # livenessProbe:
+        #   httpGet:
+        #     path: /health
+        #     port: http
+        #   initialDelaySeconds: 30
+        #   periodSeconds: 20
