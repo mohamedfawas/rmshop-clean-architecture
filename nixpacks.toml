@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["go_1_22"]
+
+[phases.build]
+cmds = [
+  "go mod download",
+  "go build -o rmshop-clean-architecture ./cmd/api"
+]
+
+[start]
+cmd = "./rmshop-clean-architecture"

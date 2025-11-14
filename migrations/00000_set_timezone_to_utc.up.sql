@@ -1,4 +1,3 @@
 -- Alter the database to set timezone to UTC
-ALTER DATABASE rmshop_db SET timezone TO 'UTC';
-
+   ALTER DATABASE postgres SET timezone TO 'UTC';
 
