@@ -160,7 +160,6 @@ func (u *userUseCase) InitiateSignUp(ctx context.Context, user *domain.User) err
 	err = u.emailSender.SendOTP(user.Email, otp)
 	if err != nil {
 		log.Printf("Error sending OTP email: %v", err)
-		log.Println("=========================error is happening here bro========================")
 		return utils.ErrSendingOTP
 	}
 
