@@ -52,6 +52,8 @@ func main() {
 		cfg.SMTP.FromEmail,
 		cfg.SMTP.FromName,
 	)
+	log.Printf("SMTP effective config - Host: %s, Port: %d, User: %s, PW(len=%d)=%s",
+		cfg.SMTP.Host, cfg.SMTP.Port, cfg.SMTP.Username, len(cfg.SMTP.Password), "********")
 	log.Println("Email sender initialized successfully")
 	// Add debug logging for Cloudinary configuration
 	// log.Printf("Cloudinary Config - CloudName: %s, APIKey: %s, APISecret: %s",
