@@ -2,124 +2,152 @@ package config
 
 import (
 	"log"
-	"os"
-	"strconv"
+	"strings"
 
 	"github.com/spf13/viper"
+	"github.com/subosito/gotenv"
 )
 
-// add this to github
-
 type Config struct {
-	Server     ServerConfig
-	DB         DBConfig
-	Admin      AdminConfig
-	SMTP       SMTPConfig
-	Cloudinary CloudinaryConfig
-	JWT        JWTConfig
-	Razorpay   RazorpayConfig
+	Server     ServerConfig     `mapstructure:"server"`
+	DB         DBConfig         `mapstructure:"db"`
+	Admin      AdminConfig      `mapstructure:"admin"`
+	SMTP       SMTPConfig       `mapstructure:"smtp"`
+	Cloudinary CloudinaryConfig `mapstructure:"cloudinary"`
+	JWT        JWTConfig        `mapstructure:"jwt"`
+	Razorpay   RazorpayConfig   `mapstructure:"razorpay"`
 }
 
 type ServerConfig struct {
-	Port string
-}
-
-type CloudinaryConfig struct {
-	CloudName string
-	APIKey    string
-	APISecret string
+	Port string `mapstructure:"port"`
 }
 
 type DBConfig struct {
-	Host     string
-	Port     string
-	User     string
-	Password string
-	Name     string
+	Host     string `mapstructure:"host"`
+	Port     string `mapstructure:"port"`
+	User     string `mapstructure:"user"`
+	Password string `mapstructure:"password"`
+	Name     string `mapstructure:"name"`
 }
 
 type AdminConfig struct {
-	Username string
-	Password string
+	Username string `mapstructure:"username"`
+	Password string `mapstructure:"password"`
 }
 
 type SMTPConfig struct {
-	Host     string
-	Port     int
-	Username string
-	Password string
+	Host      string `mapstructure:"host"`
+	Port      int    `mapstructure:"port"`
+	Username  string `mapstructure:"username"`
+	Password  string `mapstructure:"password"`
+	FromEmail string `mapstructure:"from_email"`
+	FromName  string `mapstructure:"from_name"`
+}
+
+type CloudinaryConfig struct {
+	CloudName string `mapstructure:"cloud_name"`
+	APIKey    string `mapstructure:"api_key"`
+	APISecret string `mapstructure:"api_secret"`
 }
 
 type JWTConfig struct {
-	Secret string
+	Secret string `mapstructure:"secret"`
 }
 
 type RazorpayConfig struct {
-	KeyID     string
-	KeySecret string
-}
-
-// below code is mainly used in aws, where we load vars from environment
-func getEnv(key string, defaultValue string) string {
-	if value, exists := os.LookupEnv(key); exists {
-		return value
-	}
-	return defaultValue
+	KeyID     string `mapstructure:"key_id"`
+	KeySecret string `mapstructure:"key_secret"`
 }
 
 func Load() (*Config, error) {
-	viper.SetConfigName("config") //specify the name of the configuration file (without the extension)
-	viper.SetConfigType("yaml")   // specify the format of the configuration file
-	viper.AddConfigPath(".")      //add a path where Viper will search for the configuration file
-	viper.AddConfigPath("./internal/config")
+	// Load .env into process env (non-fatal if file is missing)
+	_ = gotenv.Load()
 
-	err := viper.ReadInConfig() //Reads configuration files
-	if err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			// Config file not found; ignore error if desired
-			log.Println("No config file found. Using environment variables.")
-		} else {
-			// Config file was found but another error was produced
-			log.Printf("Error reading config file: %v", err)
-			return nil, err
-		}
-	} else {
-		log.Printf("Config file used: %s", viper.ConfigFileUsed())
-	}
+	v := viper.New()
 
-	var config Config
-	err = viper.Unmarshal(&config) //unmarshal the configuration values from a Viper instance into a struct
-	if err != nil {
+	// ENV vars override everything
+	v.AutomaticEnv()
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+
+	bindEnvVars(v)
+	setDefaults(v)
+
+	var cfg Config
+	if err := v.Unmarshal(&cfg); err != nil {
 		log.Printf("Error unmarshaling config: %v", err)
 		return nil, err
 	}
 
-	// This code is mainly used for aws situation
-	// Override with environment variables
-	config.Server.Port = getEnv("SERVER_PORT", config.Server.Port)
-	config.DB.Host = getEnv("DB_HOST", config.DB.Host)
-	config.DB.Port = getEnv("DB_PORT", config.DB.Port)
-	config.DB.User = getEnv("DB_USER", config.DB.User)
-	config.DB.Password = getEnv("DB_PASSWORD", config.DB.Password)
-	config.DB.Name = getEnv("DB_NAME", config.DB.Name)
+	return &cfg, nil
+}
 
-	config.Admin.Username = getEnv("ADMIN_USERNAME", config.Admin.Username)
-	config.Admin.Password = getEnv("ADMIN_PASSWORD", config.Admin.Password)
+func bindEnvVars(v *viper.Viper) {
+	keys := []string{
+		"server.port",
 
-	config.SMTP.Host = getEnv("SMTP_HOST", config.SMTP.Host)
-	smtpPort, _ := strconv.Atoi(getEnv("SMTP_PORT", strconv.Itoa(config.SMTP.Port)))
-	config.SMTP.Port = smtpPort
-	config.SMTP.Username = getEnv("SMTP_USERNAME", config.SMTP.Username)
-	config.SMTP.Password = getEnv("SMTP_PASSWORD", config.SMTP.Password)
+		"db.host",
+		"db.port",
+		"db.user",
+		"db.password",
+		"db.name",
 
-	config.Cloudinary.CloudName = getEnv("CLOUDINARY_CLOUD_NAME", config.Cloudinary.CloudName)
-	config.Cloudinary.APIKey = getEnv("CLOUDINARY_API_KEY", config.Cloudinary.APIKey)
-	config.Cloudinary.APISecret = getEnv("CLOUDINARY_API_SECRET", config.Cloudinary.APISecret)
+		"admin.username",
+		"admin.password",
 
-	config.JWT.Secret = getEnv("JWT_SECRET", config.JWT.Secret)
+		"smtp.host",
+		"smtp.port",
+		"smtp.username",
+		"smtp.password",
+		"smtp.from_email",
+		"smtp.from_name",
 
-	config.Razorpay.KeyID = getEnv("RAZORPAY_KEY_ID", config.Razorpay.KeyID)
-	config.Razorpay.KeySecret = getEnv("RAZORPAY_KEY_SECRET", config.Razorpay.KeySecret)
+		"cloudinary.cloud_name",
+		"cloudinary.api_key",
+		"cloudinary.api_secret",
 
-	return &config, nil
+		"jwt.secret",
+
+		"razorpay.key_id",
+		"razorpay.key_secret",
+	}
+
+	for _, key := range keys {
+		_ = v.BindEnv(key)
+	}
+}
+
+func setDefaults(v *viper.Viper) {
+	// Server
+	v.SetDefault("server.port", "8080")
+
+	// Database
+	v.SetDefault("db.host", "localhost")
+	v.SetDefault("db.port", "5432")
+	v.SetDefault("db.user", "postgres")
+	v.SetDefault("db.password", "postgres")
+	v.SetDefault("db.name", "rmshop_db")
+
+	// Admin
+	v.SetDefault("admin.username", "admin")
+	v.SetDefault("admin.password", "admin@123")
+
+	// SMTP
+	v.SetDefault("smtp.host", "smtp.gmail.com")
+	v.SetDefault("smtp.port", 587)
+	v.SetDefault("smtp.username", "")
+	v.SetDefault("smtp.password", "")
+	v.SetDefault("smtp.from_email", "")
+	v.SetDefault("smtp.from_name", "Real Madrid Shop")
+
+	// Cloudinary
+	v.SetDefault("cloudinary.cloud_name", "")
+	v.SetDefault("cloudinary.api_key", "")
+	v.SetDefault("cloudinary.api_secret", "")
+
+	// JWT
+	v.SetDefault("jwt.secret", "change-me-in-production")
+
+	// Razorpay
+	v.SetDefault("razorpay.key_id", "")
+	v.SetDefault("razorpay.key_secret", "")
 }

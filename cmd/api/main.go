@@ -44,8 +44,15 @@ func main() {
 	log.Println("Migrations completed successfully")
 
 	// Initialize email sender for OTP functionality
-	emailSender := email.NewSender(cfg.SMTP.Host, cfg.SMTP.Port, cfg.SMTP.Username, cfg.SMTP.Password)
-
+	emailSender := email.NewSender(
+		cfg.SMTP.Host,
+		cfg.SMTP.Port,
+		cfg.SMTP.Username,
+		cfg.SMTP.Password,
+		cfg.SMTP.FromEmail,
+		cfg.SMTP.FromName,
+	)
+	log.Println("Email sender initialized successfully")
 	// Add debug logging for Cloudinary configuration
 	// log.Printf("Cloudinary Config - CloudName: %s, APIKey: %s, APISecret: %s",
 	// 	cfg.Cloudinary.CloudName,
