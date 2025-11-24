@@ -136,7 +136,7 @@ func (u *userUseCase) InitiateSignUp(ctx context.Context, user *domain.User) err
 		//log.Printf("Error generating OTP: %v", err)
 		return utils.ErrGenerateOTP
 	}
-	//log.Printf("OTP generated for email: %s", user.Email)
+	log.Printf("OTP generated for email: %s", user.Email)
 
 	//otp expiration time : 15 minutes
 	expiresAt := time.Now().UTC().Add(15 * time.Minute)
