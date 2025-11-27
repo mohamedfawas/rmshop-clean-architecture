@@ -40,6 +40,17 @@ func (s *CloudinaryService) UploadImage(ctx context.Context, file multipart.File
 		log.Printf("error while uploading to cloudinary :%v", err)
 		return "", err
 	}
+	log.Printf("Cloudinary raw result: %#v", result)
+	if result.Error.Message != "" {
+		log.Printf("Cloudinary logical error: %s", result.Error.Message)
+		return "", fmt.Errorf("cloudinary error: %s", result.Error.Message)
+	}
+
+	if result.SecureURL == "" {
+		log.Printf("Cloudinary returned empty secure_url")
+		return "", fmt.Errorf("cloudinary upload returned empty secure_url")
+	}
+
 	log.Printf("Cloudinary upload success: public_id=%s, url=%s", result.PublicID, result.SecureURL)
 
 	return result.SecureURL, nil
