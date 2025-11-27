@@ -16,6 +16,7 @@ type CloudinaryService struct {
 }
 
 func NewCloudinaryService(cloudName, apiKey, apiSecret string) (*CloudinaryService, error) {
+	log.Printf("Cloudinary config - cloudName=%s", cloudName)
 	if cloudName == "" || apiKey == "" || apiSecret == "" {
 		return nil, fmt.Errorf("cloudinary credentials are incomplete")
 	}
@@ -39,6 +40,7 @@ func (s *CloudinaryService) UploadImage(ctx context.Context, file multipart.File
 		log.Printf("error while uploading to cloudinary :%v", err)
 		return "", err
 	}
+	log.Printf("Cloudinary upload success: public_id=%s, url=%s", result.PublicID, result.SecureURL)
 
 	return result.SecureURL, nil
 }
@@ -49,6 +51,6 @@ func (s *CloudinaryService) DeleteImage(ctx context.Context, publicID string) er
 }
 
 func generateUniqueID() string {
-	// Implement a function to generate a unique ID (you can use UUID or any other method)
+	// Implement a function to generate a unique ID
 	return fmt.Sprintf("%d", time.Now().UnixNano())
 }
