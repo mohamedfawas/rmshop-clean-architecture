@@ -17,6 +17,8 @@ type CloudinaryService struct {
 
 func NewCloudinaryService(cloudName, apiKey, apiSecret string) (*CloudinaryService, error) {
 	log.Printf("Cloudinary config - cloudName=%s", cloudName)
+	log.Printf("Cloudinary config - apiKey=%s", apiKey)
+	log.Printf("Cloudinary config - apiSecret=%s", apiSecret)
 	if cloudName == "" || apiKey == "" || apiSecret == "" {
 		return nil, fmt.Errorf("cloudinary credentials are incomplete")
 	}
